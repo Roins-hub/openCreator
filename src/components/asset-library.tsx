@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ArrowLeft, Download, Image as ImageIcon, Images, Star, Trash2, Video } from "lucide-react";
 import type { Asset } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
-import { withBase } from "@/lib/base-path";
 
 type Filter = "all" | Asset["kind"] | "favorite" | "trash";
 
@@ -19,13 +18,13 @@ export function AssetLibrary() {
   const [filter, setFilter] = useState<Filter>("all");
   const [error, setError] = useState("");
   const loadAssets = async () => {
-    const response = await fetch(withBase("/api/assets"));
+    const response = await fetch("/api/assets");
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "无法读取资产");
     setAssets(data);
   };
   useEffect(() => {
-    fetch(withBase("/api/assets")).then(async (response) => {
+    fetch("/api/assets").then(async (response) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "无法读取资产");
       setAssets(data);
@@ -43,7 +42,7 @@ export function AssetLibrary() {
     const favorite = !asset.favorite;
     setAssets((items) => items.map((item) => item.id === asset.id ? { ...item, favorite } : item));
     try {
-      const response = await fetch(withBase("/api/favorites"), {
+      const response = await fetch("/api/favorites", {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paths: [asset.path], favorite }),
       });
@@ -58,7 +57,7 @@ export function AssetLibrary() {
     setError("");
     try {
       const response = await fetch(
-        action === "delete" ? withBase(`/api/assets?path=${encodeURIComponent(asset.path)}`) : withBase("/api/assets"),
+        action === "delete" ? `/api/assets?path=${encodeURIComponent(asset.path)}` : "/api/assets",
         action === "delete" ? { method: "DELETE" } : {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -126,16 +125,16 @@ export function AssetLibrary() {
               <Star size={15} fill={asset.favorite ? "currentColor" : "none"} />
             </button>}
             {asset.kind === "video"
-              ? <video controls preload="metadata" src={withBase(`/api/media/${asset.path}`)} />
+              ? <video controls preload="metadata" src={`/api/media/${asset.path}`} />
               // eslint-disable-next-line @next/next/no-img-element
-              : <img loading="lazy" src={withBase(`/api/media/${asset.path}`)} alt={asset.name} />}
+              : <img loading="lazy" src={`/api/media/${asset.path}`} alt={asset.name} />}
           </div>
           <div className="asset-details">
             <div>
               <strong>{asset.kind === "image" ? "图片" : "视频"}</strong>
               <span>{formatSize(asset.size)} · {new Date(asset.createdAt || asset.modifiedAt).toLocaleString("zh-CN")}</span>
             </div>
-            <a className="asset-download" href={withBase(`/api/media/${asset.path}`)} download={asset.name}
+            <a className="asset-download" href={`/api/media/${asset.path}`} download={asset.name}
               aria-label={`下载 ${asset.name}`}><Download size={15} /></a>
             <AssetMenu name={asset.name} trashed={Boolean(asset.trashed)}
               onTrash={() => void mutate(asset, "trash")}

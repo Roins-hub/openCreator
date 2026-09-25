@@ -1,5 +1,3 @@
-import { withBase } from "./base-path";
-
 export const REFERENCE_CARD_CLASS = "reference-inline-card";
 
 export function referenceLabel(index: number) {
@@ -67,7 +65,7 @@ export function createReferenceCard(path: string, name: string, index: number) {
   const thumb = document.createElement("span");
   thumb.className = "reference-inline-thumb";
   const image = document.createElement("img");
-  image.src = withBase(`/api/media/${path}`);
+  image.src = `/api/media/${path}`;
   image.alt = name;
   thumb.appendChild(image);
   card.appendChild(thumb);

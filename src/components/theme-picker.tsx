@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { Check, Monitor } from "lucide-react";
 import { THEMES, type ThemeId, type ThemeMode, readThemeMode, saveThemeMode } from "@/lib/themes";
-import { isEmbedded } from "@/lib/host-bridge";
 
 /** 用目标主题自身的色板渲染一个迷你工作台,预览即真实效果。 */
 function ThemeMiniature({ theme }: { theme: ThemeId }) {
@@ -20,11 +19,6 @@ function ThemeMiniature({ theme }: { theme: ThemeId }) {
 
 export function ThemePicker() {
   const [mode, setMode] = useState<ThemeMode>("system");
-  const [embedded, setEmbedded] = useState(false);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setEmbedded(isEmbedded()), 0);
-    return () => clearTimeout(timer);
-  }, []);
   useEffect(() => {
     const timer = window.setTimeout(() => setMode(readThemeMode()), 0);
     const onChange = (event: Event) => setMode((event as CustomEvent<ThemeMode>).detail);
@@ -34,9 +28,6 @@ export function ThemePicker() {
       window.removeEventListener("mote-theme-change", onChange);
     };
   }, []);
-
-  // 嵌入 Infinite-Canvas 时主题由画布统一控制
-  if (embedded) return null;
 
   const choose = (next: ThemeMode) => {
     setMode(next);
