@@ -1028,19 +1028,22 @@ body { transition: background-color .2s ease, color .2s ease; }
 .composer-body { display: flex; align-items: flex-start; gap: 14px; }
 .composer-body .composer-editor { flex: 1; min-width: 0; }
 .attachment-stack {
-  --step: 58px;
+  --step: 58px; --card-w: 50px; --card-h: 62px; --tray-pad: 8px;
   position: relative; z-index: 6; flex: 0 0 54px; width: 54px; height: 64px; margin: 3px 0 6px 4px;
 }
 /* 展开时的托盘底板,避免压住下面的文字 */
 .attachment-stack::before {
-  content: ""; position: absolute; left: -8px; top: -8px; width: calc(var(--count) * var(--step) + 52px); height: 80px;
+  /* 托盘要包住最后的“+”格子:它的右边缘在 count * step + card-w,两侧各留 tray-pad */
+  content: ""; position: absolute; left: calc(-1 * var(--tray-pad)); top: calc(-1 * var(--tray-pad));
+  width: calc(var(--count) * var(--step) + var(--card-w) + 2 * var(--tray-pad));
+  height: calc(var(--card-h) + 2 * var(--tray-pad) + 2px);
   border: 1px solid var(--line); border-radius: 13px; background: var(--paper);
   box-shadow: 0 14px 34px oklch(20% .02 80 / .14);
   opacity: 0; transform: scaleX(.4); transform-origin: left center; pointer-events: none;
   transition: opacity .18s ease, transform .26s cubic-bezier(.16, 1, .3, 1);
 }
 .stack-card, .stack-add {
-  position: absolute; left: 0; top: 0; width: 50px; height: 62px;
+  position: absolute; left: 0; top: 0; width: var(--card-w); height: var(--card-h);
   transition: transform .3s cubic-bezier(.16, 1, .3, 1), box-shadow .2s ease;
 }
 .stack-card {
@@ -1084,4 +1087,11 @@ body { transition: background-color .2s ease, color .2s ease; }
 .stack-card:hover { z-index: 40; }
 @media (prefers-reduced-motion: reduce) {
   .stack-card, .stack-add, .attachment-stack::before { transition: none; }
+}
+@media (max-width: 700px) {
+  /* 窄屏按剩余宽度压缩间距:保证 count 张 + “+” 格子整排都留在屏幕内 */
+  .attachment-stack {
+    --card-w: 36px; --card-h: 46px; flex-basis: 40px; width: 40px; height: 48px;
+    --step: min(42px, calc((100vw - 64px - var(--card-w) - 2 * var(--tray-pad)) / var(--count)));
+  }
 }
