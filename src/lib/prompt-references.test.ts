@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { serializePrompt } from "./prompt-references";
+import { createReferenceCard, serializePrompt, splitPromptReferences } from "./prompt-references";
 
 function editor(html: string) {
   const root = document.createElement("div");
@@ -34,5 +34,27 @@ describe("serializePrompt", () => {
 
   it("returns empty text for an editor that only holds whitespace", () => {
     expect(serializePrompt(editor("&nbsp; "), [])).toBe("");
+  });
+});
+
+describe("splitPromptReferences", () => {
+  it("splits text and numbered markers", () => {
+    expect(splitPromptReferences("让[图2]走进[图1]")).toEqual([
+      { kind: "text", text: "让" },
+      { kind: "reference", index: 1 },
+      { kind: "text", text: "走进" },
+      { kind: "reference", index: 0 },
+    ]);
+  });
+
+  it("round-trips through cards and serializePrompt", () => {
+    const root = document.createElement("div");
+    const paths = ["a.png", "b.png"];
+    for (const segment of splitPromptReferences("[图1] 看向 [图2]")) {
+      root.append(segment.kind === "text"
+        ? document.createTextNode(segment.text)
+        : createReferenceCard(paths[segment.index], "x", segment.index));
+    }
+    expect(serializePrompt(root, paths)).toBe("[图1] 看向 [图2]");
   });
 });

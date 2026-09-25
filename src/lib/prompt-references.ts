@@ -37,3 +37,37 @@ export function serializePrompt(root: Node, attachmentPaths: readonly string[]) 
   root.childNodes.forEach(walk);
   return output.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
+
+export type PromptSegment = { kind: "text"; text: string } | { kind: "reference"; index: number };
+
+/** 把含 `[图N]` 标记的提示词拆成文字与引用片段(index 从 0 开始)。 */
+export function splitPromptReferences(prompt: string): PromptSegment[] {
+  const segments: PromptSegment[] = [];
+  let last = 0;
+  for (const match of prompt.matchAll(/\[图(\d+)\]/g)) {
+    const start = match.index ?? 0;
+    if (start > last) segments.push({ kind: "text", text: prompt.slice(last, start) });
+    segments.push({ kind: "reference", index: Number(match[1]) - 1 });
+    last = start + match[0].length;
+  }
+  if (last < prompt.length) segments.push({ kind: "text", text: prompt.slice(last) });
+  return segments;
+}
+
+/** 创建输入区内联引用卡片节点。 */
+export function createReferenceCard(path: string, name: string, index: number) {
+  const card = document.createElement("span");
+  card.className = REFERENCE_CARD_CLASS;
+  card.contentEditable = "false";
+  card.dataset.path = path;
+  card.dataset.label = referenceLabel(index);
+  card.title = name;
+  const thumb = document.createElement("span");
+  thumb.className = "reference-inline-thumb";
+  const image = document.createElement("img");
+  image.src = `/api/media/${path}`;
+  image.alt = name;
+  thumb.appendChild(image);
+  card.appendChild(thumb);
+  return card;
+}

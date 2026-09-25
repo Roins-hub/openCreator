@@ -52,6 +52,17 @@ export interface Message {
   failedTaskIds?: string[];
   attachments?: MediaRef[];
   media?: MediaRef[];
+  /** 生成时使用的模型与参数快照,用于任务卡片展示、重新编辑和重新生成。 */
+  generation?: GenerationMeta;
+}
+
+export interface GenerationMeta {
+  type: ModelType;
+  providerName: string;
+  modelName: string;
+  modelId: string;
+  videoOptions?: VideoOptions;
+  imageOptions?: ImageOptions;
 }
 
 export interface Conversation {

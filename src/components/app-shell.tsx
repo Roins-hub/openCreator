@@ -18,7 +18,10 @@ import { pickImageFiles } from "@/lib/image-files";
 import { validateReferenceCount } from "@/lib/reference-images";
 import { unfinishedTaskIds } from "@/lib/generation-stop";
 import { ConversationSearch } from "@/components/conversation-search";
-import { REFERENCE_CARD_CLASS, referenceLabel, serializePrompt } from "@/lib/prompt-references";
+import {
+  REFERENCE_CARD_CLASS, createReferenceCard, referenceLabel, serializePrompt, splitPromptReferences,
+} from "@/lib/prompt-references";
+import { VideoTaskCard } from "@/components/video-task-card";
 
 type PublicConfig = AppConfig & { providers: Array<AppConfig["providers"][number] & { hasApiKey?: boolean }> };
 type ModelChoice = { providerId: string; providerName: string; model: ModelConfig };
@@ -59,6 +62,7 @@ export function AppShell() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([]);
+  const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [referenceQuery, setReferenceQuery] = useState("");
   const [referencePickerPosition, setReferencePickerPosition] = useState({ left: 10, top: 8 });
   const referenceRangeRef = useRef<Range | null>(null);
@@ -86,11 +90,13 @@ export function AppShell() {
   const isGenerating = busy || Boolean(processingMessage);
 
   const load = useCallback(async () => {
-    const [nextConfig, nextConversations] = await Promise.all([
+    const [nextConfig, nextConversations, nextFavorites] = await Promise.all([
       request<PublicConfig>("/api/config"),
       request<Conversation[]>("/api/conversations"),
+      request<string[]>("/api/favorites").catch(() => []),
     ]);
     setConfig(nextConfig);
+    setFavorites(new Set(nextFavorites));
     setConversations(nextConversations);
     if (nextConversations.length) {
       const requested = typeof window === "undefined" ? null :
@@ -247,19 +253,9 @@ export function AppShell() {
       }
       selection?.removeAllRanges();
       selection?.addRange(range);
-      const card = document.createElement("span");
-      card.className = REFERENCE_CARD_CLASS;
-      card.contentEditable = "false";
-      card.dataset.path = asset.path;
-      card.dataset.label = referenceLabel(nextAttachments.findIndex((item) => item.path === asset.path));
-      card.title = asset.name;
-      const thumb = document.createElement("span");
-      thumb.className = "reference-inline-thumb";
-      const image = document.createElement("img");
-      image.src = `/api/media/${asset.path}`;
-      image.alt = asset.name;
-      thumb.appendChild(image);
-      card.appendChild(thumb);
+      const card = createReferenceCard(
+        asset.path, asset.name, nextAttachments.findIndex((item) => item.path === asset.path),
+      );
       range.deleteContents();
       range.insertNode(card);
       const spacer = document.createTextNode(" ");
@@ -350,16 +346,24 @@ export function AppShell() {
     void upload(files);
   };
 
-  const send = async () => {
+  const send = () => {
     if (isGenerating || !selected || (!draft.trim() && !attachments.length)) return;
     const prompt = editorRef.current
       ? serializePrompt(editorRef.current, attachments.map((item) => item.path))
       : draft.trim();
-    const currentVideoOptions = active?.videoOptions || videoDefaults;
+    return submit(prompt, attachments, { clearComposer: true });
+  };
+
+  const submit = async (
+    prompt: string, usedAttachments: MediaRef[],
+    { clearComposer, videoOptions }: { clearComposer: boolean; videoOptions?: VideoOptions },
+  ) => {
+    if (isGenerating || !selected) return;
+    const currentVideoOptions = videoOptions || active?.videoOptions || videoDefaults;
     if (selected.model.type === "video") {
       try {
         validateReferenceCount(
-          currentVideoOptions.referenceMode, attachments.length, selected.model.maxReferenceImages,
+          currentVideoOptions.referenceMode, usedAttachments.length, selected.model.maxReferenceImages,
         );
       } catch (cause) {
         setError((cause as Error).message);
@@ -376,7 +380,7 @@ export function AppShell() {
       const now = new Date().toISOString();
       const user: Message = {
         id: createClientId(), role: "user", content: prompt,
-        attachments, createdAt: now, status: "complete",
+        attachments: usedAttachments, createdAt: now, status: "complete",
       };
       conversation = {
         ...conversation,
@@ -387,10 +391,11 @@ export function AppShell() {
       };
       await persist(conversation);
       setActiveId(conversation.id);
-      const usedAttachments = attachments;
-      setDraft("");
-      setAttachments([]);
-      if (editorRef.current) editorRef.current.innerHTML = "";
+      if (clearComposer) {
+        setDraft("");
+        setAttachments([]);
+        if (editorRef.current) editorRef.current.innerHTML = "";
+      }
       if (selected.model.type !== "chat") {
         pendingMessageId = `pending-${createClientId()}`;
         const pendingMessage: Message = {
@@ -399,6 +404,11 @@ export function AppShell() {
           content: "",
           createdAt: new Date().toISOString(),
           status: "processing",
+          generation: {
+            type: selected.model.type, providerName: selected.providerName,
+            modelName: selected.model.name, modelId: selected.model.modelId,
+            ...(selected.model.type === "video" ? { videoOptions: currentVideoOptions } : {}),
+          },
         };
         const optimistic = {
           ...conversation,
@@ -416,7 +426,7 @@ export function AppShell() {
           conversationId: conversation.id, providerId: selected.providerId,
           modelId: selected.model.id, prompt, attachments: usedAttachments,
           imageOptions: conversation.imageOptions || imageDefaults,
-          videoOptions: conversation.videoOptions || videoDefaults,
+          videoOptions: currentVideoOptions,
         }),
       });
       if (controller.signal.aborted) return;
@@ -437,6 +447,48 @@ export function AppShell() {
       if (generationControllerRef.current === controller) generationControllerRef.current = null;
       setBusy(false);
     }
+  };
+
+  const updateActiveMessages = (update: (messages: Message[]) => Message[]) => {
+    if (!active) return;
+    const updated = { ...active, messages: update(active.messages), updatedAt: new Date().toISOString() };
+    setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));
+    void persist(updated).catch((cause) => setError(cause.message));
+  };
+
+  const toggleFavorite = async (paths: string[], favorite: boolean) => {
+    if (!paths.length) return;
+    try {
+      const next = await request<string[]>("/api/favorites", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths, favorite }),
+      });
+      setFavorites(new Set(next));
+    } catch (cause) { setError((cause as Error).message); }
+  };
+
+  const deleteTurn = (messageId: string, userMessageId?: string) => updateActiveMessages((messages) =>
+    messages.filter((item) => item.id !== messageId && item.id !== userMessageId));
+
+  const reedit = (prompt: string, references: MediaRef[], videoOptions?: VideoOptions) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    setAttachments(references);
+    editor.innerHTML = "";
+    for (const segment of splitPromptReferences(prompt)) {
+      const ref = segment.kind === "reference" ? references[segment.index] : undefined;
+      if (segment.kind === "text") editor.append(document.createTextNode(segment.text));
+      else if (ref) editor.append(createReferenceCard(ref.path, ref.name, segment.index));
+    }
+    setDraft(editor.innerText);
+    if (videoOptions && selected?.model.type === "video") changeGenerationOptions({ videoOptions });
+    editor.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
   };
 
   const stop = async () => {
@@ -597,10 +649,38 @@ export function AppShell() {
             </div>
           ) : (
             <div className="message-list">
-              {active.messages.map((message) => (
-                <MessageView key={message.id} message={message}
-                  processingType={selected?.model.type} />
-              ))}
+              {(() => {
+                let lastDate = "";
+                return active.messages.map((message, index) => {
+                  const next = active.messages[index + 1];
+                  if (message.role === "user" && next && isVideoTurn(next, selected?.model.type)) return null;
+                  if (!isVideoTurn(message, selected?.model.type)) {
+                    return <MessageView key={message.id} message={message} processingType={selected?.model.type} />;
+                  }
+                  const previous = active.messages[index - 1];
+                  const userMessage = previous?.role === "user" ? previous : undefined;
+                  const prompt = userMessage?.content || "";
+                  const references = userMessage?.attachments || [];
+                  const videoPaths = (message.media || []).filter((item) => item.kind === "video").map((item) => item.path);
+                  const favorite = videoPaths.length > 0 && videoPaths.every((path) => favorites.has(path));
+                  const date = localDate(message.createdAt);
+                  const showDate = date !== lastDate;
+                  lastDate = date;
+                  return (
+                    <div key={message.id}>
+                      {showDate && <div className="task-date">{date}</div>}
+                      <VideoTaskCard prompt={prompt} references={references} message={message}
+                        fallbackModelName={selected?.model.name} favorite={favorite}
+                        onReedit={() => reedit(prompt, references, message.generation?.videoOptions)}
+                        onRegenerate={() => void submit(prompt, references, {
+                          clearComposer: false, videoOptions: message.generation?.videoOptions,
+                        })}
+                        onToggleFavorite={() => void toggleFavorite(videoPaths, !favorite)}
+                        onDelete={() => deleteTurn(message.id, userMessage?.id)} />
+                    </div>
+                  );
+                });
+              })()}
               <div ref={bottomRef} />
             </div>
           )}
@@ -748,6 +828,22 @@ export function AppShell() {
         }} />}
     </main>
   );
+}
+
+function isVideoTurn(message: Message, currentType?: ModelConfig["type"]) {
+  if (message.role !== "assistant") return false;
+  if (message.generation) return message.generation.type === "video";
+  if (message.media?.some((item) => item.kind === "video")) return true;
+  // 旧记录没有 generation 快照:有任务 ID 或正在生成时,按当前模型类型判断。
+  const hasTask = message.taskIds?.length || message.taskId || message.id.startsWith("pending-");
+  return Boolean(hasTask || message.status === "processing") && currentType === "video";
+}
+
+function localDate(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function MessageView({

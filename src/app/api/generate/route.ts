@@ -28,6 +28,11 @@ export async function POST(request: Request) {
     const assistant: Message = {
       id: crypto.randomUUID(), role: "assistant", content: "",
       createdAt: new Date().toISOString(), status: "processing",
+      generation: {
+        type: model.type, providerName: provider.name, modelName: model.name, modelId: model.modelId,
+        ...(model.type === "video" ? { videoOptions: input.videoOptions || defaultVideo } : {}),
+        ...(model.type === "image" ? { imageOptions: input.imageOptions || defaultImage } : {}),
+      },
     };
     conversation.providerId = input.providerId;
     conversation.modelId = input.modelId;

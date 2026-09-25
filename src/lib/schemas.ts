@@ -62,6 +62,15 @@ export const mediaRefSchema = z.object({
   dataUrl: z.string().optional(),
 });
 
+const generationMetaSchema = z.object({
+  type: z.enum(["chat", "image", "video"]),
+  providerName: z.string(),
+  modelName: z.string(),
+  modelId: z.string(),
+  videoOptions: z.lazy(() => videoOptionsSchema).optional(),
+  imageOptions: z.lazy(() => imageOptionsSchema).optional(),
+});
+
 export const messageSchema = z.object({
   id: z.string().min(1),
   role: z.enum(["user", "assistant", "system"]),
@@ -75,6 +84,7 @@ export const messageSchema = z.object({
   failedTaskIds: z.array(z.string()).optional(),
   attachments: z.array(mediaRefSchema).optional(),
   media: z.array(mediaRefSchema).optional(),
+  generation: generationMetaSchema.optional(),
 });
 
 export const imageOptionsSchema = z.object({

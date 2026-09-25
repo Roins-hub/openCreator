@@ -16,6 +16,7 @@ export interface Asset {
   conversationTitle?: string;
   trashed?: boolean;
   originalPath?: string;
+  favorite?: boolean;
 }
 
 export function enrichAssets(assets: Asset[], conversations: Conversation[]) {

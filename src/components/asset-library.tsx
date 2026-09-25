@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, Image as ImageIcon, Images, Trash2, Video } from "lucide-react";
+import { ArrowLeft, Download, Image as ImageIcon, Images, Star, Trash2, Video } from "lucide-react";
 import type { Asset } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
 
-type Filter = "all" | Asset["kind"] | "trash";
+type Filter = "all" | Asset["kind"] | "favorite" | "trash";
 
 function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -32,9 +32,27 @@ export function AssetLibrary() {
   }, []);
   const visible = useMemo(() => filter === "trash"
     ? assets.filter((asset) => asset.trashed)
-    : assets.filter((asset) => !asset.trashed && (filter === "all" || asset.kind === filter)),
+    : filter === "favorite"
+      ? assets.filter((asset) => !asset.trashed && asset.favorite)
+      : assets.filter((asset) => !asset.trashed && (filter === "all" || asset.kind === filter)),
   [assets, filter]);
   const activeAssets = assets.filter((asset) => !asset.trashed);
+  const toggleFavorite = async (asset: Asset) => {
+    setError("");
+    const favorite = !asset.favorite;
+    setAssets((items) => items.map((item) => item.id === asset.id ? { ...item, favorite } : item));
+    try {
+      const response = await fetch("/api/favorites", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: [asset.path], favorite }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "收藏失败");
+    } catch (cause) {
+      setAssets((items) => items.map((item) => item.id === asset.id ? { ...item, favorite: !favorite } : item));
+      setError((cause as Error).message);
+    }
+  };
   const mutate = async (asset: Asset, action: "trash" | "restore" | "delete") => {
     setError("");
     try {
@@ -70,6 +88,7 @@ export function AssetLibrary() {
           ["all", "全部", Images],
           ["image", "图片", ImageIcon],
           ["video", "视频", Video],
+          ["favorite", "收藏", Star],
           ["trash", "回收站", Trash2],
         ] as const).map(([value, label, Icon]) =>
           <button key={value} className={filter === value ? "active" : ""}
@@ -77,18 +96,34 @@ export function AssetLibrary() {
             <Icon size={14} /> {label}
             <span>{value === "all" ? activeAssets.length :
               value === "trash" ? assets.filter((asset) => asset.trashed).length :
+                value === "favorite" ? activeAssets.filter((asset) => asset.favorite).length :
                 activeAssets.filter((asset) => asset.kind === value).length}</span>
           </button>)}
       </div>
       {error && <div className="settings-error">{error}</div>}
       {!error && visible.length === 0 ? <div className="asset-empty">
-        <Images size={24} />
-        <h2>还没有生成资产</h2>
-        <p>完成一次图片或视频生成后，结果会自动出现在这里。</p>
+        {filter === "favorite" ? <>
+          <Star size={24} />
+          <h2>还没有收藏</h2>
+          <p>在对话的任务卡片或资产卡片上点击星标，收藏的作品会集中出现在这里。</p>
+        </> : filter === "trash" ? <>
+          <Trash2 size={24} />
+          <h2>回收站是空的</h2>
+          <p>移入回收站的资产会暂存在这里，可以恢复或永久删除。</p>
+        </> : <>
+          <Images size={24} />
+          <h2>还没有生成资产</h2>
+          <p>完成一次图片或视频生成后，结果会自动出现在这里。</p>
+        </>}
         <Link href="/">开始创作</Link>
       </div> : <div className="asset-grid">
         {visible.map((asset) => <article className="asset-card" key={asset.id}>
           <div className="asset-preview">
+            {!asset.trashed && <button type="button" className={`asset-star ${asset.favorite ? "is-on" : ""}`}
+              onClick={() => void toggleFavorite(asset)} aria-pressed={Boolean(asset.favorite)}
+              aria-label={asset.favorite ? "取消收藏" : "收藏"} title={asset.favorite ? "取消收藏" : "收藏"}>
+              <Star size={15} fill={asset.favorite ? "currentColor" : "none"} />
+            </button>}
             {asset.kind === "video"
               ? <video controls preload="metadata" src={`/api/media/${asset.path}`} />
               // eslint-disable-next-line @next/next/no-img-element

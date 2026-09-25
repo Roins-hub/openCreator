@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { AppConfig, ModelConfig, ProviderConfig } from "@/lib/types";
 import { createClientId } from "@/lib/client-id";
+import { ThemePicker } from "@/components/theme-picker";
 
 const id = () => createClientId();
 const emptyModel = (): ModelConfig => ({
@@ -150,10 +151,12 @@ export function SettingsForm() {
       <div className="settings-content">
         <div className="settings-title">
           <span className="eyebrow">LOCAL CONFIGURATION · v{appVersion}</span>
-          <h1>模型设置</h1>
-          <p>密钥只保存在这台电脑的 <code>data/config.json</code> 中，不会发送到浏览器存储。</p>
+          <h1>设置</h1>
+          <p>外观偏好保存在当前浏览器；模型密钥只保存在这台电脑的 <code>data/config.json</code> 中，不会发送到浏览器存储。</p>
         </div>
         {error && <div className="settings-error">{error}<button onClick={() => setError("")}><X size={14} /></button></div>}
+
+        <ThemePicker />
 
         <section className="providers">
           {config.providers.map((provider, providerIndex) => (
