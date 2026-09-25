@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Check, CircleCheck, CircleX, Eye, EyeOff,
-  LoaderCircle, Plus, Save, TestTube2, Trash2, X,
+  LoaderCircle, Plus, RefreshCw, Save, TestTube2, Trash2, X,
 } from "lucide-react";
 import type { AppConfig, ModelConfig, ProviderConfig } from "@/lib/types";
 import { createClientId } from "@/lib/client-id";
@@ -22,6 +22,7 @@ const emptyProvider = (): ProviderConfig => ({
 const PROVIDER_DEFAULT_URLS: Record<ProviderConfig["apiType"], string> = {
   ark: "https://ark.cn-beijing.volces.com/api/v3",
   openai: "https://api.openai.com/v1",
+  dola: "https://dola.tangzhi.org/v1",
   jimeng: "https://visual.volcengineapi.com",
   kling: "https://api-singapore.klingai.com",
 };
@@ -38,6 +39,7 @@ export function SettingsForm() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [tests, setTests] = useState<Record<string, { state: "loading" | "success" | "error"; message: string }>>({});
+  const [syncing, setSyncing] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetch("/api/config").then((response) => response.json()).then(setConfig)
@@ -114,6 +116,26 @@ export function SettingsForm() {
       }));
     }
   };
+  const syncModels = async (providerIndex: number) => {
+    const provider = config.providers[providerIndex];
+    setSyncing((current) => ({ ...current, [provider.id]: true }));
+    setError(""); setStatus("");
+    try {
+      const response = await fetch("/api/config/models", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "同步模型失败");
+      updateProvider(providerIndex, { models: data.models });
+      setStatus(`已同步 ${data.count} 个模型`);
+      window.setTimeout(() => setStatus(""), 2500);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setSyncing((current) => ({ ...current, [provider.id]: false }));
+    }
+  };
 
   return (
     <main className="settings-page">
@@ -157,6 +179,7 @@ export function SettingsForm() {
                     }}>
                     <option value="ark">火山方舟</option>
                     <option value="openai">OpenAI 兼容</option>
+                    <option value="dola">Dola Pool 视频</option>
                     <option value="jimeng">即梦视觉（AK/SK）</option>
                     <option value="kling">可灵 API 2.0</option>
                   </select></label>
@@ -205,7 +228,10 @@ export function SettingsForm() {
                   )}
                 </div>
 
-                <div className="models-head"><h3>模型</h3><span>{provider.models.length} 个</span></div>
+                <div className="models-head"><div><h3>模型</h3><span>{provider.models.length} 个</span></div>{provider.apiType === "dola" && (() => {
+                  const ready = Boolean(provider.apiKey);
+                  return <button className="sync-models" type="button" disabled={!ready || syncing[provider.id]} title={ready ? "从 Dola Pool /v1/models 获取模型" : "请先填写 API Key"} onClick={() => void syncModels(providerIndex)}><RefreshCw size={13} className={syncing[provider.id] ? "spin" : ""} /> 同步上游模型</button>;
+                })()}</div>
                 <div className="model-table">
                   <div className="model-row header">
                     <span>显示名称</span><span>Model ID</span><span>类型</span>

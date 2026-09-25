@@ -51,18 +51,20 @@ export async function queryProviderTask(
   }
   const data = await upstream(apiUrl(
     provider.baseUrl,
-    `contents/generations/tasks/${task.upstreamId}`,
+    provider.apiType === "dola"
+      ? `videos/${task.upstreamId}`
+      : `contents/generations/tasks/${task.upstreamId}`,
     provider.apiType,
   ), provider);
   const status = String(data.status || "").toLowerCase();
   if (["succeeded", "success", "completed"].includes(status)) {
-    const url = data.content?.video_url || data.output?.video_url || data.video_url;
+    const url = data.content?.video_url || data.output?.video_url || data.result?.video_url || data.video_url;
     return url
       ? { status: "succeeded", urls: [url] }
       : { status: "failed", urls: [], error: "任务完成但没有返回视频地址" };
   }
   if (["failed", "cancelled", "canceled"].includes(status)) {
-    return { status: "failed", urls: [], error: data.error?.message || "视频生成失败" };
+    return { status: "failed", urls: [], error: data.error?.message || data.error || "视频生成失败" };
   }
   return { status: "processing", urls: [] };
 }

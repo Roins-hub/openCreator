@@ -22,6 +22,9 @@ export async function POST(request: Request) {
     const conversation = await getConversation(input.conversationId);
     if (!conversation) throw new Error("会话不存在");
     const { provider, model } = resolveModel(await getConfig(), input.providerId, input.modelId);
+    if (input.attachments.some((item) => item.kind === "video")) {
+      throw new Error("当前模型只支持图片参考,请移除视频素材");
+    }
     const assistant: Message = {
       id: crypto.randomUUID(), role: "assistant", content: "",
       createdAt: new Date().toISOString(), status: "processing",

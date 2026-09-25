@@ -1,5 +1,5 @@
 export type ModelType = "chat" | "image" | "video";
-export type ProviderApiType = "ark" | "openai" | "jimeng" | "kling";
+export type ProviderApiType = "ark" | "openai" | "dola" | "jimeng" | "kling";
 
 export interface ModelConfig {
   id: string;

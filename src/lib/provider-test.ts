@@ -60,7 +60,7 @@ export async function testProviderModel(
     }
     return `${model.name} 连接正常，AK/SK 凭证可用；未发起付费生成`;
   }
-  const url = provider.apiType === "openai"
+  const url = provider.apiType === "openai" || provider.apiType === "dola"
     ? apiUrl(provider.baseUrl, "models", "openai")
     : healthUrl(provider.baseUrl);
   const response = await fetcher(url, {
@@ -74,7 +74,7 @@ export async function testProviderModel(
     }
     throw new Error(`供应商接口返回 ${response.status}`);
   }
-  if (provider.apiType === "openai") {
+  if (provider.apiType === "openai" || provider.apiType === "dola") {
     const data = await response.json().catch(() => ({})) as {
       data?: Array<{ id?: string }>;
     };

@@ -62,6 +62,7 @@ Mote 不是云端平台，也不准备替你管理账号。它只是一个运行
 | :--- | :--- | :---: | :---: | :---: |
 | 火山方舟 | Bearer API Key | ✓ | ✓ | ✓ |
 | OpenAI Compatible | Bearer API Key | ✓ | 取决于上游 | 取决于上游 |
+| Dola Pool 视频 | Bearer API Key | — | — | ✓ |
 | 即梦视觉 | Volcengine AK / SK | — | ✓ | ✓ |
 | 可灵 API 2.0 | Bearer API Key | — | ✓ | ✓ |
 
@@ -109,7 +110,7 @@ macOS 首次运行未签名的启动文件时，可能需要在 Finder 中右键
 
 ```text
 供应商名称   方便自己识别即可
-接口类型     火山方舟 / OpenAI Compatible / 即梦视觉 / 可灵 API 2.0
+接口类型     火山方舟 / OpenAI Compatible / Dola Pool 视频 / 即梦视觉 / 可灵 API 2.0
 Base URL     上游服务地址
 凭证         API Key，或即梦视觉所需的 AK / SK
 Model ID     上游模型 ID；即梦视觉填写官方 req_key
@@ -129,6 +130,20 @@ Model ID     上游模型 ID；即梦视觉填写官方 req_key
 | 可灵 API 2.0 | `https://api-singapore.klingai.com` |
 
 </details>
+
+### Dola Pool 配置
+
+在设置页添加供应商，选择 `Dola Pool 视频`，填写：
+
+```text
+Base URL: https://dola.tangzhi.org/v1
+API Key:  管理面板“API 密钥”中创建的客户 Key
+模型类型: 视频
+Model ID: 留空，点击“同步上游模型”自动获取
+```
+
+保存供应商后直接点击“同步上游模型”即可，不需要手动填写 Model ID。Mote 会调用 Dola Pool 的 `/models`、`/videos/generations`、`/videos/{id}`
+和 `/videos/{id}/content` 接口。参考图片会以 `reference_images` 传递。
 
 ## 本地优先
 
@@ -160,7 +175,7 @@ src/
 │   └── settings/           # 模型设置页面
 ├── components/             # 聊天、参数面板、侧栏与资产组件
 └── lib/
-    ├── providers/          # 方舟、OpenAI、即梦与可灵适配器
+    ├── providers/          # 方舟、OpenAI、Dola、即梦与可灵适配器
     ├── *-store.ts          # JSON 与媒体存储
     └── schemas.ts          # 配置和请求校验
 ```

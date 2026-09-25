@@ -3,21 +3,22 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, BookOpen, ChevronDown, ImagePlus, Images, Menu,
+  ArrowUp, AtSign, BookOpen, ChevronDown, ImagePlus, Images, Menu,
   PanelLeftClose, Plus, Search as SearchIcon, Settings, Square, X,
 } from "lucide-react";
 import type { AppConfig, Conversation, ImageOptions, MediaRef, Message, ModelConfig, VideoOptions } from "@/lib/types";
+import type { Asset } from "@/lib/asset-store";
 import { createClientId } from "@/lib/client-id";
 import { GenerationStatus } from "@/components/generation-status";
 import { ImageControls, VideoControls } from "@/components/generation-controls";
 import { HistoryMenu } from "@/components/history-menu";
 import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
-import { textareaSize } from "@/lib/textarea-size";
 import { pickImageFiles } from "@/lib/image-files";
-import { referenceConstraint, validateReferenceCount } from "@/lib/reference-images";
+import { validateReferenceCount } from "@/lib/reference-images";
 import { unfinishedTaskIds } from "@/lib/generation-stop";
 import { ConversationSearch } from "@/components/conversation-search";
+import { REFERENCE_CARD_CLASS, referenceLabel, serializePrompt } from "@/lib/prompt-references";
 
 type PublicConfig = AppConfig & { providers: Array<AppConfig["providers"][number] & { hasApiKey?: boolean }> };
 type ModelChoice = { providerId: string; providerName: string; model: ModelConfig };
@@ -56,8 +57,15 @@ export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [draggingImages, setDraggingImages] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [referencePickerOpen, setReferencePickerOpen] = useState(false);
+  const [referenceAssets, setReferenceAssets] = useState<Asset[]>([]);
+  const [referenceQuery, setReferenceQuery] = useState("");
+  const [referencePickerPosition, setReferencePickerPosition] = useState({ left: 10, top: 8 });
+  const referenceRangeRef = useRef<Range | null>(null);
+  const referenceAnchorRef = useRef<DOMRect | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
@@ -70,14 +78,10 @@ export function AppShell() {
   const active = conversations.find((item) => item.id === activeId);
   const selected = choices.find((item) =>
     item.providerId === active?.providerId && item.model.id === active?.modelId) || choices[0];
-  const videoConstraint = selected?.model.type === "video"
-    ? referenceConstraint(active?.videoOptions?.referenceMode || videoDefaults.referenceMode,
-      selected.model.maxReferenceImages)
-    : null;
   // 对话模型仅在支持图片输入时才允许附件(并受其参考图上限约束);图像/视频模型沿用各自约束。
-  const attachmentLimit = selected?.model.type === "chat"
+  const uploadLimit = selected?.model.type === "chat"
     ? (selected.model.supportsImageInput ? selected.model.maxReferenceImages : 0)
-    : (videoConstraint?.max ?? selected?.model.maxReferenceImages ?? 2);
+    : (selected?.model.maxReferenceImages ?? 8);
   const processingMessage = active?.messages.find((message) => message.status === "processing");
   const isGenerating = busy || Boolean(processingMessage);
 
@@ -117,16 +121,27 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", openSearch);
   }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [active?.messages.length]);
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const paths = attachments.map((item) => item.path);
+    let changed = false;
+    editor.querySelectorAll<HTMLElement>(`.${REFERENCE_CARD_CLASS}`).forEach((card) => {
+      const index = paths.indexOf(card.dataset.path || "");
+      if (index < 0) {
+        card.remove();
+        changed = true;
+      } else {
+        card.dataset.label = referenceLabel(index);
+      }
+    });
+    if (changed) setDraft(editor.innerText);
+  }, [attachments]);
   useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "0px";
-    const styles = window.getComputedStyle(textarea);
-    const maxHeight = Number.parseFloat(styles.maxHeight) || 156;
-    const minHeight = Number.parseFloat(styles.minHeight) || 42;
-    const size = textareaSize(textarea.scrollHeight, minHeight, maxHeight);
-    textarea.style.height = `${size.height}px`;
-    textarea.style.overflowY = size.scrolls ? "auto" : "hidden";
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.style.height = "auto";
+    editor.style.height = `${Math.min(Math.max(editor.scrollHeight, 42), 156)}px`;
   }, [draft]);
 
   const persist = async (conversation: Conversation) => {
@@ -145,12 +160,128 @@ export function AppShell() {
     if (window.matchMedia("(max-width: 700px)").matches) setSidebarOpen(false);
   };
 
+  const positionReferencePicker = useCallback(() => {
+    const editor = editorRef.current;
+    const composer = composerRef.current;
+    if (!editor || !composer) return;
+    const editorRect = editor.getBoundingClientRect();
+    const savedAnchor = referenceAnchorRef.current;
+    const markerRect = savedAnchor && (savedAnchor.width || savedAnchor.height || savedAnchor.top || savedAnchor.left)
+      ? savedAnchor : editorRect;
+    const lineHeight = Number.parseFloat(window.getComputedStyle(editor).lineHeight) || 23;
+    const pickerWidth = Math.min(430, window.innerWidth - 32);
+    const left = Math.max(8, Math.min(markerRect.left - 14, window.innerWidth - pickerWidth - 8));
+    const pickerHeight = 300;
+    const top = markerRect.top > pickerHeight + 12
+      ? markerRect.top - pickerHeight - 8
+      : Math.min(markerRect.bottom + lineHeight + 8, window.innerHeight - pickerHeight - 8);
+    setReferencePickerPosition({ left, top });
+  }, []);
+
+  const captureReferenceAnchor = () => {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    const range = selection && selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+    referenceRangeRef.current = range;
+    const rangeRect = range?.getBoundingClientRect();
+    referenceAnchorRef.current = rangeRect && (rangeRect.width || rangeRect.height || rangeRect.top || rangeRect.left)
+      ? rangeRect : editor?.getBoundingClientRect() || null;
+  };
+
+  useLayoutEffect(() => {
+    if (!referencePickerOpen) return;
+    const frame = window.requestAnimationFrame(positionReferencePicker);
+    return () => window.cancelAnimationFrame(frame);
+  }, [draft, referencePickerOpen, positionReferencePicker]);
+
+  const openReferencePicker = async () => {
+    if (uploadLimit === 0) return;
+    if (referencePickerOpen) {
+      referenceRangeRef.current = null;
+      referenceAnchorRef.current = null;
+      setReferencePickerOpen(false);
+      return;
+    }
+    try {
+      const assets = await request<Asset[]>("/api/assets");
+      const currentAssets: Asset[] = attachments.map((item) => ({
+        id: `current:${item.path}`,
+        kind: item.kind,
+        path: item.path,
+        name: item.name,
+        mimeType: item.mimeType || (item.kind === "video" ? "video/mp4" : "image/jpeg"),
+        size: 0,
+        modifiedAt: new Date().toISOString(),
+      }));
+      // 目前所有供应商都只接受图片参考,视频素材不进入选择器。
+      const merged = [...currentAssets, ...assets.filter((asset) => !asset.trashed)]
+        .filter((asset) => asset.kind === "image");
+      setReferenceAssets(merged.filter((asset, index, list) =>
+        list.findIndex((candidate) => candidate.path === asset.path) === index));
+      setReferenceQuery("");
+      setReferencePickerOpen(true);
+    } catch (cause) {
+      setError((cause as Error).message);
+    }
+  };
+
+  const selectReferenceAsset = (asset: Asset) => {
+    if (uploadLimit === 0 || asset.kind !== "image") return;
+    const alreadyAttached = attachments.some((item) => item.path === asset.path);
+    if (!alreadyAttached && attachments.length >= uploadLimit) {
+      setError(`最多选择 ${uploadLimit} 个参考素材`);
+      return;
+    }
+    const nextAttachments = alreadyAttached ? attachments : [...attachments, {
+      kind: asset.kind, path: asset.path, name: asset.name, mimeType: asset.mimeType,
+    }];
+    setAttachments(nextAttachments);
+    const editor = editorRef.current;
+    if (editor) {
+      editor.focus();
+      const selection = window.getSelection();
+      const range = referenceRangeRef.current || document.createRange();
+      if (!referenceRangeRef.current) {
+        range.selectNodeContents(editor);
+        range.collapse(false);
+      }
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      const card = document.createElement("span");
+      card.className = REFERENCE_CARD_CLASS;
+      card.contentEditable = "false";
+      card.dataset.path = asset.path;
+      card.dataset.label = referenceLabel(nextAttachments.findIndex((item) => item.path === asset.path));
+      card.title = asset.name;
+      const thumb = document.createElement("span");
+      thumb.className = "reference-inline-thumb";
+      const image = document.createElement("img");
+      image.src = `/api/media/${asset.path}`;
+      image.alt = asset.name;
+      thumb.appendChild(image);
+      card.appendChild(thumb);
+      range.deleteContents();
+      range.insertNode(card);
+      const spacer = document.createTextNode(" ");
+      card.after(spacer);
+      range.setStartAfter(spacer);
+      range.collapse(true);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      setDraft(editor.innerText);
+    }
+    referenceRangeRef.current = null;
+    referenceAnchorRef.current = null;
+    setReferencePickerOpen(false);
+  };
+
   const create = async () => {
     const conversation = freshConversation(choices[0]);
     await persist(conversation);
     setActiveId(conversation.id);
     setDraft("");
     setAttachments([]);
+    if (editorRef.current) editorRef.current.innerHTML = "";
     closeSidebarOnMobile();
   };
 
@@ -195,7 +326,7 @@ export function AppShell() {
   };
 
   const upload = async (files: readonly File[]) => {
-    const selection = pickImageFiles(files, attachmentLimit, attachments.length);
+    const selection = pickImageFiles(files, uploadLimit, attachments.length);
     if (selection.error) setError(selection.error);
     else setError("");
     if (!selection.accepted.length) return;
@@ -205,11 +336,11 @@ export function AppShell() {
       const uploaded = await request<MediaRef[]>("/api/uploads", {
         method: "POST", body: form,
       });
-      setAttachments((items) => [...items, ...uploaded].slice(0, attachmentLimit));
+      setAttachments((items) => [...items, ...uploaded].slice(0, uploadLimit));
     } catch (cause) { setError((cause as Error).message); }
   };
 
-  const pastedImages = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const pastedImages = (event: React.ClipboardEvent<HTMLDivElement>) => {
     const files = [...event.clipboardData.items]
       .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
@@ -221,6 +352,9 @@ export function AppShell() {
 
   const send = async () => {
     if (isGenerating || !selected || (!draft.trim() && !attachments.length)) return;
+    const prompt = editorRef.current
+      ? serializePrompt(editorRef.current, attachments.map((item) => item.path))
+      : draft.trim();
     const currentVideoOptions = active?.videoOptions || videoDefaults;
     if (selected.model.type === "video") {
       try {
@@ -241,22 +375,22 @@ export function AppShell() {
       let conversation = active || freshConversation(selected);
       const now = new Date().toISOString();
       const user: Message = {
-        id: createClientId(), role: "user", content: draft.trim(),
+        id: createClientId(), role: "user", content: prompt,
         attachments, createdAt: now, status: "complete",
       };
       conversation = {
         ...conversation,
         title: conversation.messages.length ? conversation.title :
-          (draft.trim() || "图片生成").slice(0, 28),
+          (prompt || "图片生成").slice(0, 28),
         providerId: selected.providerId, modelId: selected.model.id,
         updatedAt: now, messages: [...conversation.messages, user],
       };
       await persist(conversation);
       setActiveId(conversation.id);
-      const prompt = draft.trim();
       const usedAttachments = attachments;
       setDraft("");
       setAttachments([]);
+      if (editorRef.current) editorRef.current.innerHTML = "";
       if (selected.model.type !== "chat") {
         pendingMessageId = `pending-${createClientId()}`;
         const pendingMessage: Message = {
@@ -500,30 +634,45 @@ export function AppShell() {
             <div className="drop-overlay" role="status">
               <ImagePlus size={20} />
               <strong>松手添加图片</strong>
-              <span>JPG、PNG 或 WebP，最多 {attachmentLimit} 张</span>
+              <span>JPG、PNG 或 WebP，最多 {uploadLimit} 张</span>
             </div>
           )}
           {attachments.length > 0 && (
             <div className="attachment-strip">
               {attachments.map((item, index) => (
-                <div className="attachment-chip" key={item.path}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`/api/media/${item.path}`} alt={item.name} />
-                  <button onClick={() => setAttachments((items) => items.filter((_, i) => i !== index))}><X size={13} /></button>
+                <div className="attachment-chip" key={item.path} title={`${referenceLabel(index)} · ${item.name}`}>
+                  <span className="attachment-chip-preview">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/api/media/${item.path}`} alt={item.name} />
+                  </span>
+                  <span className="attachment-chip-index">{referenceLabel(index)}</span>
+                  <span className="attachment-label">{item.name}</span>
+                  <button onClick={() => {
+                    setAttachments((items) => items.filter((_, i) => i !== index));
+                  }} aria-label={`移除 ${item.name}`}><X size={13} /></button>
                 </div>
               ))}
+              <button className="attachment-add" type="button" onClick={() => fileRef.current?.click()} aria-label="继续添加参考素材">
+                <ImagePlus size={16} /><span>参考素材</span>
+              </button>
             </div>
           )}
           {error && <div className="inline-error">{error}<button onClick={() => setError("")}><X size={13} /></button></div>}
-          <div className="composer">
-            <textarea ref={textareaRef} value={draft} onChange={(event) => setDraft(event.target.value)}
+          <div className="composer" ref={composerRef}>
+            <div ref={editorRef} className="composer-editor" contentEditable suppressContentEditableWarning role="textbox" aria-label="提示词"
+              data-placeholder={selected?.model.type === "video" ? "描述运动、镜头和氛围…" :
+                selected?.model.type === "image" ? "描述你想看到的画面…" : "输入消息…"}
               onPaste={pastedImages}
               onKeyDown={(event) => {
+                if (event.key === "@" && !event.ctrlKey && !event.metaKey) {
+                  event.preventDefault();
+                  captureReferenceAnchor();
+                  void openReferencePicker();
+                  return;
+                }
                 if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
               }}
-              placeholder={selected?.model.type === "video" ? "描述运动、镜头和氛围…" :
-                selected?.model.type === "image" ? "描述你想看到的画面…" : "输入消息…"}
-              rows={1} />
+              onInput={(event) => setDraft(event.currentTarget.innerText)} />
             <div className="composer-tools">
               <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden
                 onChange={(event) => {
@@ -531,14 +680,21 @@ export function AppShell() {
                   event.target.value = "";
                 }} />
               <button className="icon-button" onClick={() => fileRef.current?.click()}
-                disabled={attachmentLimit === 0}
-                title={attachmentLimit === 0
+                disabled={uploadLimit === 0}
+                title={uploadLimit === 0
                   ? (selected?.model.type === "chat"
                     ? "当前模型不支持图片输入"
                     : "文生视频模式不需要参考图")
                   : undefined}
                 aria-label="添加图片">
                 <ImagePlus size={18} />
+              </button>
+              <button className={`icon-button reference-trigger ${referencePickerOpen ? "active" : ""}`} onClick={() => {
+                captureReferenceAnchor();
+                void openReferencePicker();
+              }}
+                disabled={uploadLimit === 0} aria-label="选择参考内容" title="选择本地参考内容">
+                <AtSign size={18} />
               </button>
               {selected?.model.type === "image" && <ImageControls
                 value={active?.imageOptions || imageDefaults}
@@ -562,6 +718,23 @@ export function AppShell() {
                   : <ArrowUp size={17} strokeWidth={2.4} />}
               </button>
             </div>
+            {referencePickerOpen && <div className="reference-picker" role="dialog" aria-label="选择参考内容"
+              style={{ left: referencePickerPosition.left, top: referencePickerPosition.top }}>
+              <div className="reference-picker-head"><strong>选择参考内容</strong><button className="icon-button" onClick={() => setReferencePickerOpen(false)} aria-label="关闭"><X size={15} /></button></div>
+              <input className="reference-picker-search" value={referenceQuery} onChange={(event) => setReferenceQuery(event.target.value)} placeholder="搜索参考内容" autoFocus />
+              {referenceAssets.length === 0 ? <p className="reference-picker-empty">资产库里还没有图片。</p> :
+                <div className="reference-picker-grid">{referenceAssets.filter((asset) => !referenceQuery.trim() || asset.name.toLowerCase().includes(referenceQuery.trim().toLowerCase())).map((asset) => {
+                  const selectedReference = attachments.some((item) => item.path === asset.path);
+                  return <button className={`reference-picker-item ${selectedReference ? "selected" : ""}`} key={asset.id}
+                    type="button" onClick={() => selectReferenceAsset(asset)} title={asset.name}>
+                    <span className="reference-picker-thumb">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`/api/media/${asset.path}`} alt="" />
+                    </span>
+                    <span>{asset.name}</span>
+                  </button>;
+                })}</div>}
+            </div>}
           </div>
           <p className="composer-note">结果保存在本机 · Enter 发送，Shift + Enter 换行</p>
         </div>

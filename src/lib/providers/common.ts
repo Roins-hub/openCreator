@@ -2,7 +2,7 @@ import type { AppConfig, ModelConfig, ProviderApiType, ProviderConfig } from "..
 
 export function apiUrl(baseUrl: string, path: string, apiType: ProviderApiType = "ark") {
   let base = baseUrl.replace(/\/+$/, "");
-  if (apiType === "openai") {
+  if (apiType === "openai" || apiType === "dola") {
     base = base.replace(/\/(?:chat\/completions|models)$/i, "");
     return `${base}/${path.replace(/^\/+/, "")}`;
   }

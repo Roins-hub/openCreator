@@ -23,7 +23,7 @@ export const providerConfigSchema = z.object({
   apiKey: z.string().default(""),
   accessKeyId: z.string().default(""),
   secretAccessKey: z.string().default(""),
-  apiType: z.enum(["ark", "openai", "jimeng", "kling"]).optional(),
+  apiType: z.enum(["ark", "openai", "dola", "jimeng", "kling"]).optional(),
   models: z.array(modelConfigSchema).superRefine((models, ctx) => {
     const ids = new Set<string>();
     models.forEach((model, index) => {
