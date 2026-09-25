@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { AppConfig, ModelConfig, ProviderConfig } from "@/lib/types";
 import { createClientId } from "@/lib/client-id";
+import { Dropdown } from "@/components/dropdown";
 import { ThemePicker } from "@/components/theme-picker";
 
 const id = () => createClientId();
@@ -29,6 +30,17 @@ const PROVIDER_DEFAULT_URLS: Record<ProviderConfig["apiType"], string> = {
 };
 
 type SecretField = "apiKey" | "accessKeyId" | "secretAccessKey";
+
+const API_TYPE_OPTIONS: Array<{ value: ProviderConfig["apiType"]; label: string }> = [
+  { value: "ark", label: "火山方舟" },
+  { value: "openai", label: "OpenAI 兼容" },
+  { value: "dola", label: "Dola Pool 视频" },
+  { value: "jimeng", label: "即梦视觉（AK/SK）" },
+  { value: "kling", label: "可灵 API 2.0" },
+];
+const MODEL_TYPE_OPTIONS: Array<{ value: ModelConfig["type"]; label: string }> = [
+  { value: "chat", label: "对话" }, { value: "image", label: "图像" }, { value: "video", label: "视频" },
+];
 
 // 版本号在构建时由 next.config 注入；客户端直接读取内联值。
 const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
@@ -172,20 +184,12 @@ export function SettingsForm() {
                 <div className="form-grid">
                   <label><span>供应商名称</span><input value={provider.name}
                     placeholder="火山方舟" onChange={(e) => updateProvider(providerIndex, { name: e.target.value })} /></label>
-                  <label><span>接口类型</span><select value={provider.apiType}
-                    onChange={(e) => {
-                      const apiType = e.target.value as ProviderConfig["apiType"];
-                      updateProvider(providerIndex, {
-                        apiType,
-                        baseUrl: PROVIDER_DEFAULT_URLS[apiType],
-                      });
-                    }}>
-                    <option value="ark">火山方舟</option>
-                    <option value="openai">OpenAI 兼容</option>
-                    <option value="dola">Dola Pool 视频</option>
-                    <option value="jimeng">即梦视觉（AK/SK）</option>
-                    <option value="kling">可灵 API 2.0</option>
-                  </select></label>
+                  <div className="form-field"><span>接口类型</span><Dropdown ariaLabel="接口类型"
+                    value={provider.apiType} options={API_TYPE_OPTIONS}
+                    onChange={(apiType) => updateProvider(providerIndex, {
+                      apiType,
+                      baseUrl: PROVIDER_DEFAULT_URLS[apiType],
+                    })} /></div>
                   <label className="wide"><span>Base URL</span><input aria-label="Base URL"
                     value={provider.baseUrl}
                     placeholder={PROVIDER_DEFAULT_URLS[provider.apiType]}
@@ -247,17 +251,12 @@ export function SettingsForm() {
                         onChange={(e) => updateModel(providerIndex, modelIndex, { name: e.target.value })} />
                       <input value={model.modelId} placeholder="doubao-seedream-4-5-251128"
                         onChange={(e) => updateModel(providerIndex, modelIndex, { modelId: e.target.value })} />
-                      <select value={model.type}
-                        onChange={(e) => {
-                          const type = e.target.value as ModelConfig["type"];
-                          updateModel(providerIndex, modelIndex, {
-                            type,
-                            // 切换类型时同步默认能力位:对话模型默认不支持图,图像/视频始终支持。
-                            supportsImageInput: type !== "chat",
-                          });
-                        }}>
-                        <option value="chat">对话</option><option value="image">图像</option><option value="video">视频</option>
-                      </select>
+                      <Dropdown ariaLabel="模型类型" value={model.type} options={MODEL_TYPE_OPTIONS}
+                        onChange={(type) => updateModel(providerIndex, modelIndex, {
+                          type,
+                          // 切换类型时同步默认能力位:对话模型默认不支持图,图像/视频始终支持。
+                          supportsImageInput: type !== "chat",
+                        })} />
                       {model.type === "chat" && !model.supportsImageInput ? (
                         <span className="not-applicable">—</span>
                       ) : (

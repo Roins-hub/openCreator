@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, AtSign, BookOpen, ChevronDown, ImagePlus, Images, Menu,
-  PanelLeftClose, Plus, Search as SearchIcon, Settings, Square, X,
+  ArrowUp, AtSign, BookOpen, ImagePlus, Images, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, Square, X, BookMarked,
 } from "lucide-react";
 import type { AppConfig, Conversation, ImageOptions, MediaRef, Message, ModelConfig, VideoOptions } from "@/lib/types";
 import type { Asset } from "@/lib/asset-store";
@@ -23,6 +22,10 @@ import {
 } from "@/lib/prompt-references";
 import { VideoTaskCard } from "@/components/video-task-card";
 import { LogoMark } from "@/components/logo-mark";
+import { Dropdown } from "@/components/dropdown";
+import { PromptLibrary, type PromptUseMode } from "@/components/prompt-library";
+import { fitDuration, type PromptTemplate } from "@/lib/prompt-library";
+import { videoDurationPresets } from "@/lib/video-duration";
 
 type PublicConfig = AppConfig & { providers: Array<AppConfig["providers"][number] & { hasApiKey?: boolean }> };
 type ModelChoice = { providerId: string; providerName: string; model: ModelConfig };
@@ -44,6 +47,7 @@ const videoDefaults: VideoOptions = {
   count: 1, audio: true, watermark: false, cameraFixed: false,
 };
 const imageDefaults: ImageOptions = { ratio: "adaptive", resolution: "2K", count: 1 };
+const modelTypeLabels: Record<ModelConfig["type"], string> = { chat: "对话", image: "图像", video: "视频" };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -77,6 +81,7 @@ export function AppShell() {
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [referenceQuery, setReferenceQuery] = useState("");
   const [referencePickerPosition, setReferencePickerPosition] = useState<{ left: number; top?: number; bottom?: number }>({ left: 10, top: 8 });
   const referenceRangeRef = useRef<Range | null>(null);
@@ -520,6 +525,39 @@ export function AppShell() {
     selection?.addRange(range);
   };
 
+  const closeLibrary = useCallback(() => setLibraryOpen(false), []);
+
+  const applyPromptTemplate = (template: PromptTemplate, mode: PromptUseMode, applyParams: boolean) => {
+    const editor = editorRef.current;
+    if (editor) {
+      const hasContent = Boolean(editor.textContent?.trim() || editor.querySelector(`.${REFERENCE_CARD_CLASS}`));
+      if (mode === "replace" || !hasContent) editor.innerHTML = "";
+      else editor.append(document.createTextNode("\n"));
+      editor.append(document.createTextNode(template.prompt));
+      setDraft(editor.innerText);
+      editor.focus();
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    if (applyParams && selected?.model.type === "video") {
+      const current = active?.videoOptions || videoDefaults;
+      const max = selected.model.maxVideoDuration;
+      changeGenerationOptions({
+        videoOptions: {
+          ...current,
+          ratio: template.ratio ?? current.ratio,
+          duration: fitDuration(template.duration, max, videoDurationPresets(max)) ?? current.duration,
+          referenceMode: template.referenceMode ?? (attachments.length ? current.referenceMode : "text"),
+        },
+      });
+    }
+    setLibraryOpen(false);
+  };
+
   const stop = async () => {
     generationControllerRef.current?.abort();
     generationControllerRef.current = null;
@@ -648,19 +686,18 @@ export function AppShell() {
           {!sidebarOpen && <button className="icon-button" onClick={() => setSidebarOpen(true)} aria-label="打开侧栏">
             <Menu size={18} />
           </button>}
-          <div className="model-select-wrap">
-            <select value={selected ? `${selected.providerId}::${selected.model.id}` : ""}
-              onChange={(event) => chooseModel(event.target.value)} aria-label="选择模型">
-              {!choices.length && <option value="">尚未配置模型</option>}
-              {choices.map((choice) => (
-                <option key={`${choice.providerId}:${choice.model.id}`}
-                  value={`${choice.providerId}::${choice.model.id}`}>
-                  {choice.model.name} · {choice.providerName}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={14} />
-          </div>
+          <Dropdown className="model-dropdown" ariaLabel="选择模型" placeholder="尚未配置模型"
+            value={selected ? `${selected.providerId}::${selected.model.id}` : ""}
+            options={choices.map((choice) => ({
+              value: `${choice.providerId}::${choice.model.id}`,
+              label: choice.model.name,
+              group: choice.providerName,
+              hint: modelTypeLabels[choice.model.type],
+            }))}
+            renderValue={() => selected
+              ? <>{selected.model.name}<span className="model-dropdown-provider"> · {selected.providerName}</span></>
+              : <span className="dropdown-placeholder">尚未配置模型</span>}
+            onChange={(value) => void chooseModel(value)} />
           <span className={`capability ${selected?.model.type || ""}`}>
             {selected?.model.type === "video" ? "视频" : selected?.model.type === "image" ? "图像" : "对话"}
           </span>
@@ -675,6 +712,10 @@ export function AppShell() {
                 ? <EmptyStatePrompt key={selected.model.type} type={selected.model.type} />
                 : <p>先添加一个供应商和模型，然后开始。</p>}
               {!choices.length && <Link className="text-link" href="/settings">前往设置 <span>↗</span></Link>}
+              {selected?.model.type === "video" && (
+                <button type="button" className="empty-library-link" data-prompt-library-trigger
+                  onClick={() => setLibraryOpen(true)}><BookMarked size={14} />从提示词库开始</button>
+              )}
             </div>
           ) : (
             <div className="message-list">
@@ -746,6 +787,7 @@ export function AppShell() {
               <span>JPG、PNG 或 WebP，最多 {uploadLimit} 张</span>
             </div>
           )}
+          <PromptLibrary open={libraryOpen} onClose={closeLibrary} onUse={applyPromptTemplate} />
           {error && <div className="inline-error">{error}<button onClick={() => setError("")}><X size={13} /></button></div>}
           <div className="composer" ref={composerRef}>
             <div className="composer-body">
@@ -810,6 +852,13 @@ export function AppShell() {
                 disabled={uploadLimit === 0} aria-label="选择参考内容" title="选择本地参考内容">
                 <AtSign size={18} />
               </button>
+              {selected?.model.type === "video" && (
+                <button type="button" className={`icon-button prompt-library-trigger ${libraryOpen ? "active" : ""}`}
+                  data-prompt-library-trigger onClick={() => setLibraryOpen((open) => !open)}
+                  aria-label="提示词库" aria-expanded={libraryOpen} title="提示词库">
+                  <BookMarked size={18} />
+                </button>
+              )}
               {selected?.model.type === "image" && <ImageControls
                 value={active?.imageOptions || imageDefaults}
                 onChange={(imageOptions) => changeGenerationOptions({ imageOptions })} />}

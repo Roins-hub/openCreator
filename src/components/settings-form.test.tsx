@@ -19,9 +19,12 @@ describe("SettingsForm provider protocols", () => {
     })));
     render(<SettingsForm />);
 
-    const select = await screen.findByDisplayValue("火山方舟");
-    expect(select.querySelector('option[value="jimeng"]')?.textContent).toContain("即梦");
-    expect(select.querySelector('option[value="kling"]')?.textContent).toContain("可灵");
+    const trigger = await screen.findByRole("combobox", { name: "接口类型" });
+    expect(trigger.textContent).toContain("火山方舟");
+    fireEvent.click(trigger);
+    const options = screen.getAllByRole("option").map((option) => option.textContent);
+    expect(options.some((text) => text?.includes("即梦"))).toBe(true);
+    expect(options.some((text) => text?.includes("可灵"))).toBe(true);
   });
 
   it("shows AK and SK instead of API Key for Jimeng", async () => {
@@ -50,9 +53,8 @@ describe("SettingsForm provider protocols", () => {
     })));
     render(<SettingsForm />);
 
-    fireEvent.change(await screen.findByDisplayValue("火山方舟"), {
-      target: { value: "kling" },
-    });
+    fireEvent.click(await screen.findByRole("combobox", { name: "接口类型" }));
+    fireEvent.click(screen.getByRole("option", { name: /可灵/ }));
     await waitFor(() => expect(
       (screen.getByLabelText("Base URL") as HTMLInputElement).value,
     ).toBe("https://api-singapore.klingai.com"));
