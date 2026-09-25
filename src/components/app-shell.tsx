@@ -26,6 +26,18 @@ import { LogoMark } from "@/components/logo-mark";
 
 type PublicConfig = AppConfig & { providers: Array<AppConfig["providers"][number] & { hasApiKey?: boolean }> };
 type ModelChoice = { providerId: string; providerName: string; model: ModelConfig };
+/** 输入框里的素材:上传完成前用本地 blob 预览,上传完成后换成服务器路径(仍保留 blob 预览避免闪烁)。 */
+type ComposerAttachment = MediaRef & { previewUrl?: string; uploading?: boolean };
+
+const toMediaRef = (item: ComposerAttachment): MediaRef => ({
+  kind: item.kind, path: item.path, name: item.name,
+  ...(item.mimeType ? { mimeType: item.mimeType } : {}),
+  ...(item.dataUrl ? { dataUrl: item.dataUrl } : {}),
+});
+const attachmentSrc = (item: ComposerAttachment) => item.previewUrl || `/api/media/${item.path}`;
+const revokePreview = (item: ComposerAttachment) => {
+  if (item.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
+};
 
 const videoDefaults: VideoOptions = {
   referenceMode: "text", ratio: "adaptive", resolution: "720p", duration: 5,
@@ -55,7 +67,8 @@ export function AppShell() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string>();
   const [draft, setDraft] = useState("");
-  const [attachments, setAttachments] = useState<MediaRef[]>([]);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const uploading = attachments.some((item) => item.uploading);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -220,7 +233,7 @@ export function AppShell() {
 
   // 当前对话的素材实时并入(选择框打开期间新上传的也会出现);目前所有供应商只接受图片参考。
   const pickerAssets = useMemo(() => {
-    const current: Asset[] = attachments.map((item) => ({
+    const current: Asset[] = attachments.filter((item) => !item.uploading).map((item) => ({
       id: `current:${item.path}`, kind: item.kind, path: item.path, name: item.name,
       mimeType: item.mimeType || "image/jpeg", size: 0, modifiedAt: "",
     }));
@@ -324,14 +337,27 @@ export function AppShell() {
     if (selection.error) setError(selection.error);
     else setError("");
     if (!selection.accepted.length) return;
+    const pending: ComposerAttachment[] = selection.accepted.map((file) => ({
+      kind: "image", path: `pending:${createClientId()}`, name: file.name, mimeType: file.type,
+      previewUrl: URL.createObjectURL(file), uploading: true,
+    }));
+    setAttachments((items) => [...items, ...pending].slice(0, uploadLimit));
     const form = new FormData();
     selection.accepted.forEach((file) => form.append("files", file));
     try {
       const uploaded = await request<MediaRef[]>("/api/uploads", {
         method: "POST", body: form,
       });
-      setAttachments((items) => [...items, ...uploaded].slice(0, uploadLimit));
-    } catch (cause) { setError((cause as Error).message); }
+      // 服务端按提交顺序返回,逐个替换占位项
+      setAttachments((items) => items.map((item) => {
+        const index = pending.findIndex((entry) => entry.path === item.path);
+        return index >= 0 && uploaded[index] ? { ...uploaded[index], previewUrl: item.previewUrl } : item;
+      }));
+    } catch (cause) {
+      setAttachments((items) => items.filter((item) => !pending.some((entry) => entry.path === item.path)));
+      pending.forEach(revokePreview);
+      setError((cause as Error).message);
+    }
   };
 
   const pastedImages = (event: React.ClipboardEvent<HTMLDivElement>) => {
@@ -349,7 +375,11 @@ export function AppShell() {
     const prompt = editorRef.current
       ? serializePrompt(editorRef.current, attachments.map((item) => item.path))
       : draft.trim();
-    return submit(prompt, attachments, { clearComposer: true });
+    if (uploading) {
+      setError("参考图还在上传，请稍候再发送");
+      return;
+    }
+    return submit(prompt, attachments.map(toMediaRef), { clearComposer: true });
   };
 
   const submit = async (
@@ -391,6 +421,7 @@ export function AppShell() {
       setActiveId(conversation.id);
       if (clearComposer) {
         setDraft("");
+        attachments.forEach(revokePreview);
         setAttachments([]);
         if (editorRef.current) editorRef.current.innerHTML = "";
       }
@@ -722,12 +753,15 @@ export function AppShell() {
                 <div className="attachment-stack" aria-label={`${attachments.length} 个参考素材`}
                   style={{ "--count": attachments.length } as React.CSSProperties}>
                   {attachments.map((item, index) => (
-                    <div className="stack-card" key={item.path} title={`${referenceLabel(index)} · ${item.name}`}
+                    <div className={`stack-card ${item.uploading ? "is-uploading" : ""}`} key={item.path}
+                      title={item.uploading ? `正在上传 · ${item.name}` : `${referenceLabel(index)} · ${item.name}`}
                       style={{ "--i": index, "--r": `${stackTilt(index)}deg` } as React.CSSProperties}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`/api/media/${item.path}`} alt={item.name} draggable={false} />
+                      <img src={attachmentSrc(item)} alt={item.name} draggable={false} />
+                      {item.uploading && <span className="stack-card-spinner" aria-label="上传中" />}
                       <span className="stack-card-index">{referenceLabel(index)}</span>
                       <button type="button" className="stack-card-remove" onClick={() => {
+                        revokePreview(item);
                         setAttachments((items) => items.filter((_, i) => i !== index));
                       }} aria-label={`移除 ${item.name}`}><X size={11} strokeWidth={2.6} /></button>
                     </div>
@@ -791,7 +825,7 @@ export function AppShell() {
                 : attachments.length ? `${attachments.length} 张参考图` : ""}</span>
               <button className={`send-button ${isGenerating ? "is-stopping" : ""}`}
                 onClick={isGenerating ? () => void stop() : send}
-                disabled={!isGenerating && (!selected || (!draft.trim() && !attachments.length))}
+                disabled={!isGenerating && (!selected || uploading || (!draft.trim() && !attachments.length))}
                 aria-label={isGenerating ? "停止生成" : "发送"}>
                 {isGenerating
                   ? <Square size={13} fill="currentColor" strokeWidth={2.4} />

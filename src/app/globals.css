@@ -1101,3 +1101,11 @@ body { transition: background-color .2s ease, color .2s ease; }
     --step: min(42px, calc((100vw - 64px - var(--card-w) - 2 * var(--tray-pad)) / var(--count)));
   }
 }
+
+/* 上传中:本地预览先显示,叠一层半透明遮罩和转圈 */
+.stack-card.is-uploading img { filter: saturate(.6) brightness(.82); }
+.stack-card-spinner {
+  position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px;
+  border: 2px solid oklch(100% 0 0 / .4); border-top-color: oklch(100% 0 0); border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
