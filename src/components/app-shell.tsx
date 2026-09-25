@@ -65,7 +65,7 @@ export function AppShell() {
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [referenceQuery, setReferenceQuery] = useState("");
-  const [referencePickerPosition, setReferencePickerPosition] = useState({ left: 10, top: 8 });
+  const [referencePickerPosition, setReferencePickerPosition] = useState<{ left: number; top?: number; bottom?: number }>({ left: 10, top: 8 });
   const referenceRangeRef = useRef<Range | null>(null);
   const referenceAnchorRef = useRef<DOMRect | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -175,14 +175,13 @@ export function AppShell() {
     const savedAnchor = referenceAnchorRef.current;
     const markerRect = savedAnchor && (savedAnchor.width || savedAnchor.height || savedAnchor.top || savedAnchor.left)
       ? savedAnchor : editorRect;
-    const lineHeight = Number.parseFloat(window.getComputedStyle(editor).lineHeight) || 23;
+    const composerRect = composer.getBoundingClientRect();
     const pickerWidth = Math.min(430, window.innerWidth - 32);
     const left = Math.max(8, Math.min(markerRect.left - 14, window.innerWidth - pickerWidth - 8));
-    const pickerHeight = 300;
-    const top = markerRect.top > pickerHeight + 12
-      ? markerRect.top - pickerHeight - 8
-      : Math.min(markerRect.bottom + lineHeight + 8, window.innerHeight - pickerHeight - 8);
-    setReferencePickerPosition({ left, top });
+    // 贴着输入框上沿弹出(用 bottom 锚定,内容多少都不会悬空);上方空间不够时改到输入框下方。
+    setReferencePickerPosition(composerRect.top > 240
+      ? { left, bottom: window.innerHeight - composerRect.top + 10 }
+      : { left, top: composerRect.bottom + 10 });
   }, []);
 
   const captureReferenceAnchor = () => {
@@ -211,26 +210,24 @@ export function AppShell() {
     }
     try {
       const assets = await request<Asset[]>("/api/assets");
-      const currentAssets: Asset[] = attachments.map((item) => ({
-        id: `current:${item.path}`,
-        kind: item.kind,
-        path: item.path,
-        name: item.name,
-        mimeType: item.mimeType || (item.kind === "video" ? "video/mp4" : "image/jpeg"),
-        size: 0,
-        modifiedAt: new Date().toISOString(),
-      }));
-      // 目前所有供应商都只接受图片参考,视频素材不进入选择器。
-      const merged = [...currentAssets, ...assets.filter((asset) => !asset.trashed)]
-        .filter((asset) => asset.kind === "image");
-      setReferenceAssets(merged.filter((asset, index, list) =>
-        list.findIndex((candidate) => candidate.path === asset.path) === index));
+      setReferenceAssets(assets.filter((asset) => !asset.trashed));
       setReferenceQuery("");
       setReferencePickerOpen(true);
     } catch (cause) {
       setError((cause as Error).message);
     }
   };
+
+  // 当前对话的素材实时并入(选择框打开期间新上传的也会出现);目前所有供应商只接受图片参考。
+  const pickerAssets = useMemo(() => {
+    const current: Asset[] = attachments.map((item) => ({
+      id: `current:${item.path}`, kind: item.kind, path: item.path, name: item.name,
+      mimeType: item.mimeType || "image/jpeg", size: 0, modifiedAt: "",
+    }));
+    return [...current, ...referenceAssets]
+      .filter((asset) => asset.kind === "image")
+      .filter((asset, index, list) => list.findIndex((candidate) => candidate.path === asset.path) === index);
+  }, [attachments, referenceAssets]);
 
   const selectReferenceAsset = (asset: Asset) => {
     if (uploadLimit === 0 || asset.kind !== "image") return;
@@ -718,42 +715,44 @@ export function AppShell() {
               <span>JPG、PNG 或 WebP，最多 {uploadLimit} 张</span>
             </div>
           )}
-          {attachments.length > 0 && (
-            <div className="attachment-strip">
-              {attachments.map((item, index) => (
-                <div className="attachment-chip" key={item.path} title={`${referenceLabel(index)} · ${item.name}`}>
-                  <span className="attachment-chip-preview">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`/api/media/${item.path}`} alt={item.name} />
-                  </span>
-                  <span className="attachment-chip-index">{referenceLabel(index)}</span>
-                  <span className="attachment-label">{item.name}</span>
-                  <button onClick={() => {
-                    setAttachments((items) => items.filter((_, i) => i !== index));
-                  }} aria-label={`移除 ${item.name}`}><X size={13} /></button>
-                </div>
-              ))}
-              <button className="attachment-add" type="button" onClick={() => fileRef.current?.click()} aria-label="继续添加参考素材">
-                <ImagePlus size={16} /><span>参考素材</span>
-              </button>
-            </div>
-          )}
           {error && <div className="inline-error">{error}<button onClick={() => setError("")}><X size={13} /></button></div>}
           <div className="composer" ref={composerRef}>
-            <div ref={editorRef} className="composer-editor" contentEditable suppressContentEditableWarning role="textbox" aria-label="提示词"
-              data-placeholder={selected?.model.type === "video" ? "描述运动、镜头和氛围…" :
-                selected?.model.type === "image" ? "描述你想看到的画面…" : "输入消息…"}
-              onPaste={pastedImages}
-              onKeyDown={(event) => {
-                if (event.key === "@" && !event.ctrlKey && !event.metaKey) {
-                  event.preventDefault();
-                  captureReferenceAnchor();
-                  void openReferencePicker();
-                  return;
-                }
-                if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
-              }}
-              onInput={(event) => setDraft(event.currentTarget.innerText)} />
+            <div className="composer-body">
+              {attachments.length > 0 && (
+                <div className="attachment-stack" aria-label={`${attachments.length} 个参考素材`}
+                  style={{ "--count": attachments.length } as React.CSSProperties}>
+                  {attachments.map((item, index) => (
+                    <div className="stack-card" key={item.path} title={`${referenceLabel(index)} · ${item.name}`}
+                      style={{ "--i": index, "--r": `${stackTilt(index)}deg` } as React.CSSProperties}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`/api/media/${item.path}`} alt={item.name} draggable={false} />
+                      <span className="stack-card-index">{referenceLabel(index)}</span>
+                      <button type="button" className="stack-card-remove" onClick={() => {
+                        setAttachments((items) => items.filter((_, i) => i !== index));
+                      }} aria-label={`移除 ${item.name}`}><X size={11} strokeWidth={2.6} /></button>
+                    </div>
+                  ))}
+                  <button type="button" className="stack-add" onClick={() => fileRef.current?.click()}
+                    style={{ "--i": attachments.length } as React.CSSProperties}
+                    aria-label="继续添加参考素材" title="继续添加参考素材"><Plus size={16} /></button>
+                  {attachments.length > 1 && <span className="stack-count">{attachments.length}</span>}
+                </div>
+              )}
+              <div ref={editorRef} className="composer-editor" contentEditable suppressContentEditableWarning role="textbox" aria-label="提示词"
+                data-placeholder={selected?.model.type === "video" ? "描述运动、镜头和氛围…" :
+                  selected?.model.type === "image" ? "描述你想看到的画面…" : "输入消息…"}
+                onPaste={pastedImages}
+                onKeyDown={(event) => {
+                  if (event.key === "@" && !event.ctrlKey && !event.metaKey) {
+                    event.preventDefault();
+                    captureReferenceAnchor();
+                    void openReferencePicker();
+                    return;
+                  }
+                  if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
+                }}
+                onInput={(event) => setDraft(event.currentTarget.innerText)} />
+            </div>
             <div className="composer-tools">
               <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden
                 onChange={(event) => {
@@ -800,11 +799,11 @@ export function AppShell() {
               </button>
             </div>
             {referencePickerOpen && <div className="reference-picker" role="dialog" aria-label="选择参考内容"
-              style={{ left: referencePickerPosition.left, top: referencePickerPosition.top }}>
+              style={referencePickerPosition}>
               <div className="reference-picker-head"><strong>选择参考内容</strong><button className="icon-button" onClick={() => setReferencePickerOpen(false)} aria-label="关闭"><X size={15} /></button></div>
               <input className="reference-picker-search" value={referenceQuery} onChange={(event) => setReferenceQuery(event.target.value)} placeholder="搜索参考内容" autoFocus />
-              {referenceAssets.length === 0 ? <p className="reference-picker-empty">资产库里还没有图片。</p> :
-                <div className="reference-picker-grid">{referenceAssets.filter((asset) => !referenceQuery.trim() || asset.name.toLowerCase().includes(referenceQuery.trim().toLowerCase())).map((asset) => {
+              {pickerAssets.length === 0 ? <p className="reference-picker-empty">还没有可引用的图片，先上传或拖入一张。</p> :
+                <div className="reference-picker-grid">{pickerAssets.filter((asset) => !referenceQuery.trim() || asset.name.toLowerCase().includes(referenceQuery.trim().toLowerCase())).map((asset) => {
                   const selectedReference = attachments.some((item) => item.path === asset.path);
                   return <button className={`reference-picker-item ${selectedReference ? "selected" : ""}`} key={asset.id}
                     type="button" onClick={() => selectReferenceAsset(asset)} title={asset.name}>
@@ -829,6 +828,12 @@ export function AppShell() {
         }} />}
     </main>
   );
+}
+
+/** 叠放素材的倾角:首张微倾,其余左右交替、越往后越歪,营造一叠照片的感觉。 */
+function stackTilt(index: number) {
+  if (index === 0) return -3;
+  return (index % 2 ? 1 : -1) * Math.min(6 + index * 3, 14);
 }
 
 function isVideoTurn(message: Message, currentType?: ModelConfig["type"]) {

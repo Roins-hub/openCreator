@@ -415,55 +415,6 @@ a { color: inherit; text-decoration: none; }
 .spinner { width: 13px; height: 13px; border: 1.5px solid color-mix(in srgb, var(--paper) 35%, transparent); border-top-color: var(--paper); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .composer-note { margin: 8px 0 0; color: var(--faint); font-size: 9px; text-align: center; }
-.attachment-strip {
-  display: flex; align-items: flex-end; gap: 0; min-height: 64px; margin-bottom: 8px;
-  overflow: visible; transition: gap .18s ease;
-}
-.attachment-chip {
-  position: relative; display: flex; align-items: center; gap: 6px; min-width: 0;
-  z-index: 1; width: 58px; height: 58px; margin-left: -24px; padding: 0;
-  border: 1px solid var(--line); border-radius: 8px; background: var(--warm);
-  box-shadow: 0 4px 12px oklch(20% .02 80 / .09); transition: width .18s ease, height .18s ease, padding .18s ease, margin .18s ease, transform .18s ease, background .18s ease;
-}
-.attachment-chip:first-child { margin-left: 0; }
-.attachment-chip:hover { z-index: 10; transform: translateY(-2px); }
-.attachment-chip-preview {
-  width: 100%; height: 100%; flex: 0 0 auto; overflow: hidden; border-radius: 8px; background: var(--line);
-}
-.attachment-chip-preview img, .attachment-chip-preview video { display: block; width: 100%; height: 100%; object-fit: cover; }
-.attachment-label {
-  position: absolute; left: 4px; right: 4px; bottom: 4px; max-width: none; overflow: hidden;
-  padding: 3px 4px; border-radius: 4px; color: var(--paper); background: oklch(18% .02 80 / .68);
-  font-size: 8px; line-height: 1; white-space: nowrap; text-overflow: ellipsis; opacity: 0;
-  transition: opacity .16s ease;
-}
-.attachment-chip-index {
-  position: absolute; left: 3px; top: 3px; z-index: 1; padding: 2px 4px; border-radius: 4px;
-  color: var(--paper); background: oklch(18% .02 80 / .72); font-size: 8px; font-weight: 600; line-height: 1;
-}
-.attachment-strip:hover .attachment-chip .attachment-chip-index {
-  position: static; padding: 0; color: var(--ink); background: transparent; font-size: 10px;
-}
-.attachment-add {
-  display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 9px;
-  border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); background: transparent;
-  font-size: 10px; white-space: nowrap; transition: border-color .15s, color .15s, background .15s;
-}
-.attachment-add:hover { border-color: var(--muted); color: var(--ink); background: var(--warm); }
-.attachment-strip:hover { gap: 8px; }
-.attachment-strip:hover .attachment-chip {
-  width: auto; height: 32px; margin-left: 0; padding: 3px 8px 3px 3px;
-}
-.attachment-strip:hover .attachment-chip .attachment-chip-preview {
-  width: 26px; height: 26px; border-radius: 6px;
-}
-.attachment-strip:hover .attachment-chip .attachment-label {
-  position: static; max-width: 130px; padding: 0; color: var(--muted); background: transparent; font-size: 10px; opacity: 1;
-}
-.attachment-chip button {
-  position: absolute; right: -5px; top: -5px; display: grid; place-items: center; width: 19px; height: 19px; padding: 0;
-  z-index: 2; border: 2px solid var(--paper); border-radius: 50%; background: var(--dark); color: var(--paper);
-}
 .reference-picker-search {
   width: 100%; height: 34px; margin-bottom: 9px; padding: 0 10px;
   border: 1px solid var(--line); border-radius: 8px; outline: 0; color: var(--ink);
@@ -1071,4 +1022,66 @@ body { transition: background-color .2s ease, color .2s ease; }
   .settings-block { grid-template-columns: 1fr; gap: 10px; }
   .theme-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .theme-note { display: none; }
+}
+
+/* ---------- 输入框内的参考素材叠放 ---------- */
+.composer-body { display: flex; align-items: flex-start; gap: 14px; }
+.composer-body .composer-editor { flex: 1; min-width: 0; }
+.attachment-stack {
+  --step: 58px;
+  position: relative; z-index: 6; flex: 0 0 54px; width: 54px; height: 64px; margin: 3px 0 6px 4px;
+}
+/* 展开时的托盘底板,避免压住下面的文字 */
+.attachment-stack::before {
+  content: ""; position: absolute; left: -8px; top: -8px; width: calc(var(--count) * var(--step) + 52px); height: 80px;
+  border: 1px solid var(--line); border-radius: 13px; background: var(--paper);
+  box-shadow: 0 14px 34px oklch(20% .02 80 / .14);
+  opacity: 0; transform: scaleX(.4); transform-origin: left center; pointer-events: none;
+  transition: opacity .18s ease, transform .26s cubic-bezier(.16, 1, .3, 1);
+}
+.stack-card, .stack-add {
+  position: absolute; left: 0; top: 0; width: 50px; height: 62px;
+  transition: transform .3s cubic-bezier(.16, 1, .3, 1), box-shadow .2s ease;
+}
+.stack-card {
+  z-index: calc(20 - var(--i)); border: 2px solid var(--paper); border-radius: 9px; background: var(--line);
+  box-shadow: 0 3px 10px oklch(20% .02 80 / .18);
+  /* 收起时后面的卡片向右上错开并倾斜,露出边缘 */
+  transform: translate(calc(min(var(--i), 3) * 3px), calc(min(var(--i), 3) * -1px)) rotate(var(--r));
+}
+.stack-card img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 7px; }
+.stack-card-index {
+  position: absolute; left: 3px; bottom: 3px; padding: 1px 4px; border-radius: 4px;
+  color: oklch(98% 0 0); background: oklch(15% .01 80 / .7); font-size: 9px; font-weight: 600; line-height: 1.3;
+  opacity: 0; transition: opacity .15s ease;
+}
+.stack-card-remove {
+  position: absolute; top: -7px; right: -7px; display: grid; place-items: center; width: 18px; height: 18px; padding: 0;
+  border: 2px solid var(--paper); border-radius: 50%; color: var(--paper); background: var(--ink);
+  opacity: 0; transform: scale(.6); transition: opacity .15s ease, transform .15s ease;
+}
+.stack-add {
+  z-index: 1; display: grid; place-items: center; border: 1px dashed var(--line-strong); border-radius: 9px;
+  color: var(--muted); background: var(--warm); opacity: 0; pointer-events: none;
+}
+.stack-add:hover { color: var(--ink); border-color: var(--focus); }
+.stack-count {
+  position: absolute; top: -6px; right: -6px; z-index: 30; min-width: 18px; height: 18px; padding: 0 5px;
+  border: 2px solid var(--paper); border-radius: 9px; color: var(--paper); background: var(--ink);
+  font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; transition: opacity .12s ease;
+}
+/* 悬停 / 键盘聚焦:整叠横向摊开 */
+.attachment-stack:hover::before, .attachment-stack:focus-within::before { opacity: 1; transform: none; }
+.attachment-stack:hover .stack-card, .attachment-stack:focus-within .stack-card {
+  transform: translateX(calc(var(--i) * var(--step))); box-shadow: 0 2px 6px oklch(20% .02 80 / .12);
+}
+.attachment-stack:hover .stack-add, .attachment-stack:focus-within .stack-add {
+  opacity: 1; pointer-events: auto; transform: translateX(calc(var(--i) * var(--step)));
+}
+.attachment-stack:hover .stack-card-index, .attachment-stack:focus-within .stack-card-index { opacity: 1; }
+.attachment-stack:hover .stack-card-remove, .attachment-stack:focus-within .stack-card-remove { opacity: 1; transform: none; }
+.attachment-stack:hover .stack-count, .attachment-stack:focus-within .stack-count { opacity: 0; }
+.stack-card:hover { z-index: 40; }
+@media (prefers-reduced-motion: reduce) {
+  .stack-card, .stack-add, .attachment-stack::before { transition: none; }
 }
