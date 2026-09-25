@@ -22,6 +22,7 @@ import {
   REFERENCE_CARD_CLASS, createReferenceCard, referenceLabel, serializePrompt, splitPromptReferences,
 } from "@/lib/prompt-references";
 import { VideoTaskCard } from "@/components/video-task-card";
+import { LogoMark } from "@/components/logo-mark";
 
 type PublicConfig = AppConfig & { providers: Array<AppConfig["providers"][number] & { hasApiKey?: boolean }> };
 type ModelChoice = { providerId: string; providerName: string; model: ModelConfig };
@@ -578,7 +579,7 @@ export function AppShell() {
     <main className="app-frame">
       <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
         <div className="sidebar-head">
-          <button className="wordmark" onClick={create} aria-label="新建对话"><span>M</span> Mote</button>
+          <button className="wordmark" onClick={create} aria-label="新建对话"><LogoMark size={27} /> Mote</button>
           <div className="sidebar-head-actions">
             <button className="icon-button" onClick={() => setSearchOpen(true)}
               aria-label="搜索对话" title="搜索对话 · ⌘ K">
@@ -640,7 +641,7 @@ export function AppShell() {
         <div className="conversation" ref={conversationRef}>
           {!active?.messages.length ? (
             <div className="empty-state">
-              <div className="empty-mark">M</div>
+              <LogoMark size={44} className="empty-mark" />
               <h1>今天，想创造什么？</h1>
               {choices.length && selected
                 ? <EmptyStatePrompt key={selected.model.type} type={selected.model.type} />

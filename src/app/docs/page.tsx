@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, BookOpen, CheckCircle2, CircleHelp, Film, KeyRound, Settings2, Upload } from "lucide-react";
+import { LogoMark } from "@/components/logo-mark";
 
 const sections = [
   ["overview", "开始使用"],
@@ -14,7 +15,7 @@ export default function DocsPage() {
     <main className="docs-page">
       <header className="docs-topbar">
         <Link href="/" className="docs-back"><ArrowLeft size={16} /> 返回工作台</Link>
-        <div className="docs-brand"><span className="docs-brand-mark">M</span><span>Mote 文档</span></div>
+        <div className="docs-brand"><LogoMark size={25} /><span>Mote 文档</span></div>
         <Link href="/settings" className="docs-settings"><Settings2 size={15} /> 模型设置</Link>
       </header>
       <div className="docs-layout">

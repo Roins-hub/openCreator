@@ -94,10 +94,7 @@ a { color: inherit; text-decoration: none; }
   display: flex; align-items: center; gap: 9px; padding: 0; background: transparent;
   font-family: "Iowan Old Style", "Songti SC", serif; font-size: 18px; font-weight: 600; letter-spacing: -.02em;
 }
-.wordmark span, .empty-mark {
-  display: grid; place-items: center; width: 27px; height: 27px; border-radius: 50%;
-  color: var(--paper); background: var(--ink); font: 500 14px/1 "Iowan Old Style", serif;
-}
+.logo-mark { display: block; flex: 0 0 auto; }
 .icon-button {
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
   background: transparent; border-radius: 8px; color: var(--muted);
@@ -271,7 +268,7 @@ a { color: inherit; text-decoration: none; }
   min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;
   padding: 40px 24px 120px; text-align: center;
 }
-.empty-mark { width: 38px; height: 38px; margin-bottom: 29px; font-size: 18px; }
+.empty-mark { margin-bottom: 26px; filter: drop-shadow(0 8px 20px oklch(20% .02 80 / .16)); }
 .empty-state h1 {
   margin: 0; font: 500 clamp(27px, 3.2vw, 39px)/1.2 "Iowan Old Style", "Songti SC", serif;
   letter-spacing: -.035em;
@@ -758,7 +755,6 @@ a { color: inherit; text-decoration: none; }
 .docs-back, .docs-settings { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .docs-back:hover, .docs-settings:hover { color: var(--ink); }
 .docs-brand { display: flex; align-items: center; gap: 8px; font-family: "Iowan Old Style", "Songti SC", serif; font-size: 16px; font-weight: 600; }
-.docs-brand-mark { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; color: var(--paper); background: var(--ink); font-size: 13px; }
 .docs-layout { display: grid; grid-template-columns: 210px minmax(0, 760px); gap: clamp(36px, 8vw, 120px); width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
 .docs-sidebar { position: sticky; top: 64px; align-self: start; padding-top: 62px; }
 .docs-kicker { display: block; color: var(--faint); font-size: 9px; font-weight: 700; letter-spacing: .16em; }

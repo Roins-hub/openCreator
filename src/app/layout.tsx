@@ -4,8 +4,8 @@ import { ThemeWatcher } from "@/components/theme-watcher";
 import { themeBootScript } from "@/lib/themes";
 
 export const metadata: Metadata = {
-  title: "Mote — Local AI",
-  description: "A quiet local interface for your models.",
+  title: "Mote · AI 视频工作台",
+  description: "本地优先的 AI 视频创作工作台。",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
