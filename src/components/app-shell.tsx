@@ -23,6 +23,8 @@ import {
 } from "@/lib/prompt-references";
 import { VideoTaskCard } from "@/components/video-task-card";
 import { LogoMark } from "@/components/logo-mark";
+import { isEmbedded } from "@/lib/host-bridge";
+import { withBase } from "@/lib/base-path";
 
 type PublicConfig = AppConfig & { providers: Array<AppConfig["providers"][number] & { hasApiKey?: boolean }> };
 type ModelChoice = { providerId: string; providerName: string; model: ModelConfig };
@@ -34,7 +36,7 @@ const toMediaRef = (item: ComposerAttachment): MediaRef => ({
   ...(item.mimeType ? { mimeType: item.mimeType } : {}),
   ...(item.dataUrl ? { dataUrl: item.dataUrl } : {}),
 });
-const attachmentSrc = (item: ComposerAttachment) => item.previewUrl || `/api/media/${item.path}`;
+const attachmentSrc = (item: ComposerAttachment) => item.previewUrl || withBase(`/api/media/${item.path}`);
 const revokePreview = (item: ComposerAttachment) => {
   if (item.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
 };
@@ -77,6 +79,7 @@ export function AppShell() {
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
+  const [embedded, setEmbedded] = useState(false);
   const [referenceQuery, setReferenceQuery] = useState("");
   const [referencePickerPosition, setReferencePickerPosition] = useState<{ left: number; top?: number; bottom?: number }>({ left: 10, top: 8 });
   const referenceRangeRef = useRef<Range | null>(null);
@@ -105,9 +108,9 @@ export function AppShell() {
 
   const load = useCallback(async () => {
     const [nextConfig, nextConversations, nextFavorites] = await Promise.all([
-      request<PublicConfig>("/api/config"),
-      request<Conversation[]>("/api/conversations"),
-      request<string[]>("/api/favorites").catch(() => []),
+      request<PublicConfig>(withBase("/api/config")),
+      request<Conversation[]>(withBase("/api/conversations")),
+      request<string[]>(withBase("/api/favorites")).catch(() => []),
     ]);
     setConfig(nextConfig);
     setFavorites(new Set(nextFavorites));
@@ -125,6 +128,10 @@ export function AppShell() {
     const timer = window.setTimeout(() => load().catch((cause) => setError(cause.message)), 0);
     return () => clearTimeout(timer);
   }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setEmbedded(isEmbedded()), 0);
+    return () => clearTimeout(timer);
+  }, []);
   useEffect(() => {
     if (!window.matchMedia("(max-width: 700px)").matches) return;
     const timer = window.setTimeout(() => setSidebarOpen(false), 0);
@@ -165,10 +172,10 @@ export function AppShell() {
   }, [draft]);
 
   const persist = async (conversation: Conversation) => {
-    const saved = await request<Conversation>(`/api/conversations/${conversation.id}`, {
+    const saved = await request<Conversation>(withBase(`/api/conversations/${conversation.id}`), {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(conversation),
-    }).catch(async () => request<Conversation>("/api/conversations", {
+    }).catch(async () => request<Conversation>(withBase("/api/conversations"), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(conversation),
     }));
@@ -189,12 +196,14 @@ export function AppShell() {
     const markerRect = savedAnchor && (savedAnchor.width || savedAnchor.height || savedAnchor.top || savedAnchor.left)
       ? savedAnchor : editorRect;
     const composerRect = composer.getBoundingClientRect();
-    const pickerWidth = Math.min(430, window.innerWidth - 32);
-    const left = Math.max(8, Math.min(markerRect.left - 14, window.innerWidth - pickerWidth - 8));
+    // 嵌入画布时 body 带 zoom:测得的是屏幕像素,写回样式前要换算回页面像素。
+    const zoom = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--mote-zoom")) || 1;
+    const pickerWidth = Math.min(430, window.innerWidth / zoom - 32);
+    const left = Math.max(8, Math.min((markerRect.left - 14) / zoom, window.innerWidth / zoom - pickerWidth - 8));
     // 贴着输入框上沿弹出(用 bottom 锚定,内容多少都不会悬空);上方空间不够时改到输入框下方。
     setReferencePickerPosition(composerRect.top > 240
-      ? { left, bottom: window.innerHeight - composerRect.top + 10 }
-      : { left, top: composerRect.bottom + 10 });
+      ? { left, bottom: (window.innerHeight - composerRect.top) / zoom + 10 }
+      : { left, top: composerRect.bottom / zoom + 10 });
   }, []);
 
   const captureReferenceAnchor = () => {
@@ -222,7 +231,7 @@ export function AppShell() {
       return;
     }
     try {
-      const assets = await request<Asset[]>("/api/assets");
+      const assets = await request<Asset[]>(withBase("/api/assets"));
       setReferenceAssets(assets.filter((asset) => !asset.trashed));
       setReferenceQuery("");
       setReferencePickerOpen(true);
@@ -293,7 +302,7 @@ export function AppShell() {
   };
 
   const remove = async (id: string) => {
-    await request(`/api/conversations/${id}`, { method: "DELETE" });
+    await request(withBase(`/api/conversations/${id}`), { method: "DELETE" });
     const rest = conversations.filter((item) => item.id !== id);
     setConversations(rest);
     if (activeId === id) setActiveId(rest[0]?.id);
@@ -326,7 +335,7 @@ export function AppShell() {
     }
     const updated = { ...active, ...options, updatedAt: new Date().toISOString() };
     setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));
-    void request<Conversation>(`/api/conversations/${updated.id}`, {
+    void request<Conversation>(withBase(`/api/conversations/${updated.id}`), {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updated),
     }).catch((cause) => setError(cause.message));
@@ -345,7 +354,7 @@ export function AppShell() {
     const form = new FormData();
     selection.accepted.forEach((file) => form.append("files", file));
     try {
-      const uploaded = await request<MediaRef[]>("/api/uploads", {
+      const uploaded = await request<MediaRef[]>(withBase("/api/uploads"), {
         method: "POST", body: form,
       });
       // 服务端按提交顺序返回,逐个替换占位项
@@ -448,7 +457,7 @@ export function AppShell() {
           ...items.filter((item) => item.id !== optimistic.id),
         ]);
       }
-      const result = await request<{ conversation: Conversation }>("/api/generate", {
+      const result = await request<{ conversation: Conversation }>(withBase("/api/generate"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
@@ -488,7 +497,7 @@ export function AppShell() {
   const toggleFavorite = async (paths: string[], favorite: boolean) => {
     if (!paths.length) return;
     try {
-      const next = await request<string[]>("/api/favorites", {
+      const next = await request<string[]>(withBase("/api/favorites"), {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paths, favorite }),
       });
@@ -534,7 +543,7 @@ export function AppShell() {
       for (const taskId of taskIds) {
         try {
           const result = await request<{ conversation: Conversation }>(
-            `/api/tasks/${taskId}?conversationId=${active.id}`,
+            withBase(`/api/tasks/${taskId}?conversationId=${active.id}`),
             { method: "DELETE" },
           );
           stoppedConversation = result.conversation;
@@ -576,7 +585,7 @@ export function AppShell() {
       ...items.filter((item) => item.id !== stoppedConversation.id),
     ]);
     try {
-      await request<Conversation>(`/api/conversations/${stoppedConversation.id}`, {
+      await request<Conversation>(withBase(`/api/conversations/${stoppedConversation.id}`), {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(stoppedConversation),
       });
@@ -595,7 +604,7 @@ export function AppShell() {
     const timer = window.setTimeout(async () => {
       try {
         const result = await request<{ conversation: Conversation }>(
-          `/api/tasks/${taskId}?conversationId=${active.id}`,
+          withBase(`/api/tasks/${taskId}?conversationId=${active.id}`),
         );
         setConversations((items) => [result.conversation, ...items.filter((item) => item.id !== active.id)]);
       } catch (cause) { setError((cause as Error).message); }
@@ -607,7 +616,7 @@ export function AppShell() {
     <main className="app-frame">
       <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
         <div className="sidebar-head">
-          <button className="wordmark" onClick={create} aria-label="新建对话"><LogoMark size={27} /> Mote</button>
+          <button className="wordmark" onClick={create} aria-label="新建对话"><LogoMark size={27} /> {embedded ? "生视频" : "Mote"}</button>
           <div className="sidebar-head-actions">
             <button className="icon-button" onClick={() => setSearchOpen(true)}
               aria-label="搜索对话" title="搜索对话 · ⌘ K">
@@ -843,7 +852,7 @@ export function AppShell() {
                     type="button" onClick={() => selectReferenceAsset(asset)} title={asset.name}>
                     <span className="reference-picker-thumb">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`/api/media/${asset.path}`} alt="" />
+                      <img src={withBase(`/api/media/${asset.path}`)} alt="" />
                     </span>
                     <span>{asset.name}</span>
                   </button>;
@@ -900,7 +909,7 @@ function MessageView({
         {message.attachments?.length ? <div className="media-grid">
           {message.attachments.map((media) => (
             // eslint-disable-next-line @next/next/no-img-element
-            <img key={media.path} src={`/api/media/${media.path}`} alt={media.name} />
+            <img key={media.path} src={withBase(`/api/media/${media.path}`)} alt={media.name} />
           ))}
         </div> : null}
         {message.content && <p>{message.content}</p>}
@@ -912,10 +921,10 @@ function MessageView({
         {message.status === "failed" && <div className="message-error">{message.error || "生成失败"}</div>}
         {message.status === "stopped" && <div className="message-stopped">{message.error || "已停止生成"}</div>}
         {message.media?.map((media) => media.kind === "video" ? (
-          <video key={media.path} controls src={`/api/media/${media.path}`} />
+          <video key={media.path} controls src={withBase(`/api/media/${media.path}`)} />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img className="generated-image" key={media.path} src={`/api/media/${media.path}`} alt={media.name} />
+          <img className="generated-image" key={media.path} src={withBase(`/api/media/${media.path}`)} alt={media.name} />
         ))}
       </div>
     </article>

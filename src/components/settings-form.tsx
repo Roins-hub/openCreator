@@ -9,6 +9,7 @@ import {
 import type { AppConfig, ModelConfig, ProviderConfig } from "@/lib/types";
 import { createClientId } from "@/lib/client-id";
 import { ThemePicker } from "@/components/theme-picker";
+import { withBase } from "@/lib/base-path";
 
 const id = () => createClientId();
 const emptyModel = (): ModelConfig => ({
@@ -43,7 +44,7 @@ export function SettingsForm() {
   const [syncing, setSyncing] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    fetch("/api/config").then((response) => response.json()).then(setConfig)
+    fetch(withBase("/api/config")).then((response) => response.json()).then(setConfig)
       .catch(() => setError("无法读取配置"));
   }, []);
 
@@ -60,7 +61,7 @@ export function SettingsForm() {
   };
   const save = async () => {
     setError(""); setStatus("");
-    const response = await fetch("/api/config", {
+    const response = await fetch(withBase("/api/config"), {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config),
     });
     const data = await response.json();
@@ -84,7 +85,7 @@ export function SettingsForm() {
       return;
     }
     try {
-      const response = await fetch("/api/config/secret", {
+      const response = await fetch(withBase("/api/config/secret"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerId: provider.id }),
@@ -102,7 +103,7 @@ export function SettingsForm() {
   const testModel = async (provider: ProviderConfig, model: ModelConfig) => {
     setTests((current) => ({ ...current, [model.id]: { state: "loading", message: "正在测试连接…" } }));
     try {
-      const response = await fetch("/api/config/test", {
+      const response = await fetch(withBase("/api/config/test"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, modelId: model.id }),
@@ -122,7 +123,7 @@ export function SettingsForm() {
     setSyncing((current) => ({ ...current, [provider.id]: true }));
     setError(""); setStatus("");
     try {
-      const response = await fetch("/api/config/models", {
+      const response = await fetch(withBase("/api/config/models"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider }),
       });

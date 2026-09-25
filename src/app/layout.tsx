@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeWatcher } from "@/components/theme-watcher";
 import { themeBootScript } from "@/lib/themes";
+import { embedBootScript } from "@/lib/host-bridge";
 
 export const metadata: Metadata = {
   title: "Mote · AI 视频工作台",
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+        <script dangerouslySetInnerHTML={{ __html: embedBootScript }} />
       </head>
       <body>
         <ThemeWatcher />
