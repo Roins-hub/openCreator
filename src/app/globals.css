@@ -1310,3 +1310,12 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
   .catalog-row.head { display: none; }
   .catalog-row > :first-child { grid-column: span 2; }
 }
+
+/* 下拉列表:细滚动条、透明轨道,不再压住右侧圆角 */
+.dropdown-list { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+@supports not (scrollbar-color: auto) {
+  .dropdown-list::-webkit-scrollbar { width: 10px; }
+  .dropdown-list::-webkit-scrollbar-button { display: none; }
+  .dropdown-list::-webkit-scrollbar-track { background: transparent; margin: 10px 0; }
+  .dropdown-list::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: var(--line-strong) padding-box; }
+}
