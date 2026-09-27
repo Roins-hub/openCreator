@@ -449,7 +449,7 @@ a { color: inherit; text-decoration: none; }
   display: grid; padding: 4px; gap: 3px; border-radius: 11px; background: var(--warm);
 }
 .image-ratios { grid-template-columns: repeat(9, 1fr); }
-.video-ratios { grid-template-columns: repeat(7, 1fr); }
+.video-ratios { grid-template-columns: repeat(6, 1fr); }
 .ratio-grid button {
   min-width: 0; height: 58px; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 7px; padding: 4px; border: 1px solid transparent;
@@ -1223,4 +1223,90 @@ body { transition: background-color .2s ease, color .2s ease; }
   .prompt-library-cats button { flex: 0 0 auto; gap: 6px; }
   .prompt-library-list { grid-template-columns: 1fr; }
   .prompt-library-foot span { display: none; }
+}
+
+/* ---------- Tangzhi 中转站:模型约束、素材类型、加宽的输入框 ---------- */
+.composer-region { width: min(1040px, calc(100% - 48px)); }
+.composer { padding: 18px 18px 12px; border-radius: 22px; }
+.composer-editor { min-height: 84px; max-height: 280px; padding: 6px 6px 12px; font-size: 16px; line-height: 1.65; }
+.composer-body { gap: 16px; }
+.composer-spacer { font-size: 11px; }
+.composer-note { font-size: 10px; }
+@media (max-width: 700px) {
+  .composer-region { width: calc(100% - 20px); }
+  .composer { padding: 13px 13px 9px; border-radius: 18px; }
+  .composer-editor { min-height: 60px; font-size: 15px; }
+}
+
+/* 模型不支持的选项:保留位置但不可点 */
+.parameter-segments button:disabled, .ratio-grid button:disabled {
+  cursor: not-allowed; color: var(--faint); opacity: .38;
+}
+.parameter-popover h3 { display: flex; align-items: baseline; gap: 8px; }
+.parameter-popover h3 small { color: var(--faint); font-size: 10px; font-weight: 500; }
+
+/* 顶栏:当前模型规格 */
+.model-spec {
+  display: inline-flex; align-items: center; gap: 0; min-width: 0; overflow: hidden;
+  padding: 4px 9px; border-radius: 7px; color: var(--muted); background: var(--warm);
+  font-size: 11px; white-space: nowrap;
+}
+.model-spec > * + *::before { content: "·"; margin: 0 7px; color: var(--faint); }
+.model-spec b { color: var(--ink); font-weight: 700; }
+.key-missing {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 5px 10px; border-radius: 8px;
+  color: var(--paper); background: var(--dark); font-size: 11px; font-weight: 700;
+}
+@media (max-width: 1100px) { .model-spec > :nth-child(3), .model-spec > :nth-child(4) { display: none; } }
+@media (max-width: 700px) { .model-spec { display: none; } }
+
+/* 视频 / 音频素材缩略图 */
+.media-thumb { display: block; width: 100%; height: 100%; object-fit: cover; }
+video.media-thumb { background: var(--dark); pointer-events: none; }
+.audio-thumb {
+  display: grid; place-items: center; color: var(--muted);
+  background: linear-gradient(135deg, var(--warm), color-mix(in oklch, var(--line) 70%, var(--paper)));
+}
+.stack-card .media-thumb { border-radius: 7px; }
+.stack-card.is-uploading .media-thumb { filter: saturate(.6) brightness(.82); }
+.task-ref .media-thumb { display: inline-grid; width: 18px; height: 18px; border-radius: 4px; }
+.task-ref .audio-thumb svg { width: 11px; height: 11px; }
+.media-grid .media-thumb { width: min(220px, 42vw); height: 150px; border-radius: 11px; }
+.reference-inline-thumb video { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
+.reference-inline-card[data-kind="audio"] .reference-inline-thumb {
+  display: grid; place-items: center; width: 100%; color: var(--muted); font-size: 13px;
+}
+
+/* 设置页:API Key 与模型一览 */
+.key-link { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.key-link:hover { color: var(--ink); }
+.key-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; margin-bottom: 10px; }
+.key-row input {
+  width: 100%; height: 44px; padding: 0 44px 0 13px; border: 1px solid var(--line); border-radius: 9px;
+  outline: 0; background: transparent; font-size: 13px; transition: border-color .15s;
+}
+.key-row input:focus { border-color: var(--focus); }
+.key-row .secret-input button { top: 5px; }
+.key-row .test-model {
+  display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 16px; border: 1px solid var(--line);
+  border-radius: 9px; color: var(--muted); background: var(--paper); font-size: 12px; font-weight: 600;
+}
+.key-row .test-model:hover { border-color: var(--muted); color: var(--ink); }
+.key-row .test-model.success { color: var(--ok); }
+.key-row .test-model.error { color: var(--danger); }
+.key-help { margin: 12px 0 0; color: var(--faint); font-size: 12px; line-height: 1.7; }
+.primary-button:disabled { opacity: .35; cursor: default; }
+.catalog-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.catalog-row {
+  display: grid; grid-template-columns: minmax(180px, 1.6fr) .6fr .8fr 1.9fr .8fr; gap: 12px; align-items: center;
+  padding: 10px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px;
+}
+.catalog-row:first-child { border-top: 0; }
+.catalog-row.head { color: var(--faint); background: var(--warm); font-size: 10px; font-weight: 700; }
+.catalog-row b { display: block; color: var(--ink); font: 600 12px/1.4 "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
+.catalog-row em { color: var(--faint); font-size: 10px; font-style: normal; }
+@media (max-width: 760px) {
+  .catalog-row { grid-template-columns: 1fr 1fr; }
+  .catalog-row.head { display: none; }
+  .catalog-row > :first-child { grid-column: span 2; }
 }

@@ -1,10 +1,9 @@
-import { getConfig } from "@/lib/config-store";
 import { getConversation, saveConversation } from "@/lib/conversation-store";
 import { failure, ok } from "@/lib/http";
-import { downloadMedia } from "@/lib/media-store";
-import { resolveModel } from "@/lib/providers/common";
-import { cancelProviderTask, decodeTaskRef, queryProviderTask } from "@/lib/providers/tasks";
 import { stopMessageText, unfinishedTaskIds } from "@/lib/generation-stop";
+import {
+  decodeTaskId, downloadVideo, queryVideoTask, requireApiKey, type TaskResult,
+} from "@/lib/tangzhi-server";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -12,22 +11,27 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const query = new URL(request.url).searchParams;
     const conversation = await getConversation(query.get("conversationId") || "");
     if (!conversation) throw new Error("会话不存在");
-    const { provider } = resolveModel(
-      await getConfig(), conversation.providerId || "", conversation.modelId || "",
-    );
-    const task = await queryProviderTask(provider, taskId);
-    const status = task.status;
     const message = conversation.messages.find((item) =>
       item.taskId === taskId || item.taskIds?.includes(taskId));
     if (!message) throw new Error("生成消息不存在");
 
-    if (status === "succeeded") {
-      const kind = decodeTaskRef(taskId).kind;
-      const media = await Promise.all(task.urls.map((url) => downloadMedia(url, kind)));
-      message.media = [...(message.media || []), ...media];
+    const upstreamId = decodeTaskId(taskId);
+    let task: TaskResult;
+    if (!upstreamId) {
+      // 切换到 Tangzhi 之前由其他供应商提交的任务,已无法查询
+      task = { status: "failed", error: "该任务来自已移除的供应商，无法继续查询" };
+    } else {
+      const apiKey = requireApiKey(request);
+      task = await queryVideoTask(apiKey, upstreamId);
+      if (task.status === "succeeded" && !message.completedTaskIds?.includes(taskId)) {
+        message.media = [...(message.media || []), await downloadVideo(apiKey, upstreamId)];
+      }
+    }
+
+    if (task.status === "succeeded") {
       message.completedTaskIds = [...new Set([...(message.completedTaskIds || []), taskId])];
       conversation.updatedAt = new Date().toISOString();
-    } else if (status === "failed") {
+    } else if (task.status === "failed") {
       message.failedTaskIds = [...new Set([...(message.failedTaskIds || []), taskId])];
       message.error = task.error || "部分生成任务失败";
     }
@@ -37,7 +41,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       message.status = message.completedTaskIds?.length ? "complete" : "failed";
     }
     await saveConversation(conversation);
-    return ok({ status, conversation });
+    return ok({ status: task.status, progress: task.progress, conversation });
   } catch (error) { return failure(error); }
 }
 
@@ -50,26 +54,11 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     const message = conversation.messages.find((item) =>
       ["processing", "stopped"].includes(item.status) && unfinishedTaskIds(item).includes(taskId));
     if (!message) throw new Error("待停止的视频任务不存在");
-    const { provider } = resolveModel(
-      await getConfig(), conversation.providerId || "", conversation.modelId || "",
-    );
-
-    let cancelError = "";
-    let cancelled = false;
-    try {
-      const result = await cancelProviderTask(provider, taskId);
-      cancelled = result.cancelled;
-      cancelError = result.error;
-      if (cancelled) {
-        message.failedTaskIds = [...new Set([...(message.failedTaskIds || []), taskId])];
-      }
-    } catch (cause) {
-      cancelError = (cause as Error).message;
-    }
+    // 中转站没有取消接口:只停止本机等待,云端任务会继续并按规则计费
     message.status = "stopped";
-    message.error = stopMessageText(message.error, cancelError);
+    message.error = stopMessageText(message.error, "中转站不支持取消任务；已停止本机等待，云端任务可能仍会继续");
     conversation.updatedAt = new Date().toISOString();
     await saveConversation(conversation);
-    return ok({ conversation, cancelled, error: cancelError || undefined });
+    return ok({ conversation, cancelled: false });
   } catch (error) { return failure(error); }
 }

@@ -1,121 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appConfigSchema, conversationSchema, generateRequestSchema } from "./schemas";
-
-describe("appConfigSchema", () => {
-  it("accepts a provider with several capability-specific models", () => {
-    const result = appConfigSchema.parse({
-      providers: [{
-        id: "ark",
-        name: "火山方舟",
-        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-        apiKey: "secret",
-        models: [
-          { id: "chat", name: "聊天", modelId: "doubao-chat", type: "chat" },
-          { id: "image", name: "Seedream", modelId: "doubao-seedream-4-5-251128", type: "image" },
-        ],
-      }],
-    });
-
-    expect(result.providers[0].models[0].maxReferenceImages).toBe(2);
-    expect(result.providers[0].models[0].maxVideoDuration).toBe(10);
-    expect(result.providers[0].apiType).toBe("ark");
-    expect(result.providers[0].models[0].supportsImageInput).toBe(false); // 对话模型默认纯文本
-    expect(result.providers[0].models[1].supportsImageInput).toBe(true); // 图像模型天然支持图片
-  });
-
-  it("preserves an explicit vision flag on a chat model", () => {
-    const result = appConfigSchema.parse({
-      providers: [{
-        id: "ark",
-        name: "火山方舟",
-        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-        apiKey: "secret",
-        models: [
-          { id: "vision", name: "GPT-4o", modelId: "gpt-4o", type: "chat", supportsImageInput: true },
-          { id: "video", name: "Seedance", modelId: "seedance", type: "video" },
-        ],
-      }],
-    });
-    expect(result.providers[0].models[0].supportsImageInput).toBe(true); // 显式开启的多模态对话模型
-    expect(result.providers[0].models[1].supportsImageInput).toBe(true); // 视频模型天然支持参考图
-  });
-
-  it("infers OpenAI compatibility for an existing DeepSeek provider", () => {
-    const result = appConfigSchema.parse({
-      providers: [{
-        id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com",
-        apiKey: "secret", models: [{
-          id: "chat", name: "DeepSeek", modelId: "deepseek-v4-pro", type: "chat",
-        }],
-      }],
-    });
-    expect(result.providers[0].apiType).toBe("openai");
-  });
-
-  it("accepts Jimeng Visual providers with AK and SK credentials", () => {
-    const result = appConfigSchema.parse({
-      providers: [{
-        id: "jimeng", name: "即梦视觉", apiType: "jimeng",
-        baseUrl: "https://visual.volcengineapi.com",
-        accessKeyId: "AKLT-example", secretAccessKey: "secret", models: [{
-          id: "image", name: "即梦图片 4.6", modelId: "jimeng_seedream46_cvtob", type: "image",
-        }],
-      }],
-    });
-
-    expect(result.providers[0]).toMatchObject({
-      apiType: "jimeng",
-      apiKey: "",
-      accessKeyId: "AKLT-example",
-      secretAccessKey: "secret",
-    });
-  });
-
-  it("requires both Jimeng AK and SK credentials", () => {
-    const result = appConfigSchema.safeParse({
-      providers: [{
-        id: "jimeng", name: "即梦视觉", apiType: "jimeng",
-        baseUrl: "https://visual.volcengineapi.com",
-        accessKeyId: "AKLT-example", models: [{
-          id: "video", name: "即梦视频", modelId: "jimeng_ti2v_v30_pro", type: "video",
-        }],
-      }],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("accepts Kling API 2.0 providers with a bearer API key", () => {
-    const result = appConfigSchema.parse({
-      providers: [{
-        id: "kling", name: "可灵", apiType: "kling",
-        baseUrl: "https://api-singapore.klingai.com", apiKey: "secret",
-        models: [{
-          id: "video", name: "Kling 3 Turbo", modelId: "kling-3.0-turbo", type: "video",
-        }],
-      }],
-    });
-
-    expect(result.providers[0].apiType).toBe("kling");
-  });
-
-  it("rejects duplicate model identifiers in one provider", () => {
-    const result = appConfigSchema.safeParse({
-      providers: [{
-        id: "ark",
-        name: "Ark",
-        baseUrl: "https://example.com",
-        apiKey: "secret",
-        models: [
-          { id: "same", name: "One", modelId: "one", type: "chat" },
-          { id: "same", name: "Two", modelId: "two", type: "image" },
-        ],
-      }],
-    });
-
-    expect(result.success).toBe(false);
-  });
-});
+import { conversationSchema, generateRequestSchema } from "./schemas";
 
 describe("conversationSchema", () => {
   it("keeps generation metadata and local media references", () => {
@@ -180,54 +64,36 @@ describe("conversationSchema", () => {
 });
 
 describe("generateRequestSchema", () => {
+  const videoOptions = {
+    referenceMode: "references", ratio: "16:9", resolution: "720p",
+    duration: 5, count: 1, audio: true, watermark: false, cameraFixed: false,
+  };
+
   it("rejects generation counts outside the safe 1–4 range", () => {
     const result = generateRequestSchema.safeParse({
-      conversationId: "conversation-1",
-      providerId: "ark",
-      modelId: "image",
-      prompt: "测试",
-      attachments: [],
-      imageOptions: { ratio: "1:1", resolution: "2K", count: 5 },
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("accepts text and multi-reference video modes", () => {
-    for (const referenceMode of ["text", "references"] as const) {
-      const result = generateRequestSchema.safeParse({
-        conversationId: "conversation-1", providerId: "ark", modelId: "video",
-        prompt: "测试", attachments: [],
-        videoOptions: {
-          referenceMode, ratio: "adaptive", resolution: "720p",
-          duration: 5, count: 1, audio: true, watermark: false, cameraFixed: false,
-        },
-      });
-      expect(result.success).toBe(true);
-    }
-  });
-
-  it("rejects reference image limits above eight", () => {
-    const result = appConfigSchema.safeParse({
-      providers: [{
-        id: "ark", name: "Ark", baseUrl: "https://example.com", apiKey: "secret",
-        models: [{
-          id: "video", name: "Video", modelId: "video", type: "video", maxReferenceImages: 9,
-        }],
-      }],
+      conversationId: "conversation-1", modelId: "ch0101-sd-2.0-720p",
+      prompt: "测试", attachments: [], videoOptions: { ...videoOptions, count: 5 },
     });
     expect(result.success).toBe(false);
   });
 
-  it("accepts a future video duration within the configured schema ceiling", () => {
+  it("accepts image, video and audio references", () => {
     const result = generateRequestSchema.safeParse({
-      conversationId: "conversation-1", providerId: "ark", modelId: "video",
-      prompt: "测试", attachments: [],
-      videoOptions: {
-        referenceMode: "text", ratio: "16:9", resolution: "720p",
-        duration: 30, count: 1, audio: true, watermark: false, cameraFixed: false,
-      },
+      conversationId: "conversation-1", modelId: "ch0101-sd-2.0-720p", prompt: "测试",
+      attachments: [
+        { kind: "image", path: "uploads/a.png", name: "a.png" },
+        { kind: "video", path: "uploads/b.mp4", name: "b.mp4" },
+        { kind: "audio", path: "uploads/c.mp3", name: "c.mp3" },
+      ],
+      videoOptions,
     });
     expect(result.success).toBe(true);
+  });
+
+  it("requires video options", () => {
+    const result = generateRequestSchema.safeParse({
+      conversationId: "conversation-1", modelId: "ch0101-sd-2.0-720p", prompt: "测试", attachments: [],
+    });
+    expect(result.success).toBe(false);
   });
 });

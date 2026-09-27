@@ -1,61 +1,7 @@
 import { z } from "zod";
 
-export const modelConfigSchema = z
-  .object({
-    id: z.string().min(1),
-    name: z.string().min(1, "模型显示名称不能为空"),
-    modelId: z.string().min(1, "Model ID 不能为空"),
-    type: z.enum(["chat", "image", "video"]),
-    maxReferenceImages: z.number().int().min(0).max(8).default(2),
-    maxVideoDuration: z.number().int().min(3).max(60).default(10),
-    supportsImageInput: z.boolean().optional(),
-  })
-  .transform((model) => ({
-    ...model,
-    // 图像/视频模型天然接收图片;对话模型默认纯文本,多模态视觉模型需显式开启。
-    supportsImageInput: model.supportsImageInput ?? model.type !== "chat",
-  }));
-
-export const providerConfigSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1, "供应商名称不能为空"),
-  baseUrl: z.url(),
-  apiKey: z.string().default(""),
-  accessKeyId: z.string().default(""),
-  secretAccessKey: z.string().default(""),
-  apiType: z.enum(["ark", "openai", "dola", "jimeng", "kling"]).optional(),
-  models: z.array(modelConfigSchema).superRefine((models, ctx) => {
-    const ids = new Set<string>();
-    models.forEach((model, index) => {
-      if (ids.has(model.id)) ctx.addIssue({
-        code: "custom", message: "模型 ID 不能重复", path: [index, "id"],
-      });
-      ids.add(model.id);
-    });
-  }),
-}).superRefine((provider, ctx) => {
-  if (provider.apiType === "jimeng") {
-    if (!provider.accessKeyId) {
-      ctx.addIssue({ code: "custom", message: "即梦视觉需要 Access Key ID", path: ["accessKeyId"] });
-    }
-    if (!provider.secretAccessKey) {
-      ctx.addIssue({ code: "custom", message: "即梦视觉需要 Secret Access Key", path: ["secretAccessKey"] });
-    }
-  } else if (!provider.apiKey) {
-    ctx.addIssue({ code: "custom", message: "该接口类型需要 API Key", path: ["apiKey"] });
-  }
-}).transform((provider) => ({
-  ...provider,
-  apiType: provider.apiType ||
-    (/deepseek\.com|\/v1\/?$/i.test(provider.baseUrl) ? "openai" as const : "ark" as const),
-}));
-
-export const appConfigSchema = z.object({
-  providers: z.array(providerConfigSchema),
-});
-
 export const mediaRefSchema = z.object({
-  kind: z.enum(["image", "video"]),
+  kind: z.enum(["image", "video", "audio"]),
   path: z.string().min(1),
   name: z.string().min(1),
   mimeType: z.string().optional(),
@@ -124,10 +70,8 @@ export const conversationSchema = z.object({
 
 export const generateRequestSchema = z.object({
   conversationId: z.string(),
-  providerId: z.string(),
-  modelId: z.string(),
+  modelId: z.string().min(1),
   prompt: z.string(),
   attachments: z.array(mediaRefSchema).default([]),
-  imageOptions: imageOptionsSchema.optional(),
-  videoOptions: videoOptionsSchema.optional(),
+  videoOptions: videoOptionsSchema,
 });

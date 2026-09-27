@@ -7,10 +7,11 @@ import {
   MoreHorizontal, PauseCircle, Pencil, Play, RefreshCw, Star, Trash2, X, FolderOpen,
 } from "lucide-react";
 import type { MediaRef, Message, VideoOptions } from "@/lib/types";
-import { referenceLabel, splitPromptReferences } from "@/lib/prompt-references";
+import { findReference, referenceLabels, splitPromptReferences } from "@/lib/prompt-references";
+import { MediaThumb } from "@/components/media-thumb";
 
 const modeLabels: Record<VideoOptions["referenceMode"], string> = {
-  text: "文生视频", first: "首帧", first_last: "首尾帧", references: "多图参考",
+  text: "文生视频", first: "首帧", first_last: "首尾帧", references: "参考素材",
 };
 
 type Props = {
@@ -65,6 +66,7 @@ export function VideoTaskCard({
   const videos = (message.media || []).filter((item) => item.kind === "video");
   const options = message.generation?.videoOptions;
   const taskId = message.taskIds?.[0] || message.taskId;
+  const labels = referenceLabels(references);
   const shortTaskId = taskId ? (taskId.length > 22 ? `${taskId.slice(0, 10)}…${taskId.slice(-8)}` : taskId) : "";
 
   useEffect(() => {
@@ -145,23 +147,22 @@ export function VideoTaskCard({
         <p className="task-prompt">
           {prompt ? splitPromptReferences(prompt).map((segment, index) => {
             if (segment.kind === "text") return <span key={index}>{segment.text}</span>;
-            const ref = references[segment.index];
+            const position = findReference(references, segment.mediaKind, segment.index);
+            const ref = references[position];
             return ref ? (
               <span className="task-ref" key={index} title={ref.name}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/api/media/${ref.path}`} alt="" />{referenceLabel(segment.index)}
+                <MediaThumb media={ref} />{labels[position]}
               </span>
-            ) : <span key={index}>[{referenceLabel(segment.index)}]</span>;
+            ) : <span key={index}>[{segment.mediaKind === "image" ? "图" : segment.mediaKind === "video" ? "视频" : "音频"}{segment.index + 1}]</span>;
           }) : <span className="task-prompt-empty">（无提示词）</span>}
         </p>
 
         {references.length > 0 && (
           <div className="task-refs" aria-label="参考素材">
             {references.map((ref, index) => (
-              <span className="task-ref-thumb" key={`${ref.path}-${index}`} title={`${referenceLabel(index)} · ${ref.name}`}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/api/media/${ref.path}`} alt={ref.name} />
-                <i>{referenceLabel(index)}</i>
+              <span className="task-ref-thumb" key={`${ref.path}-${index}`} title={`${labels[index]} · ${ref.name}`}>
+                <MediaThumb media={ref} alt={ref.name} />
+                <i>{labels[index]}</i>
               </span>
             ))}
           </div>
@@ -179,7 +180,6 @@ export function VideoTaskCard({
                 <b>创建时间</b>{formatTime(message.createdAt)}
                 {message.generation && <><b>供应商</b>{message.generation.providerName}</>}
                 {message.generation && <><b>模型 ID</b>{message.generation.modelId}</>}
-                {options && <><b>声音</b>{options.audio ? "有声" : "无声"}</>}
                 {taskId && <><b>任务 ID</b>{message.taskIds?.join("\n") || taskId}</>}
               </span>
             </span>

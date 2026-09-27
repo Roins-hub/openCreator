@@ -2,17 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
-import type { ImageOptions, VideoOptions } from "@/lib/types";
-import { videoDurationPresets } from "@/lib/video-duration";
+import type { VideoOptions } from "@/lib/types";
+import {
+  durationSummary, normalizeReferenceMode, type ReferenceMode, type VideoModel, type VideoRatio,
+} from "@/lib/tangzhi";
 
-const imageRatios: Array<[ImageOptions["ratio"], string]> = [
-  ["adaptive", "智能"], ["1:1", "1:1"], ["3:4", "3:4"], ["4:3", "4:3"],
-  ["16:9", "16:9"], ["9:16", "9:16"], ["2:3", "2:3"], ["3:2", "3:2"], ["21:9", "21:9"],
-];
-const videoRatios: Array<[VideoOptions["ratio"], string]> = [
-  ["21:9", "21:9"], ["16:9", "16:9"], ["4:3", "4:3"], ["1:1", "1:1"],
-  ["3:4", "3:4"], ["9:16", "9:16"], ["adaptive", "智能"],
-];
+const videoRatios: VideoRatio[] = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"];
+const resolutions: VideoOptions["resolution"][] = ["480p", "720p", "1080p", "4k"];
+const durationPresets = [3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30];
+const UNSUPPORTED = "当前模型不支持";
 
 function useDismiss(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -35,117 +33,74 @@ function useDismiss(open: boolean, close: () => void) {
 }
 
 function Segmented<T extends string | number | boolean>({
-  values, value, onChange, format = String,
+  values, value, onChange, format = String, isDisabled,
 }: {
   values: readonly T[];
   value: T;
   onChange: (value: T) => void;
   format?: (value: T) => string;
+  isDisabled?: (value: T) => boolean;
 }) {
   return <div className="parameter-segments">
-    {values.map((item) => <button type="button" key={String(item)}
-      className={item === value ? "selected" : ""} onClick={() => onChange(item)}>
-      {format(item)}
-    </button>)}
+    {values.map((item) => {
+      const disabled = isDisabled?.(item) ?? false;
+      return <button type="button" key={String(item)} disabled={disabled}
+        title={disabled ? UNSUPPORTED : undefined}
+        className={item === value ? "selected" : ""} onClick={() => onChange(item)}>
+        {format(item)}
+      </button>;
+    })}
   </div>;
 }
 
-export function ImageControls({
-  value, onChange,
-}: {
-  value: ImageOptions;
-  onChange: (value: ImageOptions) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const close = () => setOpen(false);
-  const ref = useDismiss(open, close);
-  const ratioLabel = value.ratio === "adaptive" ? "智能比例" :
-    value.ratio === "custom" ? `${value.width || "--"}×${value.height || "--"}` : value.ratio;
-  return <div className="parameter-control" ref={ref}>
-    <button type="button" className={`parameter-trigger ${open ? "active" : ""}`}
-      aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-      <SlidersHorizontal size={14} />
-      <span>{ratioLabel}</span><i /> <span>{value.resolution}</span><i /> <span>{value.count}张</span>
-    </button>
-    {open && <div className="parameter-popover image-parameter-popover">
-      <section>
-        <h3>图片比例</h3>
-        <div className="ratio-grid image-ratios">
-          {imageRatios.map(([ratio, label]) => <button type="button" key={ratio}
-            className={value.ratio === ratio ? "selected" : ""}
-            onClick={() => onChange({ ...value, ratio })}>
-            <span className={`ratio-shape ratio-${ratio.replace(":", "-")}`} />
-            <b>{label}</b>
-          </button>)}
-        </div>
-      </section>
-      <section>
-        <h3>图片尺寸</h3>
-        <div className="custom-size">
-          <label>W<input inputMode="numeric" placeholder="--" value={value.width || ""}
-            onChange={(event) => {
-              const width = Number(event.target.value) || undefined;
-              onChange({ ...value, ratio: width && value.height ? "custom" : "adaptive", width });
-            }} /></label>
-          <span>×</span>
-          <label>H<input inputMode="numeric" placeholder="--" value={value.height || ""}
-            onChange={(event) => {
-              const height = Number(event.target.value) || undefined;
-              onChange({ ...value, ratio: height && value.width ? "custom" : "adaptive", height });
-            }} /></label>
-        </div>
-      </section>
-      <section><h3>选择分辨率</h3>
-        <Segmented values={["2K", "4K"] as const} value={value.resolution}
-          onChange={(resolution) => onChange({ ...value, resolution })} />
-      </section>
-      <section><h3>生成数量</h3>
-        <Segmented values={[1, 2, 3, 4] as const} value={value.count}
-          onChange={(count) => onChange({ ...value, count })} />
-      </section>
-    </div>}
-  </div>;
-}
+export const modeLabels: Record<ReferenceMode, string> = {
+  text: "文生视频", first_last: "首尾帧", references: "参考素材",
+};
 
 export function VideoControls({
-  value, maxReferenceImages, maxVideoDuration, onChange,
+  value, model, onChange,
 }: {
   value: VideoOptions;
-  maxReferenceImages: number;
-  maxVideoDuration: number;
+  model: VideoModel;
   onChange: (value: VideoOptions) => void;
 }) {
   const [modeOpen, setModeOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const durationPresets = videoDurationPresets(maxVideoDuration);
-  const [customDuration, setCustomDuration] = useState(
-    () => !durationPresets.includes(value.duration));
+  const [customDuration, setCustomDuration] = useState(false);
   const close = () => { setModeOpen(false); setOptionsOpen(false); };
   const ref = useDismiss(modeOpen || optionsOpen, close);
-  const ratioLabel = value.ratio === "adaptive" ? "智能比例" : value.ratio;
-  const modeLabel = value.referenceMode === "text" ? "文生视频" :
-    value.referenceMode === "first" ? "首帧" :
-      value.referenceMode === "first_last" ? "首尾帧" : "多图参考";
+  const mode = normalizeReferenceMode(value.referenceMode);
+  const { durations, limits } = model;
+  const minDuration = durations[0];
+  const maxDuration = durations[durations.length - 1];
+  // 连续区间(如 4–15 秒)允许自定义任意整数秒;离散值(如 10/30 秒)只能点选
+  const contiguous = durations.every((item, index) => index === 0 || item === durations[index - 1] + 1);
+  const durationButtons = [...new Set([...durationPresets, ...(contiguous ? [minDuration, maxDuration] : durations)])]
+    .sort((a, b) => a - b);
+  const showCustom = customDuration || !durationButtons.includes(value.duration);
+  const media = [
+    limits.images && `${limits.images} 张图片`,
+    limits.videos && `${limits.videos} 个视频`,
+    limits.audios && `${limits.audios} 个音频`,
+  ].filter(Boolean).join("、");
+
   return <div className="video-parameter-group" ref={ref}>
     <div className="parameter-control">
       <button type="button" className={`parameter-trigger mode-trigger ${modeOpen ? "active" : ""}`}
         aria-expanded={modeOpen} onClick={() => { setModeOpen((open) => !open); setOptionsOpen(false); }}>
-        {modeLabel} <ChevronDown size={13} />
+        {modeLabels[mode]} <ChevronDown size={13} />
       </button>
       {modeOpen && <div className="mode-popover">
         <small>选择模式</small>
         {([
           ["text", "文生视频", "仅使用文字描述生成视频"],
-          ["first", "首帧", "使用一张图片作为视频起始画面"],
-          ["first_last", "首尾帧", "使用两张图片固定开头和结尾"],
-          ...(maxReferenceImages > 2 ? [[
-            "references", "多图参考", `使用 1–${maxReferenceImages} 张图片控制内容与风格`,
-          ] as const] : []),
-        ] as const).map(([mode, title, note]) => <button type="button" key={mode}
-          className={value.referenceMode === mode ? "selected" : ""}
-          onClick={() => { onChange({ ...value, referenceMode: mode }); setModeOpen(false); }}>
+          ["first_last", "首尾帧", "上传两张图片，固定开头和结尾画面"],
+          ["references", "参考素材", `最多 ${media}，合计不超过 ${limits.total} 个`],
+        ] as const).map(([item, title, note]) => <button type="button" key={item}
+          className={mode === item ? "selected" : ""}
+          onClick={() => { onChange({ ...value, referenceMode: item }); setModeOpen(false); }}>
           <span><b>{title}</b><small>{note}</small></span>
-          {value.referenceMode === mode && <Check size={15} />}
+          {mode === item && <Check size={15} />}
         </button>)}
       </div>}
     </div>
@@ -153,55 +108,55 @@ export function VideoControls({
       <button type="button" className={`parameter-trigger ${optionsOpen ? "active" : ""}`}
         aria-expanded={optionsOpen} onClick={() => { setOptionsOpen((open) => !open); setModeOpen(false); }}>
         <SlidersHorizontal size={14} />
-        <span>{ratioLabel}</span><i /><span>{value.resolution.toUpperCase()}</span><i />
-        <span>{value.duration}秒</span><i /><span>{value.count}条</span><i />
-        <span>{value.audio ? "有声" : "无声"}</span>
+        <span>{value.ratio}</span><i /><span>{value.resolution.toUpperCase()}</span><i />
+        <span>{value.duration}秒</span><i /><span>{value.count}条</span>
       </button>
       {optionsOpen && <div className="parameter-popover video-parameter-popover">
         <section><h3>视频比例</h3>
           <div className="ratio-grid video-ratios">
-            {videoRatios.map(([ratio, label]) => <button type="button" key={ratio}
-              className={value.ratio === ratio ? "selected" : ""}
-              onClick={() => onChange({ ...value, ratio })}>
-              <span className={`ratio-shape ratio-${ratio.replace(":", "-")}`} /><b>{label}</b>
-            </button>)}
+            {videoRatios.map((ratio) => {
+              const disabled = !model.ratios.includes(ratio);
+              return <button type="button" key={ratio} disabled={disabled}
+                title={disabled ? UNSUPPORTED : undefined}
+                className={value.ratio === ratio ? "selected" : ""}
+                onClick={() => onChange({ ...value, ratio })}>
+                <span className={`ratio-shape ratio-${ratio.replace(":", "-")}`} /><b>{ratio}</b>
+              </button>;
+            })}
           </div>
         </section>
-        <section><h3>分辨率</h3>
-          <Segmented values={["480p", "720p", "1080p", "4k"] as const} value={value.resolution}
+        <section><h3>分辨率<small>由所选模型决定</small></h3>
+          <Segmented values={resolutions} value={value.resolution}
             format={(resolution) => resolution.toUpperCase()}
+            isDisabled={(resolution) => resolution !== model.resolution}
             onChange={(resolution) => onChange({ ...value, resolution })} />
         </section>
-        <section><h3>视频时长</h3>
+        <section><h3>视频时长<small>{durationSummary(durations)}</small></h3>
           <div className="duration-picker">
-          <Segmented values={durationPresets} value={value.duration}
-            format={(duration) => `${duration}s`}
-            onChange={(duration) => {
-              setCustomDuration(false);
-              onChange({ ...value, duration });
-            }} />
-          <button type="button" className={customDuration ? "selected" : ""}
-            onClick={() => setCustomDuration(true)}>自定义</button>
-          </div>
-          {customDuration && <label className="custom-duration">
-            <span>自定义秒数</span>
-            <input type="number" min={3} max={maxVideoDuration} step={1}
-              value={value.duration}
-              onChange={(event) => {
-                const duration = Math.min(maxVideoDuration, Math.max(3, Number(event.target.value) || 3));
+            <Segmented values={durationButtons} value={value.duration}
+              format={(duration) => `${duration}s`}
+              isDisabled={(duration) => !durations.includes(duration)}
+              onChange={(duration) => {
+                setCustomDuration(false);
                 onChange({ ...value, duration });
               }} />
-            <small>3–{maxVideoDuration} 秒</small>
+            {contiguous && <button type="button" className={showCustom ? "selected" : ""}
+              onClick={() => setCustomDuration(true)}>自定义</button>}
+          </div>
+          {contiguous && showCustom && <label className="custom-duration">
+            <span>自定义秒数</span>
+            <input type="number" min={minDuration} max={maxDuration} step={1}
+              value={value.duration}
+              onChange={(event) => {
+                const duration = Math.min(maxDuration, Math.max(minDuration, Math.round(Number(event.target.value)) || minDuration));
+                onChange({ ...value, duration });
+              }} />
+            <small>{minDuration}–{maxDuration} 秒</small>
           </label>}
         </section>
-        <section><h3>选择生成数量</h3>
+        <section><h3>生成数量</h3>
           <Segmented values={[1, 2, 3, 4] as const} value={value.count}
             onChange={(count) => onChange({ ...value, count })} />
-        </section>
-        <section><h3>输出声音</h3>
-          <Segmented values={[true, false] as const} value={value.audio}
-            format={(audio) => audio ? "开" : "关"}
-            onChange={(audio) => onChange({ ...value, audio })} />
         </section>
       </div>}
     </div>

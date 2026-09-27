@@ -8,7 +8,8 @@ import { parseByteRange } from "@/lib/byte-range";
 
 const contentTypes: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-  ".webp": "image/webp", ".mp4": "video/mp4",
+  ".webp": "image/webp", ".mp4": "video/mp4", ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg", ".wav": "audio/wav",
 };
 
 function streamFile(path: string, start?: number, end?: number) {
