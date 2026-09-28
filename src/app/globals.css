@@ -1055,6 +1055,8 @@ body { transition: background-color .2s ease, color .2s ease; }
   position: absolute; top: -7px; right: -7px; display: grid; place-items: center; width: 18px; height: 18px; padding: 0;
   border: 2px solid var(--paper); border-radius: 50%; color: var(--paper); background: var(--ink);
   opacity: 0; transform: scale(.6); transition: opacity .15s ease, transform .15s ease;
+  /* 收起时 × 不可见,也不能被点到,避免误删 */
+  pointer-events: none;
 }
 .stack-add {
   z-index: 1; display: grid; place-items: center; border: 1px dashed var(--line-strong); border-radius: 9px;
@@ -1065,6 +1067,8 @@ body { transition: background-color .2s ease, color .2s ease; }
   position: absolute; top: -6px; right: -6px; z-index: 30; min-width: 18px; height: 18px; padding: 0 5px;
   border: 2px solid var(--paper); border-radius: 9px; color: var(--paper); background: var(--ink);
   font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; transition: opacity .12s ease;
+  /* 数量角标只是展示:不能挡住第一张卡片的 × */
+  pointer-events: none;
 }
 /* 悬停 / 键盘聚焦:整叠横向摊开 */
 .attachment-stack:hover::before, .attachment-stack:focus-within::before {
@@ -1080,7 +1084,9 @@ body { transition: background-color .2s ease, color .2s ease; }
   opacity: 1; pointer-events: auto; transform: translateX(calc(var(--i) * var(--step)));
 }
 .attachment-stack:hover .stack-card-index, .attachment-stack:focus-within .stack-card-index { opacity: 1; }
-.attachment-stack:hover .stack-card-remove, .attachment-stack:focus-within .stack-card-remove { opacity: 1; transform: none; }
+.attachment-stack:hover .stack-card-remove, .attachment-stack:focus-within .stack-card-remove {
+  opacity: 1; transform: none; pointer-events: auto;
+}
 .attachment-stack:hover .stack-count, .attachment-stack:focus-within .stack-count { opacity: 0; }
 .stack-card:hover { z-index: 40; }
 @media (prefers-reduced-motion: reduce) {
