@@ -79,6 +79,7 @@ export function AppShell() {
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const uploading = attachments.some((item) => item.uploading);
   const [busy, setBusy] = useState(false);
+  const [pollFailures, setPollFailures] = useState(0);
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [draggingImages, setDraggingImages] = useState(false);
@@ -669,16 +670,21 @@ export function AppShell() {
     const taskId = pending.taskIds?.find((id) =>
       !pending.completedTaskIds?.includes(id) && !pending.failedTaskIds?.includes(id)) || pending.taskId;
     if (!taskId) return;
+    // 查询失败(网络抖动、中转站临时错误)时不放弃,逐步拉长间隔继续查
     const timer = window.setTimeout(async () => {
       try {
         const result = await request<{ conversation: Conversation }>(
           `/api/tasks/${taskId}?conversationId=${active.id}`, { headers: apiKeyHeaders() },
         );
+        setPollFailures(0);
         setConversations((items) => [result.conversation, ...items.filter((item) => item.id !== active.id)]);
-      } catch (cause) { setError((cause as Error).message); }
-    }, 5000);
+      } catch (cause) {
+        setError(`查询任务状态失败，稍后自动重试：${(cause as Error).message}`);
+        setPollFailures((count) => count + 1);
+      }
+    }, Math.min(5000 * 2 ** pollFailures, 30_000));
     return () => clearTimeout(timer);
-  }, [active]);
+  }, [active, pollFailures]);
 
   return (
     <main className="app-frame">
