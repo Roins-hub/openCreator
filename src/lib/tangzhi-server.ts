@@ -54,6 +54,15 @@ export function upstreamMessage(data: unknown, status: number): string {
   return `中转站返回 ${status}`;
 }
 
+/** 把中转站的扣费失败提示换成用户看得懂的话。 */
+export function friendlyMessage(message: string) {
+  if (!/预扣费额度失败|额度不足|余额不足|insufficient/i.test(message)) return message;
+  const left = message.match(/剩余额度[:：]\s*[^\d-]*([\d.]+)/)?.[1];
+  const need = message.match(/需要预扣费额度[:：]\s*[^\d-]*([\d.]+)/)?.[1];
+  const detail = left && need ? `本次需预扣 ${Number(need).toFixed(2)}，当前剩余 ${Number(left).toFixed(2)}。` : "";
+  return `中转站余额不足：${detail}请到 new.tangzhi.org 充值，或改用更短时长、更便宜的模型。`;
+}
+
 async function call(apiKey: string, path: string, init: RequestInit = {}) {
   const response = await fetch(`${TANGZHI_BASE_URL}${path}`, {
     ...init,
@@ -63,8 +72,7 @@ async function call(apiKey: string, path: string, init: RequestInit = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401) throw new Error("API Key 无效或已过期，请在设置中检查");
-    if (response.status === 403) throw new Error(upstreamMessage(data, 403) || "余额不足或无权使用该模型");
-    throw new Error(upstreamMessage(data, response.status));
+    throw new Error(friendlyMessage(upstreamMessage(data, response.status)));
   }
   return data as Record<string, unknown>;
 }

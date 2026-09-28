@@ -148,11 +148,19 @@ export function durationSummary(durations: number[]) {
     : durations.map((value) => `${value}秒`).join(" / ");
 }
 
-export type ReferenceMode = "text" | "first_last" | "references";
+/** 可选的生成方式。文生视频不用单独选:没有素材时自动按文生视频提交。 */
+export type ReferenceMode = "first_last" | "references";
 
-/** 当前模型可用的生成方式;首帧模式中转站不支持,旧记录按参考素材处理。 */
+/** 旧记录里的「文生视频」「首帧」统一按参考素材处理(没有素材时即文生视频)。 */
 export function normalizeReferenceMode(mode: VideoOptions["referenceMode"]): ReferenceMode {
-  return mode === "first" ? "references" : mode;
+  return mode === "first_last" ? "first_last" : "references";
+}
+
+/** 实际提交的方式:没有素材就是文生视频,有素材按所选方式。 */
+export function effectiveReferenceMode(
+  mode: VideoOptions["referenceMode"], attachmentCount: number,
+): VideoOptions["referenceMode"] {
+  return attachmentCount ? normalizeReferenceMode(mode) : "text";
 }
 
 export function countMedia(attachments: readonly Pick<MediaRef, "kind">[]) {
@@ -168,7 +176,6 @@ export function remainingMedia(
   model: VideoModel, mode: VideoOptions["referenceMode"], attachments: readonly Pick<MediaRef, "kind">[], kind: MediaKind,
 ) {
   const normalized = normalizeReferenceMode(mode);
-  if (normalized === "text") return 0;
   const counts = countMedia(attachments);
   if (normalized === "first_last") return kind === "image" ? Math.max(0, 2 - counts.images) : 0;
   const perKind = kind === "image" ? model.limits.images - counts.images :
@@ -205,15 +212,12 @@ export function videoRequestError(
     return `当前模型支持的比例为 ${model.ratios.join(" / ")}`;
   }
   const counts = countMedia(attachments);
-  const mode = normalizeReferenceMode(options.referenceMode);
-  if (mode === "text") {
-    return attachments.length ? "文生视频不需要参考素材，请先移除素材或切换到参考素材模式" : "";
-  }
+  const mode = effectiveReferenceMode(options.referenceMode, attachments.length);
+  if (mode === "text") return "";
   if (mode === "first_last") {
     if (counts.audios || counts.videos) return "首尾帧模式只能使用图片";
     return counts.images === 2 ? "" : "首尾帧模式需要两张图片（首帧、尾帧）";
   }
-  if (!attachments.length) return "参考素材模式至少需要一个素材";
   if (counts.images > model.limits.images) return `当前模型最多 ${model.limits.images} 张参考图`;
   if (counts.audios > model.limits.audios) {
     return model.limits.audios ? `当前模型最多 ${model.limits.audios} 个参考音频` : "当前模型不支持参考音频";
@@ -234,7 +238,7 @@ export function buildVideoRequest(
   attachments: readonly MediaRef[], mediaUrl: (media: MediaRef) => string, clientTaskId: string,
 ) {
   const urls = (kind: MediaKind) => attachments.filter((item) => item.kind === kind).map(mediaUrl);
-  const mode = normalizeReferenceMode(options.referenceMode);
+  const mode = effectiveReferenceMode(options.referenceMode, attachments.length);
   const body: Record<string, unknown> = {
     model: model.id,
     prompt: prompt.trim(),

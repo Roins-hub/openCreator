@@ -54,14 +54,16 @@ function Segmented<T extends string | number | boolean>({
 }
 
 export const modeLabels: Record<ReferenceMode, string> = {
-  text: "文生视频", first_last: "首尾帧", references: "参考素材",
+  first_last: "首尾帧", references: "参考生成",
 };
 
 export function VideoControls({
-  value, model, onChange,
+  value, model, attachmentCount, onChange,
 }: {
   value: VideoOptions;
   model: VideoModel;
+  /** 已添加的素材数;为 0 时自动按文生视频生成 */
+  attachmentCount: number;
   onChange: (value: VideoOptions) => void;
 }) {
   const [modeOpen, setModeOpen] = useState(false);
@@ -88,14 +90,13 @@ export function VideoControls({
     <div className="parameter-control">
       <button type="button" className={`parameter-trigger mode-trigger ${modeOpen ? "active" : ""}`}
         aria-expanded={modeOpen} onClick={() => { setModeOpen((open) => !open); setOptionsOpen(false); }}>
-        {modeLabels[mode]} <ChevronDown size={13} />
+        {attachmentCount ? modeLabels[mode] : "文生视频"} <ChevronDown size={13} />
       </button>
       {modeOpen && <div className="mode-popover">
-        <small>选择模式</small>
+        <small>上传素材后的生成方式 · 不上传素材即为文生视频</small>
         {([
-          ["text", "文生视频", "仅使用文字描述生成视频"],
-          ["first_last", "首尾帧", "上传两张图片，固定开头和结尾画面"],
-          ["references", "参考素材", `最多 ${media}，合计不超过 ${limits.total} 个`],
+          ["references", "参考生成", `用素材控制主体、动作、风格或声音；最多 ${media}，合计不超过 ${limits.total} 个`],
+          ["first_last", "首尾帧", "上传两张图片，分别作为视频的开头和结尾画面"],
         ] as const).map(([item, title, note]) => <button type="button" key={item}
           className={mode === item ? "selected" : ""}
           onClick={() => { onChange({ ...value, referenceMode: item }); setModeOpen(false); }}>

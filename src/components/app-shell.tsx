@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, AtSign, BookOpen, ImagePlus, Images, KeyRound, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, Square, X, BookMarked,
+  ArrowUp, AtSign, BookOpen, Clapperboard, ImagePlus, Images, KeyRound, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, Square, X, BookMarked,
 } from "lucide-react";
 import type { Conversation, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
 import type { Asset } from "@/lib/asset-store";
@@ -16,7 +16,7 @@ import { EmptyStatePrompt } from "@/components/empty-state-prompt";
 import { acceptAttribute, MEDIA_KIND_LABEL, MEDIA_RULES, pickMediaFiles } from "@/lib/media-files";
 import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey } from "@/lib/api-key";
 import {
-  countMedia, durationSummary, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
+  countMedia, durationSummary, effectiveReferenceMode, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
   TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError, type MediaKind, type VideoModel,
 } from "@/lib/tangzhi";import { unfinishedTaskIds } from "@/lib/generation-stop";
 import { ConversationSearch } from "@/components/conversation-search";
@@ -45,7 +45,7 @@ const revokePreview = (item: ComposerAttachment) => {
 };
 
 const videoDefaults: VideoOptions = {
-  referenceMode: "text", ratio: "16:9", resolution: "720p", duration: 5,
+  referenceMode: "references", ratio: "16:9", resolution: "720p", duration: 5,
   count: 1, audio: true, watermark: false, cameraFixed: false,
 };
 const MEDIA_KINDS: MediaKind[] = ["image", "video", "audio"];
@@ -111,7 +111,7 @@ export function AppShell() {
     kind, selected ? remainingMedia(selected, mode, attachments, kind) : 0,
   ])) as Record<MediaKind, number>;
   const allowedKinds = MEDIA_KINDS.filter((kind) => remaining[kind] > 0);
-  const remainingTotal = !selected || mode === "text" ? 0 :
+  const remainingTotal = !selected ? 0 :
     mode === "first_last" ? remaining.image : Math.max(0, selected.limits.total - attachments.length);
   const uploadLimit = allowedKinds.length ? remainingTotal : 0;
   // 当前模式下这个模型能接受的素材类型(不看已选数量),决定 @ 选择框和上传入口
@@ -375,10 +375,6 @@ export function AppShell() {
 
   const upload = async (files: readonly File[]) => {
     if (!selected || !files.length) return;
-    if (mode === "text") {
-      setError("文生视频不需要参考素材，请先切换到「参考素材」或「首尾帧」模式");
-      return;
-    }
     const selection = pickMediaFiles(files, remaining, remainingTotal);
     if (selection.error) setError(selection.error);
     else setError("");
@@ -434,7 +430,11 @@ export function AppShell() {
     { clearComposer, videoOptions }: { clearComposer: boolean; videoOptions?: VideoOptions },
   ) => {
     if (isGenerating || !selected) return;
-    const currentVideoOptions = fitVideoOptions(selected, videoOptions || active?.videoOptions || videoDefaults);
+    const fitted = fitVideoOptions(selected, videoOptions || active?.videoOptions || videoDefaults);
+    // 快照记录实际生成方式:没有素材时就是文生视频
+    const currentVideoOptions: VideoOptions = {
+      ...fitted, referenceMode: effectiveReferenceMode(fitted.referenceMode, usedAttachments.length),
+    };
     if (!apiKey) {
       setError("请先在「设置」中填写中转站 API Key");
       return;
@@ -591,7 +591,7 @@ export function AppShell() {
           ...videoOptions,
           ratio: template.ratio ?? videoOptions.ratio,
           duration: fitDuration(template.duration, max, selected.durations) ?? videoOptions.duration,
-          referenceMode: template.referenceMode ?? (attachments.length ? videoOptions.referenceMode : "text"),
+          referenceMode: template.referenceMode ?? videoOptions.referenceMode,
         }),
       });
     }
@@ -731,21 +731,9 @@ export function AppShell() {
           {!sidebarOpen && <button className="icon-button" onClick={() => setSidebarOpen(true)} aria-label="打开侧栏">
             <Menu size={18} />
           </button>}
-          <Dropdown className="model-dropdown" ariaLabel="选择模型" placeholder="正在加载模型"
-            value={selected?.id || ""}
-            options={[...models].sort((a, b) => RESOLUTION_ORDER.indexOf(a.resolution) - RESOLUTION_ORDER.indexOf(b.resolution))
-              .map((model) => ({
-              value: model.id,
-              label: model.id,
-              group: model.resolution.toUpperCase(),
-              hint: `${durationSummary(model.durations)} · ${formatPrice(model)}`,
-            }))}
-            renderValue={() => selected
-              ? <>{selected.id}<span className="model-dropdown-provider"> · {TANGZHI_PROVIDER_NAME}</span></>
-              : <span className="dropdown-placeholder">正在加载模型</span>}
-            onChange={(value) => void chooseModel(value)} />
           {selected && <span className="model-spec" title={selected.description}>
-            <b>{selected.resolution.toUpperCase()}</b>
+            <b>{selected.id}</b>
+            <span>{selected.resolution.toUpperCase()}</span>
             <span>{durationSummary(selected.durations)}</span>
             <span>{selected.limits.images}图 · {selected.limits.videos}视频 · {selected.limits.audios}音频 · 合计≤{selected.limits.total}</span>
             <span>{formatPrice(selected)}</span>
@@ -836,7 +824,7 @@ export function AppShell() {
               <strong>{uploadLimit ? "松手添加素材" : "当前模式不能添加素材"}</strong>
               <span>{uploadLimit
                 ? `${allowedKinds.map((kind) => MEDIA_RULES[kind].label).join("、")}，还可添加 ${uploadLimit} 个`
-                : mode === "text" ? "请先切换到「参考素材」或「首尾帧」模式" : "已达到当前模型的素材上限"}</span>
+                : "已达到当前模型的素材上限"}</span>
             </div>
           )}
           <PromptLibrary open={libraryOpen} onClose={closeLibrary} onUse={applyPromptTemplate} />
@@ -867,8 +855,8 @@ export function AppShell() {
                 </div>
               )}
               <div ref={editorRef} className="composer-editor" contentEditable suppressContentEditableWarning role="textbox" aria-label="提示词"
-                data-placeholder={mode === "text" ? "描述画面、运动、镜头和氛围（至少 10 个字）…" :
-                  "描述画面、运动和镜头，输入 @ 引用素材（至少 10 个字）…"}
+                data-placeholder={attachments.length ? "描述画面、运动和镜头，输入 @ 引用素材（至少 10 个字）…" :
+                  "描述画面、运动、镜头和氛围（至少 10 个字）；添加素材可按参考图或首尾帧生成"}
                 onPaste={pastedImages}
                 onKeyDown={(event) => {
                   if (event.key === "@" && !event.ctrlKey && !event.metaKey) {
@@ -890,7 +878,7 @@ export function AppShell() {
               <button className="icon-button" onClick={() => fileRef.current?.click()}
                 disabled={uploadLimit === 0}
                 title={uploadLimit === 0
-                  ? (mode === "text" ? "文生视频不需要参考素材" : "已达到当前模型的素材上限")
+                  ? (mode === "first_last" ? "首尾帧最多两张图片" : "已达到当前模型的素材上限")
                   : `添加${allowedKinds.map((kind) => MEDIA_KIND_LABEL[kind]).join(" / ")}`}
                 aria-label="添加素材">
                 <ImagePlus size={18} />
@@ -909,7 +897,21 @@ export function AppShell() {
                   <BookMarked size={18} />
                 </button>
               )}
+              <Dropdown className="model-dropdown composer-model" ariaLabel="选择模型" placeholder="正在加载模型"
+                value={selected?.id || ""}
+                options={[...models].sort((a, b) => RESOLUTION_ORDER.indexOf(a.resolution) - RESOLUTION_ORDER.indexOf(b.resolution))
+                  .map((model) => ({
+                    value: model.id,
+                    label: model.id,
+                    group: model.resolution.toUpperCase(),
+                    hint: `${durationSummary(model.durations)} · ${formatPrice(model)}`,
+                  }))}
+                renderValue={() => selected
+                  ? <><Clapperboard size={14} /><span className="composer-model-name">{selected.id}</span></>
+                  : <span className="dropdown-placeholder">正在加载模型</span>}
+                onChange={(value) => void chooseModel(value)} />
               {selected && <VideoControls key={selected.id} value={videoOptions} model={selected}
+                attachmentCount={attachments.length}
                 onChange={(next) => changeGenerationOptions({ videoOptions: next })} />}
               <span className="composer-spacer">{attachmentSummary(mode, attachments)}</span>
               <button className={`send-button ${isGenerating ? "is-stopping" : ""}`}

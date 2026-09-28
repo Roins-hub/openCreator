@@ -80,7 +80,8 @@ describe("model constraints", () => {
     expect(remainingMedia(ch1310, "references", [], "video")).toBe(0);
     expect(remainingMedia(ch01, "first_last", [media("image", "a.png")], "image")).toBe(1);
     expect(remainingMedia(ch01, "first_last", [], "audio")).toBe(0);
-    expect(remainingMedia(ch01, "text", [], "image")).toBe(0);
+    // 旧的「文生视频」模式按参考生成处理:随时可以添加素材
+    expect(remainingMedia(ch01, "text", [], "image")).toBe(9);
   });
 
   it("stops at the combined media limit", () => {
@@ -99,7 +100,9 @@ describe("model constraints", () => {
     expect(videoRequestError(ch08, prompt, options(), [])).toMatch(/9:16/);
     expect(videoRequestError(ch1310, prompt, options({ duration: 10 }), [media("video", "a.mp4")])).toMatch(/不支持参考视频/);
     expect(videoRequestError(ch01, prompt, options({ referenceMode: "first_last" }), [media("image", "a.png")])).toMatch(/两张/);
-    expect(videoRequestError(ch01, prompt, options({ referenceMode: "text" }), [media("image", "a.png")])).toMatch(/不需要/);
+    // 没有素材就是文生视频,任何生成方式都可以提交
+    expect(videoRequestError(ch01, prompt, options({ referenceMode: "references" }), [])).toBe("");
+    expect(videoRequestError(ch01, prompt, options({ referenceMode: "first_last" }), [])).toBe("");
     expect(videoRequestError(ch01, prompt, options(), [media("image", "a.png"), media("audio", "b.mp3")])).toBe("");
   });
 });
@@ -136,5 +139,11 @@ describe("buildVideoRequest", () => {
     const body = buildVideoRequest(ch01, "提示词内容足够长了吧", options({ referenceMode: "text" }), [], url, "mote_3");
     expect(body).not.toHaveProperty("references");
     expect(body.mode).toBe("references");
+  });
+
+  it("falls back to text-to-video when first/last frame is chosen without images", () => {
+    const body = buildVideoRequest(ch01, "提示词内容足够长了吧", options({ referenceMode: "first_last" }), [], url, "mote_4");
+    expect(body.mode).toBe("references");
+    expect(body).not.toHaveProperty("frames");
   });
 });

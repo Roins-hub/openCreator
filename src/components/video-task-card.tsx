@@ -11,7 +11,7 @@ import { findReference, referenceLabels, splitPromptReferences } from "@/lib/pro
 import { MediaThumb } from "@/components/media-thumb";
 
 const modeLabels: Record<VideoOptions["referenceMode"], string> = {
-  text: "文生视频", first: "首帧", first_last: "首尾帧", references: "参考素材",
+  text: "文生视频", first: "首帧", first_last: "首尾帧", references: "参考生成",
 };
 
 type Props = {

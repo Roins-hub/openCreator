@@ -1319,3 +1319,15 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
   .dropdown-list::-webkit-scrollbar-track { background: transparent; margin: 10px 0; }
   .dropdown-list::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: var(--line-strong) padding-box; }
 }
+
+/* 输入框里的模型选择:样式与参数按钮一致,列表向上展开 */
+.composer-tools { flex-wrap: wrap; row-gap: 6px; }
+.composer-model .dropdown-trigger {
+  gap: 6px; height: 32px; max-width: min(260px, 60vw); padding: 0 9px; border: 1px solid var(--line); border-radius: 9px;
+  color: var(--ink); background: var(--paper); font-size: 12px; font-weight: 700;
+}
+.composer-model .dropdown-trigger:hover, .composer-model.is-open .dropdown-trigger { border-color: var(--line-strong); background: var(--warm); }
+.composer-model .dropdown-value { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.composer-model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-model .dropdown-list { top: auto; bottom: calc(100% + 8px); min-width: 340px; max-height: min(420px, 60vh); }
+@media (max-width: 700px) { .composer-model .dropdown-list { min-width: min(340px, calc(100vw - 40px)); } }
