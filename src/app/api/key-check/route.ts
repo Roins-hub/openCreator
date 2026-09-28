@@ -1,11 +1,13 @@
 import { failure, ok } from "@/lib/http";
 import { TANGZHI_BASE_URL } from "@/lib/tangzhi";
-import { requireApiKey, upstreamMessage } from "@/lib/tangzhi-server";
+import { API_KEY_HEADER } from "@/lib/identity";
+import { upstreamMessage } from "@/lib/tangzhi-server";
 
 /** 用 /v1/models 验证 API Key 是否可用(不产生费用)。 */
 export async function POST(request: Request) {
   try {
-    const key = requireApiKey(request);
+    const key = request.headers.get(API_KEY_HEADER)?.trim();
+    if (!key) throw new Error("请先填写 API Key");
     const response = await fetch(`${TANGZHI_BASE_URL}/v1/models`, {
       headers: { Authorization: `Bearer ${key}` }, cache: "no-store", signal: AbortSignal.timeout(15_000),
     });

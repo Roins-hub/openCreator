@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Check, CircleCheck, CircleX, ExternalLink, Eye, EyeOff, LoaderCircle, Save, TestTube2, X,
 } from "lucide-react";
-import { apiKeyHeaders, readApiKey, writeApiKey } from "@/lib/api-key";
+import { apiKeyHeaders, openSession, readApiKey, writeApiKey } from "@/lib/api-key";
 import {
   durationSummary, formatPrice, mediaSummary, TANGZHI_BASE_URL, TANGZHI_KEY_PAGE, type VideoModel,
 } from "@/lib/tangzhi";
@@ -37,13 +37,24 @@ export function SettingsForm() {
     return () => clearTimeout(timer);
   }, []);
 
-  const save = () => {
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    const key = apiKey.trim();
     setError("");
-    writeApiKey(apiKey);
-    setApiKey(apiKey.trim());
-    setSaved(apiKey.trim());
-    setStatus(apiKey.trim() ? "已保存" : "已清除");
-    window.setTimeout(() => setStatus(""), 2000);
+    setSaving(true);
+    try {
+      // 先验证 Key 并切换到它对应的个人空间,成功后才保存
+      await openSession(key);
+      writeApiKey(key);
+      setApiKey(key);
+      setSaved(key);
+      setStatus(key ? "已保存" : "已清除");
+      window.setTimeout(() => setStatus(""), 2000);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const verify = async () => {
@@ -68,7 +79,9 @@ export function SettingsForm() {
         <Link href="/" className="back-link"><ArrowLeft size={17} /> 返回对话</Link>
         <div className="settings-actions">
           {status && <span className="save-status"><Check size={14} />{status}</span>}
-          <button className="primary-button" onClick={save} disabled={!dirty}><Save size={15} /> 保存</button>
+          <button className="primary-button" onClick={() => void save()} disabled={!dirty || saving}>
+            {saving ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />} 保存
+          </button>
         </div>
       </header>
 
@@ -76,7 +89,7 @@ export function SettingsForm() {
         <div className="settings-title">
           <span className="eyebrow">SETTINGS · v{appVersion}</span>
           <h1>设置</h1>
-          <p>视频由 <code>{TANGZHI_BASE_URL.replace("https://", "")}</code> 中转站生成。API Key 只保存在当前浏览器，生成时经本站转发给中转站，不会写入服务器。</p>
+          <p>视频由 <code>{TANGZHI_BASE_URL.replace("https://", "")}</code> 中转站生成。API Key 只保存在当前浏览器；你的对话和视频按 Key 单独存放，其他用户看不到。换一个 Key 会进入另一个空间。</p>
         </div>
         {error && <div className="settings-error">{error}<button onClick={() => setError("")}><X size={14} /></button></div>}
 
@@ -94,7 +107,7 @@ export function SettingsForm() {
                 <input aria-label="API Key" type={visible ? "text" : "password"} value={apiKey}
                   placeholder="sk-…" autoComplete="off" spellCheck={false}
                   onChange={(event) => { setApiKey(event.target.value); setCheck(undefined); }}
-                  onKeyDown={(event) => { if (event.key === "Enter") save(); }} />
+                  onKeyDown={(event) => { if (event.key === "Enter" && dirty) void save(); }} />
                 <button type="button" onClick={() => setVisible((value) => !value)}
                   aria-label={visible ? "隐藏 API Key" : "显示 API Key"}>
                   {visible ? <EyeOff size={16} /> : <Eye size={16} />}

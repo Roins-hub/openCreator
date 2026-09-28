@@ -3,6 +3,8 @@ import { stat } from "node:fs/promises";
 import { extname } from "node:path";
 import { Readable } from "node:stream";
 import { failure } from "@/lib/http";
+import { mediaPrefix, sessionUserId } from "@/lib/identity";
+import { assertKey, r2SignedUrl, verifyMediaSignature } from "@/lib/object-store";
 import { inside, outDir } from "@/lib/paths";
 import { parseByteRange } from "@/lib/byte-range";
 
@@ -11,20 +13,42 @@ const contentTypes: Record<string, string> = {
   ".webp": "image/webp", ".mp4": "video/mp4", ".mov": "video/quicktime",
   ".mp3": "audio/mpeg", ".wav": "audio/wav",
 };
+const LINK_TTL = 3600;
 
 function streamFile(path: string, start?: number, end?: number) {
   return Readable.toWeb(createReadStream(path, start === undefined ? undefined : { start, end })) as ReadableStream;
 }
 
+/**
+ * 媒体访问:只有文件所属用户(签名 Cookie)或带有效签名的链接(给中转站拉素材)可以读取。
+ * 云存储时跳转到 R2 临时直链,浏览器直接从 R2 取文件,不经过本站服务器。
+ */
 export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
   try {
-    const path = inside(outDir, ...(await context.params).path);
+    const key = assertKey((await context.params).path.join("/"));
+    const query = new URL(request.url).searchParams;
+    const userId = await sessionUserId(request);
+    const allowed = (userId && key.startsWith(mediaPrefix(userId))) ||
+      await verifyMediaSignature(key, query.get("exp"), query.get("sig"));
+    if (!allowed) return failure(new Error("无权访问该文件"), 404);
+
+    const download = query.get("download") || undefined;
+    const direct = await r2SignedUrl(key, LINK_TTL, download);
+    if (direct) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: direct, "Cache-Control": `private, max-age=${LINK_TTL / 2}` },
+      });
+    }
+
+    const path = inside(outDir, key);
     const { size } = await stat(path);
     const headers: Record<string, string> = {
       "Content-Type": contentTypes[extname(path).toLowerCase()] || "application/octet-stream",
       "Cache-Control": "private, max-age=31536000, immutable",
       // 视频拖动进度条、Safari 播放都依赖分段读取
       "Accept-Ranges": "bytes",
+      ...(download ? { "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(download)}` } : {}),
     };
     const rangeHeader = request.headers.get("range");
     if (!rangeHeader) {

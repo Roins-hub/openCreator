@@ -1,26 +1,20 @@
 import { resolve } from "node:path";
-import { dataDir } from "./paths";
 import { readJson, writeJsonAtomic } from "./json-store";
 
-const favoritesFile = (root = dataDir) => resolve(root, "favorites.json");
+/** 收藏按媒体 key 记录,存在每个用户自己的目录里(root = data/users/<用户ID>)。 */
+const favoritesFile = (root: string) => resolve(root, "favorites.json");
 
-/** 收藏按资产原始路径记录,移入回收站再恢复后收藏状态不丢失。 */
-export function favoriteKey(path: string) {
-  return path.replace(/^\.trash\//, "");
-}
-
-export async function listFavorites(root = dataDir): Promise<string[]> {
+export async function listFavorites(root: string): Promise<string[]> {
   const value = await readJson<unknown>(favoritesFile(root), []);
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-export async function setFavorite(path: string, favorite: boolean, root = dataDir) {
-  const key = favoriteKey(path);
-  if (!/^(images|videos)\/[^/]+$/.test(key)) throw new Error("非法资产路径");
+export async function setFavorite(path: string, favorite: boolean, root: string, prefix = "") {
+  if (!path.startsWith(prefix) || !/^users\/[0-9a-f]{32}\/videos\/[^/]+$/.test(path)) throw new Error("非法资产路径");
   const current = await listFavorites(root);
   const next = favorite
-    ? [key, ...current.filter((item) => item !== key)]
-    : current.filter((item) => item !== key);
+    ? [path, ...current.filter((item) => item !== path)]
+    : current.filter((item) => item !== path);
   await writeJsonAtomic(favoritesFile(root), next);
   return next;
 }

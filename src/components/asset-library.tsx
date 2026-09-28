@@ -5,8 +5,12 @@ import Link from "next/link";
 import { ArrowLeft, Download, Image as ImageIcon, Images, Star, Trash2, Video } from "lucide-react";
 import type { Asset } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
+import { apiKeyHeaders, openSession, readApiKey } from "@/lib/api-key";
 
 type Filter = "all" | Asset["kind"] | "favorite" | "trash";
+
+const retentionDays = Number(process.env.NEXT_PUBLIC_RETENTION_DAYS) || 0;
+const retentionNote = retentionDays ? `生成结果保留 ${retentionDays} 天，请及时下载需要长期保存的视频。` : "";
 
 function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -18,17 +22,20 @@ export function AssetLibrary() {
   const [filter, setFilter] = useState<Filter>("all");
   const [error, setError] = useState("");
   const loadAssets = async () => {
-    const response = await fetch("/api/assets");
+    const response = await fetch("/api/assets", { headers: apiKeyHeaders() });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "无法读取资产");
     setAssets(data);
   };
   useEffect(() => {
-    fetch("/api/assets").then(async (response) => {
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "无法读取资产");
-      setAssets(data);
-    }).catch((cause) => setError(cause.message));
+    const timer = window.setTimeout(() => {
+      if (!readApiKey()) {
+        setError("请先在设置中填写中转站 API Key，才能查看你的资产");
+        return;
+      }
+      openSession().then(loadAssets).catch((cause) => setError(cause.message));
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
   const visible = useMemo(() => filter === "trash"
     ? assets.filter((asset) => asset.trashed)
@@ -43,7 +50,7 @@ export function AssetLibrary() {
     setAssets((items) => items.map((item) => item.id === asset.id ? { ...item, favorite } : item));
     try {
       const response = await fetch("/api/favorites", {
-        method: "PUT", headers: { "Content-Type": "application/json" },
+        method: "PUT", headers: { "Content-Type": "application/json", ...apiKeyHeaders() },
         body: JSON.stringify({ paths: [asset.path], favorite }),
       });
       const data = await response.json();
@@ -58,9 +65,9 @@ export function AssetLibrary() {
     try {
       const response = await fetch(
         action === "delete" ? `/api/assets?path=${encodeURIComponent(asset.path)}` : "/api/assets",
-        action === "delete" ? { method: "DELETE" } : {
+        action === "delete" ? { method: "DELETE", headers: apiKeyHeaders() } : {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...apiKeyHeaders() },
           body: JSON.stringify({ action, path: asset.path }),
         },
       );
@@ -79,9 +86,9 @@ export function AssetLibrary() {
     </header>
     <div className="asset-content">
       <div className="asset-heading">
-        <span className="eyebrow">LOCAL LIBRARY</span>
+        <span className="eyebrow">MY LIBRARY</span>
         <h1>资产</h1>
-        <p>所有生成结果都保存在本机项目的 <code>out</code> 目录中。</p>
+        <p>这里只显示当前 API Key 生成的视频，其他用户看不到。{retentionNote}</p>
       </div>
       <div className="asset-toolbar" aria-label="资产筛选">
         {([
@@ -132,9 +139,9 @@ export function AssetLibrary() {
           <div className="asset-details">
             <div>
               <strong>{asset.kind === "image" ? "图片" : "视频"}</strong>
-              <span>{formatSize(asset.size)} · {new Date(asset.createdAt || asset.modifiedAt).toLocaleString("zh-CN")}</span>
+              <span>{formatSize(asset.size)} · {new Date(asset.createdAt).toLocaleString("zh-CN")}</span>
             </div>
-            <a className="asset-download" href={`/api/media/${asset.path}`} download={asset.name}
+            <a className="asset-download" href={`/api/media/${asset.path}?download=${encodeURIComponent(asset.name)}`} download={asset.name}
               aria-label={`下载 ${asset.name}`}><Download size={15} /></a>
             <AssetMenu name={asset.name} trashed={Boolean(asset.trashed)}
               onTrash={() => void mutate(asset, "trash")}

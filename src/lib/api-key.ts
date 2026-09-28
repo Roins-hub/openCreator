@@ -30,3 +30,16 @@ export function onApiKeyChange(listener: () => void) {
 export function apiKeyHeaders(key = readApiKey()): Record<string, string> {
   return key ? { [API_KEY_HEADER]: key } : {};
 }
+
+/** 用当前 Key 换取看视频/图片用的 Cookie;Key 无效时抛出中转站的提示。 */
+export async function openSession(key = readApiKey()) {
+  if (!key) {
+    await fetch("/api/session", { method: "DELETE" }).catch(() => undefined);
+    return;
+  }
+  const response = await fetch("/api/session", { method: "POST", headers: apiKeyHeaders(key) });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "API Key 验证失败");
+  }
+}

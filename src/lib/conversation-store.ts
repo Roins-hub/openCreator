@@ -1,32 +1,39 @@
 import { mkdir, readdir, rm } from "node:fs/promises";
-import { conversationsDir, inside } from "./paths";
+import { inside } from "./paths";
+import { userDir } from "./identity";
 import { readJson, writeJsonAtomic } from "./json-store";
 import { conversationSchema } from "./schemas";
 import type { Conversation } from "./types";
 
-const filePath = (id: string) => inside(conversationsDir, `${id}.json`);
+/** 每个用户的对话单独存放在 data/users/<用户ID>/conversations。 */
+const conversationsDir = (userId: string) => inside(userDir(userId), "conversations");
+const filePath = (userId: string, id: string) => {
+  if (!/^[\w-]{1,80}$/.test(id)) throw new Error("会话 ID 不正确");
+  return inside(conversationsDir(userId), `${id}.json`);
+};
 
-export async function listConversations() {
-  await mkdir(conversationsDir, { recursive: true });
-  const files = (await readdir(conversationsDir)).filter((file) => file.endsWith(".json"));
+export async function listConversations(userId: string) {
+  const dir = conversationsDir(userId);
+  await mkdir(dir, { recursive: true });
+  const files = (await readdir(dir)).filter((file) => file.endsWith(".json"));
   const conversations = await Promise.all(files.map((file) =>
-    readJson<Conversation | null>(inside(conversationsDir, file), null)));
+    readJson<Conversation | null>(inside(dir, file), null)));
   return conversations.filter((item): item is Conversation => Boolean(item))
     .map((item) => conversationSchema.parse(item))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function getConversation(id: string) {
-  const value = await readJson<Conversation | null>(filePath(id), null);
+export async function getConversation(userId: string, id: string) {
+  const value = await readJson<Conversation | null>(filePath(userId, id), null);
   return value ? conversationSchema.parse(value) : null;
 }
 
-export async function saveConversation(value: unknown) {
+export async function saveConversation(userId: string, value: unknown) {
   const conversation = conversationSchema.parse(value);
-  await writeJsonAtomic(filePath(conversation.id), conversation);
+  await writeJsonAtomic(filePath(userId, conversation.id), conversation);
   return conversation;
 }
 
-export async function deleteConversation(id: string) {
-  await rm(filePath(id), { force: true });
+export async function deleteConversation(userId: string, id: string) {
+  await rm(filePath(userId, id), { force: true });
 }

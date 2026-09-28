@@ -109,7 +109,7 @@ export function VideoTaskCard({
           <div className="task-actions">
             <button type="button" onClick={onReedit} title="重新编辑" aria-label="重新编辑"><Pencil size={15} /></button>
             {videos[0]
-              ? <a href={`/api/media/${videos[0].path}`} download={videos[0].name} title="下载视频" aria-label="下载视频"><Download size={15} /></a>
+              ? <a href={`/api/media/${videos[0].path}?download=${encodeURIComponent(videos[0].name)}`} download={videos[0].name} title="下载视频" aria-label="下载视频"><Download size={15} /></a>
               : <button type="button" disabled title="暂无可下载的视频" aria-label="下载视频"><Download size={15} /></button>}
             <button type="button" className={favorite ? "is-on" : ""} onClick={onToggleFavorite}
               disabled={!videos.length}
@@ -191,7 +191,7 @@ export function VideoTaskCard({
         {videos.length ? (
           <>
             <button type="button" className="task-preview-video" onClick={() => setViewer(0)} aria-label="播放视频">
-              <video src={`/api/media/${videos[0].path}`} muted loop playsInline preload="auto"
+              <video src={`/api/media/${videos[0].path}`} muted loop playsInline preload="metadata"
                 onMouseEnter={(event) => { void event.currentTarget.play().catch(() => undefined); }}
                 onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} />
               <span className="task-play"><Play size={18} fill="currentColor" /></span>
@@ -236,7 +236,7 @@ function VideoViewer({ videos, index, prompt, onIndex, onClose }: {
         <div className="video-viewer-bar">
           <p title={prompt}>{prompt || current.name}</p>
           {videos.length > 1 && <span>{index + 1} / {videos.length}</span>}
-          <a href={`/api/media/${current.path}`} download={current.name}><Download size={15} />下载</a>
+          <a href={`/api/media/${current.path}?download=${encodeURIComponent(current.name)}`} download={current.name}><Download size={15} />下载</a>
         </div>
       </div>
       {index > 0 && <button type="button" className="video-viewer-nav prev" aria-label="上一个"

@@ -14,7 +14,7 @@ import { HistoryMenu } from "@/components/history-menu";
 import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
 import { acceptAttribute, MEDIA_KIND_LABEL, MEDIA_RULES, pickMediaFiles } from "@/lib/media-files";
-import { apiKeyHeaders, onApiKeyChange, readApiKey } from "@/lib/api-key";
+import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey } from "@/lib/api-key";
 import {
   countMedia, durationSummary, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
   TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError, type MediaKind, type VideoModel,
@@ -51,8 +51,9 @@ const videoDefaults: VideoOptions = {
 const MEDIA_KINDS: MediaKind[] = ["image", "video", "audio"];
 const RESOLUTION_ORDER: VideoOptions["resolution"][] = ["480p", "720p", "1080p", "4k"];
 
+/** 所有本站接口都带上当前用户的 API Key(服务端据此区分用户数据)。 */
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, { ...init, headers: { ...apiKeyHeaders(), ...init?.headers } });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "请求失败");
   return data;
@@ -70,7 +71,8 @@ function freshConversation(model?: VideoModel): Conversation {
 
 export function AppShell() {
   const [models, setModels] = useState<VideoModel[]>([]);
-  const [apiKey, setApiKey] = useState("");
+  // undefined = 还没读到浏览器里保存的 Key
+  const [apiKey, setApiKey] = useState<string>();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string>();
   const [draft, setDraft] = useState("");
@@ -117,13 +119,25 @@ export function AppShell() {
   const processingMessage = active?.messages.find((message) => message.status === "processing");
   const isGenerating = busy || Boolean(processingMessage);
 
-  const load = useCallback(async () => {
-    const [nextModels, nextConversations, nextFavorites] = await Promise.all([
-      request<VideoModel[]>("/api/models"),
+  // 模型列表与个人数据分开加载:模型列表慢或失败不影响查看历史对话
+  useEffect(() => {
+    request<VideoModel[]>("/api/models").then(setModels).catch((cause) => setError(cause.message));
+  }, []);
+
+  const load = useCallback(async (key: string) => {
+    if (!key) {
+      // 没有 Key 就没有个人空间
+      setConversations([]);
+      setFavorites(new Set());
+      setActiveId(undefined);
+      await openSession("");
+      return;
+    }
+    await openSession(key);
+    const [nextConversations, nextFavorites] = await Promise.all([
       request<Conversation[]>("/api/conversations"),
       request<string[]>("/api/favorites").catch(() => []),
     ]);
-    setModels(nextModels);
     setFavorites(new Set(nextFavorites));
     setConversations(nextConversations);
     if (nextConversations.length) {
@@ -131,14 +145,17 @@ export function AppShell() {
         new URLSearchParams(window.location.search).get("conversation");
       setActiveId((id) =>
         requested && nextConversations.some((item) => item.id === requested)
-          ? requested : id || nextConversations[0].id);
+          ? requested : id && nextConversations.some((item) => item.id === id) ? id : nextConversations[0].id);
+    } else {
+      setActiveId(undefined);
     }
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => load().catch((cause) => setError(cause.message)), 0);
+    if (apiKey === undefined) return;
+    const timer = window.setTimeout(() => load(apiKey).catch((cause) => setError(cause.message)), 0);
     return () => clearTimeout(timer);
-  }, [load]);
+  }, [load, apiKey]);
   useEffect(() => {
     const sync = () => setApiKey(readApiKey());
     const timer = window.setTimeout(sync, 0);

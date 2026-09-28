@@ -1,10 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { inside, outDir } from "./paths";
 import { TANGZHI_BASE_URL, toVideoModels, type VideoModel } from "./tangzhi";
-import type { MediaRef } from "./types";
-
-/** 浏览器把用户自己的 API Key 放在这个请求头里;服务端只转发,不落盘。 */
-export const API_KEY_HEADER = "x-tangzhi-key";
 
 const CATALOG_TTL = 60_000;
 let catalog: { at: number; models: VideoModel[] } | undefined;
@@ -33,12 +27,6 @@ export async function findVideoModel(id: string) {
   return model;
 }
 
-export function requireApiKey(request: Request) {
-  const key = request.headers.get(API_KEY_HEADER)?.trim();
-  if (!key) throw new Error("请先在设置中填写中转站 API Key");
-  return key;
-}
-
 /** 站点对外地址:中转站需要从公网拉取参考素材。 */
 export function publicOrigin(request: Request) {
   const configured = process.env.MOTE_PUBLIC_URL?.replace(/\/+$/, "");
@@ -46,10 +34,6 @@ export function publicOrigin(request: Request) {
   const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
   const proto = request.headers.get("x-forwarded-proto")?.split(",")[0].trim() || "https";
   return host ? `${proto}://${host}` : new URL(request.url).origin;
-}
-
-export function mediaUrl(origin: string, media: MediaRef) {
-  return `${origin}/api/media/${media.path.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 /** 中转站错误可能是 {error:{message}} 或 {message:"<嵌套 JSON>"},取最里层的可读信息。 */
@@ -108,19 +92,15 @@ export async function queryVideoTask(apiKey: string, taskId: string): Promise<Ta
   return { status: "processing", progress: Number(data.progress) || 0 };
 }
 
-/** 完成后的视频需要带鉴权从 /content 下载,存到本机 out/videos。 */
-export async function downloadVideo(apiKey: string, taskId: string): Promise<MediaRef> {
+/** 完成后的视频需要带鉴权从 /content 下载。 */
+export async function downloadVideo(apiKey: string, taskId: string) {
   const response = await fetch(`${TANGZHI_BASE_URL}/v1/videos/${encodeURIComponent(taskId)}/content`, {
     headers: { Authorization: `Bearer ${apiKey}` }, cache: "no-store",
   });
   if (!response.ok) {
     throw new Error(upstreamMessage(await response.json().catch(() => ({})), response.status));
   }
-  const name = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}.mp4`;
-  const relative = `videos/${name}`;
-  await mkdir(inside(outDir, "videos"), { recursive: true });
-  await writeFile(inside(outDir, relative), Buffer.from(await response.arrayBuffer()));
-  return { kind: "video", path: relative, name, mimeType: "video/mp4" };
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 const PREFIX = "tz.";

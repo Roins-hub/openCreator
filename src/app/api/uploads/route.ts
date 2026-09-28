@@ -1,9 +1,11 @@
 import { failure, ok } from "@/lib/http";
+import { requireUser } from "@/lib/identity";
 import { MEDIA_RULES, uploadKind } from "@/lib/media-files";
 import { saveUpload } from "@/lib/media-store";
 
 export async function POST(request: Request) {
   try {
+    const { userId } = await requireUser(request);
     const form = await request.formData();
     const files = form.getAll("files");
     if (!files.length || files.some((file) => !(file instanceof File))) throw new Error("请选择素材");
@@ -14,6 +16,6 @@ export async function POST(request: Request) {
         throw new Error(`单个素材不能超过 ${MEDIA_RULES[kind].maxBytes / 1024 / 1024}MB`);
       }
     }
-    return ok(await Promise.all((files as File[]).map(saveUpload)));
+    return ok(await Promise.all((files as File[]).map((file) => saveUpload(userId, file))));
   } catch (error) { return failure(error); }
 }

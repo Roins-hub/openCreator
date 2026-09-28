@@ -1,133 +1,82 @@
-import { access, mkdir, readdir, rename, stat, unlink } from "node:fs/promises";
-import path from "node:path";
+import { inside } from "./paths";
+import { userDir } from "./identity";
+import { readJson, writeJsonAtomic } from "./json-store";
+import { assertKey, deleteObject } from "./object-store";
 import type { Conversation } from "./types";
-import { inside, outDir } from "./paths";
 
 export interface Asset {
   id: string;
   kind: "image" | "video";
+  /** 对象存储 key:users/<用户ID>/videos/<文件名> */
   path: string;
   name: string;
   mimeType: string;
   size: number;
-  modifiedAt: string;
-  createdAt?: string;
+  createdAt: string;
   conversationId?: string;
   conversationTitle?: string;
   trashed?: boolean;
-  originalPath?: string;
   favorite?: boolean;
 }
 
-export function enrichAssets(assets: Asset[], conversations: Conversation[]) {
-  const sources = new Map<string, Pick<Asset, "createdAt" | "conversationId" | "conversationTitle">>();
-  for (const conversation of conversations) {
-    for (const message of conversation.messages) {
-      for (const media of message.media || []) {
-        sources.set(media.path, {
-          createdAt: message.createdAt,
-          conversationId: conversation.id,
-          conversationTitle: conversation.title,
-        });
-      }
-    }
-  }
+export type AssetRecord = Omit<Asset, "id" | "conversationTitle" | "favorite">;
 
-  return assets.map((asset) => ({
-    ...asset,
-    ...sources.get(asset.originalPath || asset.path),
-  }))
-    .sort((a, b) => (b.createdAt || b.modifiedAt).localeCompare(a.createdAt || a.modifiedAt));
+/** 生成结果的索引:文件在对象存储里,索引记录名称、大小、来源对话和回收站状态。 */
+const indexFile = (userId: string) => inside(userDir(userId), "assets.json");
+
+/** 云存储按生命周期规则自动删除旧文件;设置了保留天数时,过期记录不再显示。 */
+export function retentionDays() {
+  const days = Number(process.env.MOTE_RETENTION_DAYS);
+  return Number.isFinite(days) && days > 0 ? days : undefined;
 }
 
-function parseAssetPath(relativePath: string) {
-  const match = /^(\.trash\/)?(images|videos)\/([^/]+)$/.exec(relativePath);
-  if (!match || [".", ".."].includes(match[3])) throw new Error("非法资产路径");
-  const kind = match[2] === "images" ? "image" as const : "video" as const;
-  const extension = path.extname(match[3]).toLowerCase();
-  const allowed = kind === "image" ? [".png", ".jpg", ".jpeg", ".webp"] : [".mp4"];
-  if (!allowed.includes(extension)) throw new Error("非法资产路径");
-  return {
-    trashed: Boolean(match[1]),
-    folder: match[2],
-    name: match[3],
-    kind,
-    originalPath: `${match[2]}/${match[3]}`,
-  };
+export function isExpired(record: Pick<AssetRecord, "createdAt">, days = retentionDays(), now = Date.now()) {
+  return Boolean(days && now - new Date(record.createdAt).getTime() > days * 86_400_000);
 }
 
-async function destinationAvailable(target: string) {
-  try {
-    await access(target);
-    throw new Error("同名资产已存在");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
+async function readIndex(userId: string) {
+  const value = await readJson<AssetRecord[]>(indexFile(userId), []);
+  return Array.isArray(value) ? value : [];
 }
 
-export async function moveAssetToTrash(relativePath: string, root = outDir) {
-  const asset = parseAssetPath(relativePath);
-  if (asset.trashed) throw new Error("资产已在回收站");
-  const source = inside(root, asset.folder, asset.name);
-  const destinationDirectory = inside(root, ".trash", asset.folder);
-  const destination = inside(destinationDirectory, asset.name);
-  await mkdir(destinationDirectory, { recursive: true });
-  await destinationAvailable(destination);
-  await rename(source, destination);
-  return `.trash/${asset.originalPath}`;
+export async function recordAsset(userId: string, record: AssetRecord) {
+  assertKey(record.path);
+  const current = (await readIndex(userId)).filter((item) => item.path !== record.path && !isExpired(item));
+  await writeJsonAtomic(indexFile(userId), [record, ...current]);
 }
 
-export async function restoreAsset(relativePath: string, root = outDir) {
-  const asset = parseAssetPath(relativePath);
-  if (!asset.trashed) throw new Error("资产不在回收站");
-  const source = inside(root, ".trash", asset.folder, asset.name);
-  const destination = inside(root, asset.folder, asset.name);
-  await mkdir(inside(root, asset.folder), { recursive: true });
-  await destinationAvailable(destination);
-  await rename(source, destination);
-  return asset.originalPath;
+export function enrichAssets(records: AssetRecord[], conversations: Conversation[], favorites: string[] = []) {
+  const titles = new Map(conversations.map((item) => [item.id, item.title]));
+  const favoriteSet = new Set(favorites);
+  return records
+    .filter((record) => !isExpired(record))
+    .map((record): Asset => ({
+      ...record,
+      id: record.path,
+      conversationTitle: record.conversationId ? titles.get(record.conversationId) : undefined,
+      conversationId: record.conversationId && titles.has(record.conversationId) ? record.conversationId : undefined,
+      favorite: favoriteSet.has(record.path),
+    }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export async function permanentlyDeleteAsset(relativePath: string, root = outDir) {
-  const asset = parseAssetPath(relativePath);
-  const target = asset.trashed
-    ? inside(root, ".trash", asset.folder, asset.name)
-    : inside(root, asset.folder, asset.name);
-  await unlink(target);
+export async function listAssets(userId: string, conversations: Conversation[], favorites: string[]) {
+  return enrichAssets(await readIndex(userId), conversations, favorites);
 }
 
-async function scanAssetFolder(
-  assets: Asset[], root: string, folder: "images" | "videos", trashed = false,
-) {
-  const directory = trashed ? path.join(root, ".trash", folder) : path.join(root, folder);
-  const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    const relativePath = `${folder}/${entry.name}`;
-    const exposedPath = trashed ? `.trash/${relativePath}` : relativePath;
-    let parsed: ReturnType<typeof parseAssetPath>;
-    try { parsed = parseAssetPath(exposedPath); } catch { continue; }
-    const details = await stat(path.join(directory, entry.name));
-    const extension = entry.name.split(".").pop()?.toLowerCase();
-    assets.push({
-      id: exposedPath,
-      kind: parsed.kind,
-      path: exposedPath,
-      name: path.basename(entry.name),
-      mimeType: parsed.kind === "video" ? "video/mp4" :
-        extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : "image/jpeg",
-      size: details.size, modifiedAt: details.mtime.toISOString(),
-      ...(trashed ? { trashed: true, originalPath: relativePath } : {}),
-    });
-  }
+export async function setAssetTrashed(userId: string, path: string, trashed: boolean) {
+  const records = await readIndex(userId);
+  const record = records.find((item) => item.path === path);
+  if (!record) throw new Error("资产不存在");
+  if (Boolean(record.trashed) === trashed) throw new Error(trashed ? "资产已在回收站" : "资产不在回收站");
+  await writeJsonAtomic(indexFile(userId), records.map((item) =>
+    item.path === path ? { ...item, trashed: trashed || undefined } : item));
+  return path;
 }
 
-export async function indexAssets(conversations: Conversation[]): Promise<Asset[]> {
-  const assets: Asset[] = [];
-  const root = outDir;
-  await scanAssetFolder(assets, root, "images");
-  await scanAssetFolder(assets, root, "videos");
-  await scanAssetFolder(assets, root, "images", true);
-  await scanAssetFolder(assets, root, "videos", true);
-  return enrichAssets(assets, conversations);
+export async function permanentlyDeleteAsset(userId: string, path: string) {
+  const records = await readIndex(userId);
+  if (!records.some((item) => item.path === path)) throw new Error("资产不存在");
+  await deleteObject(path);
+  await writeJsonAtomic(indexFile(userId), records.filter((item) => item.path !== path));
 }
