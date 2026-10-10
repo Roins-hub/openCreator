@@ -21,6 +21,10 @@ const pricing = {
       model_name: "ch8-sd-2.0-u2-720p", tags: "CH08", supported_endpoint_types: ["openai-video"],
       description: "(按秒计费) 9图片，3音频，3视频，合计≤12，720p，5s-15s，卡人脸",
     },
+    {
+      model_name: "doubao-seedance-2-5-260628", tags: "DOLA", supported_endpoint_types: ["openai-video"],
+      model_price: 0.9, description: "(按次计费) 10图片，0音频，0视频，合计≤10，720p，5s/10s/30s",
+    },
     { model_name: "ch5-gpt-image-2", supported_endpoint_types: ["image-generation"], description: null },
     { model_name: "no-desc", supported_endpoint_types: ["openai-video"], description: null },
   ],
@@ -51,7 +55,9 @@ describe("toVideoModels", () => {
   const models = toVideoModels(pricing);
 
   it("keeps only video models with a complete description", () => {
-    expect(models.map((model) => model.id)).toEqual(["ch8-sd-2.0-u2-720p", "ch0101-sd-2.0-720p", "ch1310-sd-2.5-720p"]);
+    expect(models.map((model) => model.id)).toEqual([
+      "ch8-sd-2.0-u2-720p", "ch0101-sd-2.0-720p", "ch1310-sd-2.5-720p", "doubao-seedance-2-5-260628",
+    ]);
   });
 
   it("uses the per-second price from the billing expression", () => {
@@ -145,5 +151,52 @@ describe("buildVideoRequest", () => {
     const body = buildVideoRequest(ch01, "提示词内容足够长了吧", options({ referenceMode: "first_last" }), [], url, "mote_4");
     expect(body.mode).toBe("references");
     expect(body).not.toHaveProperty("frames");
+  });
+});
+
+describe("Dola (Ark) models", () => {
+  const dola = byId("doubao-seedance-2-5-260628");
+  const url = (item: MediaRef) => `https://media.example/${item.path}`;
+
+  it("are routed through the Ark protocol with Dola's ratios", () => {
+    expect(dola.protocol).toBe("ark");
+    expect(ch01.protocol).toBe("videos");
+    expect(dola.durations).toEqual([5, 10, 30]);
+    expect(dola.ratios).not.toContain("21:9");
+  });
+
+  it("sends duration as seconds and ratio in metadata (30 s must not become 5 s)", () => {
+    const body = buildVideoRequest(dola, "女生往前奔跑跳跃，然后向空中翻转", options({ duration: 30 }),
+      [media("image", "girl.png")], url, "mote_x");
+    expect(body).toEqual({
+      model: "doubao-seedance-2-5-260628",
+      prompt: "女生往前奔跑跳跃，然后向空中翻转",
+      seconds: "30",
+      metadata: { ratio: "16:9", resolution: "720p" },
+      images: ["https://media.example/uploads/girl.png"],
+    });
+    expect(body).not.toHaveProperty("duration");
+    expect(body).not.toHaveProperty("references");
+  });
+
+  it("puts first and last frames into metadata.content with roles", () => {
+    const body = buildVideoRequest(dola, "提示词内容足够长了吧", options({ referenceMode: "first_last", duration: 10 }),
+      [media("image", "a.png"), media("image", "b.png")], url, "mote_y");
+    expect(body.metadata).toEqual({
+      ratio: "16:9", resolution: "720p",
+      content: [
+        { type: "image_url", image_url: { url: "https://media.example/uploads/a.png" }, role: "first_frame" },
+        { type: "image_url", image_url: { url: "https://media.example/uploads/b.png" }, role: "last_frame" },
+      ],
+    });
+    expect(body).not.toHaveProperty("images");
+  });
+
+  it("text-to-video carries no images", () => {
+    const body = buildVideoRequest(dola, "提示词内容足够长了吧", options({ duration: 5 }), [], url, "mote_z");
+    expect(body).toEqual({
+      model: "doubao-seedance-2-5-260628", prompt: "提示词内容足够长了吧", seconds: "5",
+      metadata: { ratio: "16:9", resolution: "720p" },
+    });
   });
 });

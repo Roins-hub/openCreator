@@ -34,6 +34,12 @@ export interface VideoModel {
   price: number;
   promptMin: number;
   promptMax: number;
+  /**
+   * 中转站这一路的请求格式:
+   * - "videos":统一 /v1/videos 格式(duration / aspect_ratio / references),原样转发给上游
+   * - "ark":火山方舟格式,经 new-api 的豆包插件转换,只认 seconds / metadata / images
+   */
+  protocol: "videos" | "ark";
 }
 
 const ALL_RATIOS: VideoRatio[] = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
@@ -43,6 +49,8 @@ const RESOLUTIONS: VideoResolution[] = ["480p", "720p", "1080p", "4k"];
 const TAG_DEFAULTS: Record<string, { promptMax: number; ratios: VideoRatio[] }> = {
   CH01: { promptMax: 15000, ratios: ALL_RATIOS },
   CH08: { promptMax: 5000, ratios: ["9:16"] },
+  // Dola 号池(方舟兼容接口)只认这 5 种比例,没有 21:9
+  DOLA: { promptMax: 5000, ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"] },
   CH13: { promptMax: 5000, ratios: ALL_RATIOS },
   CH14: { promptMax: 6000, ratios: ALL_RATIOS },
 };
@@ -99,6 +107,11 @@ interface PricingEntry {
   model_price?: number;
 }
 
+/** 豆包/Dola 这一路走 new-api 的方舟插件,请求格式和统一 /v1/videos 不同。 */
+export function arkProtocol(tag: string, modelId: string) {
+  return tag === "DOLA" || /^doubao-seedance/i.test(modelId);
+}
+
 /** 把 /api/pricing 的返回整理成可选的视频模型(描述不完整的模型不开放选择)。 */
 export function toVideoModels(payload: unknown, group = "default"): VideoModel[] {
   const data = (payload as { data?: PricingEntry[]; group_ratio?: Record<string, number> }) || {};
@@ -116,6 +129,7 @@ export function toVideoModels(payload: unknown, group = "default"): VideoModel[]
     models.push({
       id: entry.model_name,
       tag,
+      protocol: arkProtocol(tag, entry.model_name) ? "ark" : "videos",
       description: entry.description || "",
       resolution: info.resolution,
       durations: info.durations,
@@ -239,6 +253,7 @@ export function buildVideoRequest(
 ) {
   const urls = (kind: MediaKind) => attachments.filter((item) => item.kind === kind).map(mediaUrl);
   const mode = effectiveReferenceMode(options.referenceMode, attachments.length);
+  if (model.protocol === "ark") return buildArkRequest(model, prompt, options, mode, urls("image"));
   const body: Record<string, unknown> = {
     model: model.id,
     prompt: prompt.trim(),
@@ -257,6 +272,34 @@ export function buildVideoRequest(
       ...single(urls("video"), "video", "videos"),
       ...single(urls("audio"), "audio", "audios"),
     };
+  }
+  return body;
+}
+
+/**
+ * 方舟格式(new-api 豆包插件):时长只认 `seconds`,比例和分辨率放在 `metadata` 里,
+ * 参考图走 `images`,首尾帧放在 `metadata.content` 并标明 role。
+ * 用 duration / aspect_ratio / references 会被插件丢掉,上游只能收到提示词(时长落到 5 秒)。
+ */
+function buildArkRequest(
+  model: VideoModel, prompt: string, options: VideoOptions,
+  mode: VideoOptions["referenceMode"], images: string[],
+) {
+  const metadata: Record<string, unknown> = { ratio: options.ratio, resolution: options.resolution };
+  const body: Record<string, unknown> = {
+    model: model.id,
+    prompt: prompt.trim(),
+    seconds: String(options.duration),
+    metadata,
+  };
+  if (mode === "first_last") {
+    const [first, last] = images;
+    metadata.content = [
+      { type: "image_url", image_url: { url: first }, role: "first_frame" },
+      { type: "image_url", image_url: { url: last }, role: "last_frame" },
+    ];
+  } else if (images.length) {
+    body.images = images;
   }
   return body;
 }
