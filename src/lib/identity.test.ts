@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 beforeAll(() => {
   process.env.MOTE_SESSION_SECRET = "test-secret-test-secret-test-secret";
   delete process.env.R2_ENDPOINT;
+  delete process.env.S3_ENDPOINT;
 });
 
 describe("identity", () => {

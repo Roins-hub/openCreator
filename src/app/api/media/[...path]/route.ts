@@ -4,7 +4,7 @@ import { extname } from "node:path";
 import { Readable } from "node:stream";
 import { failure } from "@/lib/http";
 import { mediaPrefix, sessionUserId } from "@/lib/identity";
-import { assertKey, r2SignedUrl, verifyMediaSignature } from "@/lib/object-store";
+import { assertKey, signedUrl, verifyMediaSignature } from "@/lib/object-store";
 import { inside, outDir } from "@/lib/paths";
 import { parseByteRange } from "@/lib/byte-range";
 
@@ -33,7 +33,7 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
     if (!allowed) return failure(new Error("无权访问该文件"), 404);
 
     const download = query.get("download") || undefined;
-    const direct = await r2SignedUrl(key, LINK_TTL, download);
+    const direct = await signedUrl(key, LINK_TTL, download);
     if (direct) {
       return new Response(null, {
         status: 302,
