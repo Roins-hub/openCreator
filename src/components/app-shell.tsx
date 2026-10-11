@@ -663,28 +663,48 @@ export function AppShell() {
     }
   };
 
+  // 所有对话里未完成的视频任务都要查,不只当前打开的这一个:
+  // 切到别的对话后,后台任务完成也能及时取回视频
+  const pendingTasks = conversations.flatMap((conversation) => conversation.messages
+    .filter((message) => message.status === "processing" && (message.taskIds?.length || message.taskId))
+    .map((message) => ({
+      conversationId: conversation.id,
+      taskId: message.taskIds?.find((id) =>
+        !message.completedTaskIds?.includes(id) && !message.failedTaskIds?.includes(id)) || message.taskId,
+    }))
+    .filter((item): item is { conversationId: string; taskId: string } => Boolean(item.taskId)));
+  const pendingKey = pendingTasks.map((item) => `${item.conversationId}:${item.taskId}`).join("|");
+
   useEffect(() => {
-    const pending = active?.messages.find((message) =>
-      message.status === "processing" && (message.taskIds?.length || message.taskId));
-    if (!pending || !active) return;
-    const taskId = pending.taskIds?.find((id) =>
-      !pending.completedTaskIds?.includes(id) && !pending.failedTaskIds?.includes(id)) || pending.taskId;
-    if (!taskId) return;
+    if (!pendingKey) return;
+    const tasks = pendingKey.split("|").map((entry) => {
+      const [conversationId, taskId] = entry.split(":");
+      return { conversationId, taskId };
+    });
     // 查询失败(网络抖动、中转站临时错误)时不放弃,逐步拉长间隔继续查
     const timer = window.setTimeout(async () => {
-      try {
-        const result = await request<{ conversation: Conversation }>(
-          `/api/tasks/${taskId}?conversationId=${active.id}`, { headers: apiKeyHeaders() },
-        );
-        setPollFailures(0);
-        setConversations((items) => [result.conversation, ...items.filter((item) => item.id !== active.id)]);
-      } catch (cause) {
-        setError(`查询任务状态失败，稍后自动重试：${(cause as Error).message}`);
+      const results = await Promise.allSettled(tasks.map((task) =>
+        request<{ conversation: Conversation }>(
+          `/api/tasks/${task.taskId}?conversationId=${task.conversationId}`, { headers: apiKeyHeaders() },
+        )));
+      const updated = new Map<string, Conversation>();
+      let failure: unknown;
+      for (const result of results) {
+        if (result.status === "fulfilled") updated.set(result.value.conversation.id, result.value.conversation);
+        else failure ??= result.reason;
+      }
+      if (updated.size) {
+        setConversations((items) => items.map((item) => updated.get(item.id) || item));
+      }
+      if (failure) {
+        setError(`查询任务状态失败，稍后自动重试：${(failure as Error).message}`);
         setPollFailures((count) => count + 1);
+      } else {
+        setPollFailures(0);
       }
     }, Math.min(5000 * 2 ** pollFailures, 30_000));
     return () => clearTimeout(timer);
-  }, [active, pollFailures]);
+  }, [pendingKey, pollFailures, conversations]);
 
   return (
     <main className="app-frame">
