@@ -16,7 +16,7 @@ export interface DropdownOption<T extends string> {
  * 替代原生 <select> 的下拉框:跟随主题配色,支持键盘(↑↓ / Home / End / Enter / Esc)。
  */
 export function Dropdown<T extends string>({
-  value, options, onChange, ariaLabel, placeholder = "请选择", className = "", renderValue,
+  value, options, onChange, ariaLabel, placeholder = "请选择", className = "", renderValue, disabled = false,
 }: {
   value: T | "";
   options: DropdownOption<T>[];
@@ -25,6 +25,7 @@ export function Dropdown<T extends string>({
   placeholder?: string;
   className?: string;
   renderValue?: (option: DropdownOption<T> | undefined) => ReactNode;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -49,7 +50,7 @@ export function Dropdown<T extends string>({
   }, [open, active]);
 
   const openList = () => {
-    if (!options.length) return;
+    if (!options.length || disabled) return;
     setActive(Math.max(0, selectedIndex));
     setOpen(true);
   };
@@ -80,14 +81,14 @@ export function Dropdown<T extends string>({
   return (
     <div className={`dropdown ${open ? "is-open" : ""} ${className}`} ref={rootRef}>
       <button type="button" className="dropdown-trigger" role="combobox" aria-label={ariaLabel}
-        aria-haspopup="listbox" aria-expanded={open} aria-controls={listId}
+        aria-haspopup="listbox" aria-expanded={open && !disabled} aria-controls={listId} disabled={disabled}
         onClick={() => (open ? setOpen(false) : openList())} onKeyDown={onKeyDown}>
         <span className="dropdown-value">
           {renderValue ? renderValue(selected) : selected?.label || <span className="dropdown-placeholder">{placeholder}</span>}
         </span>
         <ChevronDown size={14} className="dropdown-chevron" />
       </button>
-      {open && (
+      {open && !disabled && (
         <div className="dropdown-list" role="listbox" id={listId} aria-label={ariaLabel} ref={listRef}>
           {options.map((option, index) => {
             const header = option.group && option.group !== options[index - 1]?.group ? option.group : undefined;

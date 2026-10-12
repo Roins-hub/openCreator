@@ -43,7 +43,8 @@ describe("ConversationList", () => {
     render(<ConversationList {...p} />);
     fireEvent.click(screen.getByRole("button", { name: "管理对话" }));
     fireEvent.click(screen.getByLabelText("沙漠"));
-    fireEvent.change(screen.getByLabelText("移到分组"), { target: { value: "g1" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "移到分组" }));
+    fireEvent.click(screen.getByRole("option", { name: "电影感" }));
     expect(p.onMove).toHaveBeenCalledWith(["b"], "g1");
   });
 

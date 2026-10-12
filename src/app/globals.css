@@ -185,14 +185,19 @@ a { color: inherit; text-decoration: none; }
   color: var(--muted); font-size: 12px;
 }
 .manage-actions > span { flex: 1 1 100%; color: var(--danger); }
-.manage-actions select, .manage-actions button {
+.manage-actions > button {
   height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px;
   color: var(--muted); background: var(--paper); font: inherit; font-size: 12px;
 }
-.manage-actions select { flex: 1; min-width: 0; }
-.manage-actions button { display: inline-flex; align-items: center; gap: 4px; }
-.manage-actions button.danger { border-color: var(--danger); color: var(--paper); background: var(--danger); font-weight: 700; }
-.manage-actions :disabled { opacity: .4; }
+.manage-move { flex: 1; }
+.manage-move .dropdown-trigger { height: 30px; padding: 0 9px; color: var(--muted); background: var(--paper); }
+.manage-move .dropdown-trigger:disabled { opacity: .4; cursor: default; }
+/* 在侧栏底部,向上展开 */
+.manage-move .dropdown-list { top: auto; bottom: calc(100% + 6px); min-width: 180px; max-height: min(320px, 50vh); }
+.manage-move .dropdown-option { font-size: 12px; }
+.manage-actions > button { display: inline-flex; align-items: center; gap: 4px; }
+.manage-actions > button.danger { border-color: var(--danger); color: var(--paper); background: var(--danger); font-weight: 700; }
+.manage-actions > button:disabled { opacity: .4; }
 .history-move { max-height: 260px; overflow-y: auto; }
 .history-move .history-action span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .history-move .history-action:disabled { color: var(--ink); font-weight: 700; }

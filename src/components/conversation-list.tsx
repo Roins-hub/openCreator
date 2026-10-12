@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Check, ChevronDown, ChevronRight, Folder, FolderPlus, ListChecks, MoreHorizontal, Pencil, Trash2, X,
 } from "lucide-react";
+import { Dropdown } from "@/components/dropdown";
 import { HistoryMenu } from "@/components/history-menu";
 import type { Conversation } from "@/lib/types";
 
@@ -248,16 +249,13 @@ export function ConversationList({
           确认删除
         </button>
       </> : <>
-        <select aria-label="移到分组" value="" disabled={!selected.size || busy}
-          onChange={(event) => {
-            const value = event.target.value;
-            if (!value) return;
-            void run(() => onMove([...selected], value === "__none" ? undefined : value));
-          }}>
-          <option value="">移到分组…</option>
-          {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-          <option value="__none">移出分组</option>
-        </select>
+        <Dropdown className="manage-move" ariaLabel="移到分组" placeholder="移到分组…" value=""
+          disabled={!selected.size || busy}
+          options={[
+            ...groups.map((group) => ({ value: group.id, label: group.name })),
+            { value: "__none", label: "移出分组" },
+          ]}
+          onChange={(value) => void run(() => onMove([...selected], value === "__none" ? undefined : value))} />
         <button type="button" className="danger" disabled={!selected.size || busy} onClick={() => setConfirmDelete(true)}>
           <Trash2 size={13} /> 删除{selected.size ? ` ${selected.size} 个` : ""}
         </button>
