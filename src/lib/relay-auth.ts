@@ -41,6 +41,8 @@ async function call<T = unknown>(
       signal: AbortSignal.timeout(20_000),
       headers: {
         Accept: "application/json",
+        // 中转站按这个头返回中文提示(登录失败、验证码错误等直接展示给用户)
+        "Accept-Language": "zh-CN",
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         ...ipHeaders(clientIp),
         ...headers,
