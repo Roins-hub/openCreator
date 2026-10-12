@@ -5,5 +5,6 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
-  test: { environment: "node" },
+  // .next/standalone 里有构建时复制的源码,不要重复跑
+  test: { environment: "node", exclude: ["**/node_modules/**", "**/.next/**", "**/dist/**"] },
 });

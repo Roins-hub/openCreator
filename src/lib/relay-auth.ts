@@ -1,4 +1,5 @@
 import { constants, publicEncrypt } from "node:crypto";
+import { relayMessage } from "./relay-messages";
 import { TANGZHI_BASE_URL } from "./tangzhi";
 
 /**
@@ -41,7 +42,7 @@ async function call<T = unknown>(
       signal: AbortSignal.timeout(20_000),
       headers: {
         Accept: "application/json",
-        // 中转站按这个头返回中文提示(登录失败、验证码错误等直接展示给用户)
+        // 旧版中转站按这个头返回中文提示;rc.43 起只返回英文和 message_key,由 relayMessage 翻译
         "Accept-Language": "zh-CN",
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         ...ipHeaders(clientIp),
@@ -52,10 +53,11 @@ async function call<T = unknown>(
   } catch {
     throw new RelayAuthError("暂时无法连接中转站，请稍后重试", 502);
   }
-  const json = await response.json().catch(() => null) as { success?: boolean; message?: string; data?: T } | null;
+  const json = await response.json().catch(() => null) as
+    { success?: boolean; message?: string; message_key?: string; message_params?: Record<string, unknown>; data?: T } | null;
   if (response.status === 429) throw new RelayAuthError("操作太频繁，请稍后再试", 429);
   if (!response.ok || !json || json.success === false) {
-    throw new RelayAuthError(json?.message || `中转站返回 ${response.status}`, response.status >= 500 ? 502 : 400);
+    throw new RelayAuthError(relayMessage(json) || `中转站返回 ${response.status}`, response.status >= 500 ? 502 : 400);
   }
   return { data: json.data as T, response };
 }

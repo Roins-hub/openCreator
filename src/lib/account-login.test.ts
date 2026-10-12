@@ -27,7 +27,11 @@ function relay(input: RequestInfo | URL, init: RequestInit = {}) {
   if (url.pathname === "/api/user/login/encryption-key") return json({ success: true, data: { enabled: false } });
   if (url.pathname === "/api/user/login" && method === "POST") {
     const body = JSON.parse(String(init.body));
-    if (body.username !== "alice" || body.password !== "password123") return json({ success: false, message: "用户名或密码错误" });
+    if (body.username !== "alice" || body.password !== "password123") {
+      // rc.43 只返回英文原文和 message_key
+      const key = "Username or password is incorrect, or user has been banned";
+      return json({ success: false, message: key, message_key: key });
+    }
     return json({ success: true, data: { access_token: "session-7", user: { id: 7, username: "alice" } } });
   }
   if (url.pathname === "/api/user/auth/logout") return json({ success: true });
@@ -129,7 +133,7 @@ describe("站内登录", () => {
   it("密码错误时把中转站的提示告诉用户", async () => {
     const response = await login({ username: "alice", password: "wrong-password" });
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("用户名或密码错误");
+    expect((await response.json()).error).toBe("用户名或密码错误，或用户已被封禁");
   });
 
   it("把用户真实 IP 转给中转站,限流才会按人计算", async () => {
@@ -160,6 +164,19 @@ describe("登录 Cookie", () => {
     await expect(requireUser(new Request("https://video.1xxai.com/api/conversations", {
       headers: { "x-tangzhi-base": "https://api.example.com" },
     }))).rejects.toThrow("API Key");
+  });
+});
+
+describe("中转站提示翻译", () => {
+  it("按 message_key 翻译并代入参数,没有译文时原样返回", async () => {
+    const { relayMessage } = await import("./relay-messages");
+    expect(relayMessage({
+      message: "Please wait 42 seconds before requesting another verification code.",
+      message_key: "Please wait {{seconds}} seconds before requesting another verification code.",
+      message_params: { seconds: 42 },
+    })).toBe("发送过于频繁，请等待 42 秒后再试");
+    expect(relayMessage({ message: "Verification code is incorrect or has expired" })).toBe("验证码错误或已过期");
+    expect(relayMessage({ message: "一条中文提示" })).toBe("一条中文提示");
   });
 });
 
