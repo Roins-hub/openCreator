@@ -56,10 +56,15 @@ const videoDefaults: VideoOptions = {
 const MEDIA_KINDS: MediaKind[] = ["image", "video", "audio"];
 const RESOLUTION_ORDER: VideoOptions["resolution"][] = ["480p", "720p", "1080p", "4k"];
 
+const POLL_ERROR_PREFIX = "查询任务状态失败";
+
 /** 所有本站接口都带上当前用户的 API Key(服务端据此区分用户数据)。 */
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { ...apiKeyHeaders(), ...init?.headers } });
-  const data = await response.json();
+  // 服务重启或网关出错时返回的是 HTML 错误页,不是 JSON
+  const data = await response.json().catch(() => {
+    throw new Error(response.ok ? "服务器返回了无法识别的内容" : `服务暂时不可用（${response.status}），请稍后重试`);
+  });
   if (!response.ok) throw new Error(data.error || "请求失败");
   return data;
 }
@@ -705,10 +710,12 @@ export function AppShell() {
           .reduce((conversation, patch) => patchMessage(conversation, patch.message), item)));
       }
       if (failure) {
-        setError(`查询任务状态失败，稍后自动重试：${(failure as Error).message}`);
+        setError(`${POLL_ERROR_PREFIX}，稍后自动重试：${(failure as Error).message}`);
         setPollFailures((count) => count + 1);
       } else {
         setPollFailures(0);
+        // 查询恢复后,收起之前的查询失败提示(其他错误保留)
+        setError((current) => (current.startsWith(POLL_ERROR_PREFIX) ? "" : current));
       }
     }, Math.min(5000 * 2 ** pollFailures, 30_000));
     return () => clearTimeout(timer);
