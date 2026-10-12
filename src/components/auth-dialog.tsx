@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoaderCircle, X } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle, X } from "lucide-react";
 import { LogoMark } from "@/components/logo-mark";
 import { onOpenAuthDialog, refreshAccount, useAccount, type AuthMode } from "@/lib/account-client";
 
@@ -197,14 +197,13 @@ function AuthDialog({ mode, onModeChange, onClose }: {
           </label>
           <label className="auth-field">
             <span>密码</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)}
-              autoComplete={register ? "new-password" : "current-password"} placeholder={register ? "至少 8 位" : "请输入密码"} maxLength={64} />
+            <PasswordInput value={password} onChange={setPassword}
+              autoComplete={register ? "new-password" : "current-password"} placeholder={register ? "至少 8 位" : "请输入密码"} />
           </label>
           {register && <>
             <label className="auth-field">
               <span>确认密码</span>
-              <input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)}
-                autoComplete="new-password" placeholder="请再次输入密码" maxLength={64} />
+              <PasswordInput value={confirm} onChange={setConfirm} autoComplete="new-password" placeholder="请再次输入密码" />
             </label>
             {auth?.emailVerification && <>
               <label className="auth-field">
@@ -252,6 +251,23 @@ function AuthDialog({ mode, onModeChange, onClose }: {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 密码框,右侧的眼睛按钮切换明文/密文 */
+function PasswordInput({ value, onChange, autoComplete, placeholder }: {
+  value: string; onChange: (value: string) => void; autoComplete: string; placeholder: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="auth-password">
+      <input type={visible ? "text" : "password"} value={value} onChange={(event) => onChange(event.target.value)}
+        autoComplete={autoComplete} placeholder={placeholder} maxLength={64} spellCheck={false} />
+      <button type="button" onClick={() => setVisible((current) => !current)}
+        aria-label={visible ? "隐藏密码" : "显示密码"} title={visible ? "隐藏密码" : "显示密码"}>
+        {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
     </div>
   );
 }

@@ -1593,3 +1593,10 @@ button.text-link, .auth-switch button, .settings-account button.key-link { backg
 .auth-switch button, .settings-account button.key-link { padding: 0; }
 .account-refresh-spin { animation: spin .6s cubic-bezier(.45, 0, .25, 1) infinite; }
 .account-menu-balance .icon-button:disabled { opacity: 1; cursor: default; color: var(--ink); }
+.auth-password { position: relative; }
+.auth-password input { padding-right: 42px; }
+.auth-password button {
+  position: absolute; top: 50%; right: 6px; width: 32px; height: 32px; display: grid; place-items: center;
+  border-radius: 8px; transform: translateY(-50%); color: var(--faint); background: none;
+}
+.auth-password button:hover { color: var(--ink); background: var(--hover); }
