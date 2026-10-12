@@ -42,18 +42,30 @@ export async function POST(request: Request) {
     }
     const batch = `mote_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
     const taskIds: string[] = [];
-    for (let index = 0; index < options.count; index++) {
-      const body = buildVideoRequest(
-        model, input.prompt, options, input.attachments,
-        (media) => urls.get(media.path) || "", `${batch}_${index + 1}`,
-      );
-      taskIds.push(encodeTaskId(await submitVideoTask(apiKey, body, request.signal)));
+    let submitError: unknown;
+    try {
+      for (let index = 0; index < options.count; index++) {
+        const body = buildVideoRequest(
+          model, input.prompt, options, input.attachments,
+          (media) => urls.get(media.path) || "", `${batch}_${index + 1}`,
+        );
+        taskIds.push(encodeTaskId(await submitVideoTask(apiKey, body, request.signal)));
+      }
+    } catch (error) {
+      // 一个都没提交成功、也没有记下提示词时,直接把错误返回给浏览器
+      if (!taskIds.length && !input.userMessageId) throw error;
+      submitError = error;
     }
 
+    const failedMessage = submitError instanceof Error ? submitError.message : submitError ? "提交生成任务失败" : undefined;
     const assistant: Message = {
       id: crypto.randomUUID(), role: "assistant", content: "",
-      createdAt: new Date().toISOString(), status: "processing",
-      taskId: taskIds[0], taskIds, completedTaskIds: [], failedTaskIds: [],
+      createdAt: new Date().toISOString(),
+      // 提交失败也留一张失败卡片(和提示词配对),可以看到原因、重新生成或删除
+      status: taskIds.length ? "processing" : "failed",
+      ...(failedMessage ? { error: failedMessage } : {}),
+      ...(input.userMessageId ? { replyTo: input.userMessageId } : {}),
+      ...(taskIds.length ? { taskId: taskIds[0], taskIds, completedTaskIds: [], failedTaskIds: [] } : {}),
       generation: {
         type: "video", providerName: TANGZHI_PROVIDER_NAME, modelName: model.id, modelId: model.id,
         videoOptions: options,
@@ -67,6 +79,7 @@ export async function POST(request: Request) {
       current.messages.push(assistant);
       current.updatedAt = new Date().toISOString();
     });
+    if (!taskIds.length) throw submitError;
     return ok({ conversation: saved, assistant });
   } catch (error) { return failure(error); }
 }

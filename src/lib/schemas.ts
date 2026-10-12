@@ -28,6 +28,7 @@ export const messageSchema = z.object({
   taskIds: z.array(z.string()).optional(),
   completedTaskIds: z.array(z.string()).optional(),
   failedTaskIds: z.array(z.string()).optional(),
+  replyTo: z.string().optional(),
   attachments: z.array(mediaRefSchema).optional(),
   media: z.array(mediaRefSchema).optional(),
   generation: generationMetaSchema.optional(),

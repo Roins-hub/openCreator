@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, AtSign, BookOpen, Clapperboard, ImagePlus, Images, KeyRound, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, X, BookMarked,
+  ArrowUp, AtSign, BookOpen, Clapperboard, ImagePlus, Images, KeyRound, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, X, BookMarked, Pencil, Trash2,
 } from "lucide-react";
 import type { Conversation, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
 import type { Asset } from "@/lib/asset-store";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/tangzhi";
 import { unfinishedTaskIds } from "@/lib/generation-stop";
 import { keepLocalMessages, patchMessage } from "@/lib/conversation-merge";
+import { buildTurns } from "@/lib/turns";
 import { ConversationSearch } from "@/components/conversation-search";
 import {
   REFERENCE_CARD_CLASS, createReferenceCard, findReference, referenceLabels, serializePrompt, splitPromptReferences,
@@ -467,6 +468,7 @@ export function AppShell() {
     };
     const pendingMessage: Message = {
       id: `pending-${createClientId()}`, role: "assistant", content: "", createdAt: now, status: "processing",
+      replyTo: user.id,
       generation: {
         type: "video", providerName: TANGZHI_PROVIDER_NAME,
         modelName: selected.id, modelId: selected.id, videoOptions: currentVideoOptions,
@@ -504,7 +506,7 @@ export function AppShell() {
           updatedAt: result.conversation.updatedAt,
         }, result.assistant, pendingMessage.id)));
     } catch (cause) {
-      inflightRef.current.delete(pendingMessage.id);
+      // 失败卡片留在本地(服务端也会记一张),不随后续保存消失
       const message = (cause as Error).message;
       setError(message);
       setConversations((items) => items.map((item) => item.id !== conversationId ? item : {
@@ -732,14 +734,17 @@ export function AppShell() {
             <div className="message-list">
               {(() => {
                 let lastDate = "";
-                return active.messages.map((message, index) => {
-                  const next = active.messages[index + 1];
-                  if (message.role === "user" && next && isVideoTurn(next)) return null;
-                  if (!isVideoTurn(message)) {
-                    return <MessageView key={message.id} message={message} />;
+                return buildTurns(active.messages, isVideoTurn).map((turn) => {
+                  const { message } = turn;
+                  if (turn.kind === "message") {
+                    return message.role === "user"
+                      // 没有对应生成记录的提示词(提交失败、旧数据):可以重新编辑或删除
+                      ? <MessageView key={message.id} message={message}
+                        onReedit={() => reedit(message.content, message.attachments || [])}
+                        onDelete={() => deleteTurn(message.id)} />
+                      : <MessageView key={message.id} message={message} />;
                   }
-                  const previous = active.messages[index - 1];
-                  const userMessage = previous?.role === "user" ? previous : undefined;
+                  const userMessage = turn.user;
                   const prompt = userMessage?.content || "";
                   const references = userMessage?.attachments || [];
                   const videoPaths = (message.media || []).filter((item) => item.kind === "video").map((item) => item.path);
@@ -960,14 +965,30 @@ function localDate(iso: string) {
 function MessageView({
   message,
   processingType = "video",
+  onReedit,
+  onDelete,
 }: {
   message: Message;
   processingType?: ModelType;
+  onReedit?: () => void;
+  onDelete?: () => void;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const timer = window.setTimeout(() => setConfirmDelete(false), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmDelete]);
   return (
     <article id={`message-${message.id}`} className={`message ${message.role}`}>
       <div className="message-meta">{message.role === "user" ? "你" : "Mote"}</div>
       <div className="message-body">
+        {(onReedit || onDelete) && <div className="message-actions">
+          {onReedit && <button type="button" onClick={onReedit} title="放回输入框重新编辑"><Pencil size={13} />重新编辑</button>}
+          {onDelete && <button type="button" className={confirmDelete ? "danger" : ""} title="删除这条提示词"
+            onClick={() => { if (confirmDelete) onDelete(); else setConfirmDelete(true); }}>
+            <Trash2 size={13} />{confirmDelete ? "再点一次删除" : "删除"}</button>}
+        </div>}
         {message.attachments?.length ? <div className="media-grid">
           {message.attachments.map((media) => <MediaThumb key={media.path} media={media} alt={media.name} />)}
         </div> : null}

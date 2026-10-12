@@ -18,6 +18,8 @@ export interface Message {
   taskIds?: string[];
   completedTaskIds?: string[];
   failedTaskIds?: string[];
+  /** 生成记录对应的用户提示词消息 ID:并发生成时消息不再一问一答相邻,靠它配对和一起删除 */
+  replyTo?: string;
   attachments?: MediaRef[];
   media?: MediaRef[];
   /** 生成时使用的模型与参数快照,用于任务卡片展示、重新编辑和重新生成。 */
