@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
+import { readRelayBase, writeApiKey } from "./api-key";
 
 /** 站内登录状态。账号和令牌都在服务端,这里只拿到用户名和余额。 */
 export interface AccountAuthConfig {
@@ -60,8 +61,14 @@ export function useAccount() {
   return account;
 }
 
+/** 内置中转站改用账号登录后,清掉以前粘贴在浏览器里的 Key(自定义中转站的 Key 保留) */
+export function clearBuiltinKey() {
+  if (!readRelayBase()) writeApiKey("");
+}
+
 export async function logout() {
   await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+  clearBuiltinKey();
   await refreshAccount().catch(() => undefined);
 }
 

@@ -101,9 +101,9 @@ export function AppShell() {
   // 自定义中转站的域名;空 = 内置中转站
   const [relayHost, setRelayHost] = useState("");
   const account = useAccount();
-  // 当前身份:内置中转站登录后用账号(令牌在服务端),否则用浏览器里的 Key;undefined = 还在读取
+  // 当前身份:内置中转站只认登录账号(令牌在服务端);自定义中转站用浏览器里的 Key;undefined = 还在读取
   const credential = apiKey === undefined || account === undefined ? undefined
-    : account.loggedIn && !relayHost ? `account:${account.username}` : apiKey;
+    : relayHost ? apiKey : account.loggedIn ? `account:${account.username}` : "";
   const accountMode = Boolean(credential?.startsWith("account:"));
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [referenceQuery, setReferenceQuery] = useState("");

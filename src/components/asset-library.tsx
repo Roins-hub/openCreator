@@ -46,14 +46,15 @@ export function AssetLibrary() {
     if (loggedIn === undefined) return;
     const timer = window.setTimeout(() => {
       setError("");
-      // 默认中转站登录后直接读取(看媒体的 Cookie 登录时已写好);否则沿用 API Key
-      if (loggedIn && !readRelayBase()) {
-        loadAssets().catch((cause) => setError(cause.message));
+      // 默认中转站只认登录账号(看媒体的 Cookie 登录时已写好);自定义中转站沿用 API Key
+      if (!readRelayBase()) {
+        if (loggedIn) loadAssets().catch((cause) => setError(cause.message));
+        else { setAssets([]); setError("请先登录，才能查看你的资产"); }
         return;
       }
       if (!readApiKey()) {
         setAssets([]);
-        setError(readRelayBase() ? "请先在设置中填写中转站 API Key，才能查看你的资产" : "请先登录，才能查看你的资产");
+        setError("请先在设置中填写中转站 API Key，才能查看你的资产");
         return;
       }
       openSession().then(loadAssets).catch((cause) => setError(cause.message));

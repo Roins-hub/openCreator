@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Eye, EyeOff, LoaderCircle, X } from "lucide-react";
 import { LogoMark } from "@/components/logo-mark";
-import { onOpenAuthDialog, refreshAccount, useAccount, type AuthMode } from "@/lib/account-client";
+import { clearBuiltinKey, onOpenAuthDialog, refreshAccount, useAccount, type AuthMode } from "@/lib/account-client";
 
 declare global {
   interface Window {
@@ -165,6 +165,7 @@ function AuthDialog({ mode, onModeChange, onClose }: {
       } else {
         await post("/api/auth/login", { username: username.trim(), password, turnstile: turnstile.token || undefined });
       }
+      clearBuiltinKey();
       await refreshAccount();
       onClose();
     } catch (cause) {

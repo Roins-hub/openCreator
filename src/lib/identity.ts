@@ -125,10 +125,12 @@ async function resolveUserId(apiKey: string, relay: Relay) {
 
 export async function requireUser(request: Request): Promise<User> {
   const relay = relayOf(request);
-  // 内置中转站优先用站内登录的账号;浏览器里残留的旧 Key 不再决定身份
   if (!relay.custom) {
+    // 内置中转站只认站内登录的账号。浏览器里残留的旧 Key 不能代替登录,
+    // 只有配置了 RELAY_DB_URL(能把 Key 对应到中转站账号)时才接受 Key
     const account = await accountUser(request);
     if (account) return account;
+    if (!relayAccounts()) throw new Error("请先登录");
   }
   const apiKey = request.headers.get(API_KEY_HEADER)?.trim();
   if (!apiKey) throw new Error(relay.custom ? "请先在设置中填写中转站 API Key" : "请先登录");

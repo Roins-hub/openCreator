@@ -158,6 +158,13 @@ describe("登录 Cookie", () => {
     expect(await authUserId(withCookie(`mote_auth=${id}.1.${sig}`))).toBeUndefined();
   });
 
+  it("没登录时,浏览器里残留的旧 Key 不能代替登录(内置中转站)", async () => {
+    const { requireUser } = await import("./identity");
+    await expect(requireUser(new Request("https://video.1xxai.com/api/conversations", {
+      headers: { "x-tangzhi-key": "sk-old7" },
+    }))).rejects.toThrow("请先登录");
+  });
+
   it("没登录也没 Key 时提示登录;自定义中转站仍然要求 Key", async () => {
     const { requireUser } = await import("./identity");
     await expect(requireUser(new Request("https://video.1xxai.com/api/conversations"))).rejects.toThrow("请先登录");

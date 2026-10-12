@@ -33,8 +33,8 @@ export function SettingsForm() {
   const host = (savedBase || TANGZHI_BASE_URL).replace(/^https?:\/\//, "");
   const keyPage = savedBase ? `${savedBase}/console/token` : TANGZHI_KEY_PAGE;
   const account = useAccount();
-  // 登录账号后,默认中转站用服务端保存的令牌,只有自定义中转站才需要填 Key
-  const keyNeeded = customMode || !account?.loggedIn;
+  // 默认中转站只用登录账号(令牌在服务端),只有自定义中转站才需要填 Key
+  const keyNeeded = customMode;
 
   const loadModels = (relayBase: string) => {
     setModels(undefined);
@@ -171,7 +171,7 @@ export function SettingsForm() {
               </ul>
             </div>}
             {!keyNeeded ? (
-              <p className="key-help" id="key-heading">已登录账号，默认中转站无需填写 API Key。只有切换到「自定义」中转站时才需要填写对应的 Key。</p>
+              <p className="key-help" id="key-heading">默认中转站通过上面的账号登录使用，无需填写 API Key。只有切换到「自定义」中转站时才需要填写对应的 Key。</p>
             ) : <>
             <div className="section-head">
               <h2 id="key-heading">中转站 API Key</h2>
@@ -199,9 +199,7 @@ export function SettingsForm() {
               </button>
             </div>
             {check && check.state !== "loading" && <div className={`model-test-result ${check.state}`}>{check.message}</div>}
-            <p className="key-help">{customMode
-              ? "登录自定义中转站，在「令牌」页面创建 API Key，复制后粘贴到这里并保存即可使用。"
-              : `推荐直接登录账号使用；如果仍想用 Key，请登录 ${host}，在「令牌」页面创建后粘贴到这里。`}</p>
+            <p className="key-help">登录自定义中转站，在「令牌」页面创建 API Key，复制后粘贴到这里并保存即可使用。</p>
             </>}
           </div>
         </section>
