@@ -4,7 +4,7 @@ import { LogoMark } from "@/components/logo-mark";
 
 const sections = [
   ["overview", "开始使用"],
-  ["connect", "填写 API Key"],
+  ["connect", "注册与登录"],
   ["generate", "生成视频"],
   ["references", "参考素材"],
   ["troubleshooting", "常见问题"],
@@ -27,18 +27,18 @@ export default function DocsPage() {
           <section id="overview" className="docs-hero docs-section">
             <span className="docs-kicker">使用说明 · VIDEO WORKBENCH</span>
             <h1>把一段描述，变成一段视频。</h1>
-            <p>Mote 通过 1xxai.com 中转站生成视频。只需要在中转站创建一个 API Key，填到设置里就能开始；当前开放两个豆包视频模型。</p>
-            <div className="docs-quick-links"><Link href="/settings"><KeyRound size={16} /> 填写 API Key</Link><a href="#generate"><Film size={16} /> 开始生成</a></div>
+            <p>Mote 通过 1xxai.com 中转站生成视频。注册或登录账号就能开始，不需要手动创建和填写 API Key；余额与 1xxai.com 通用。</p>
+            <div className="docs-quick-links"><Link href="/"><KeyRound size={16} /> 登录 / 注册</Link><a href="#generate"><Film size={16} /> 开始生成</a></div>
           </section>
           <section id="connect" className="docs-section">
-            <SectionTitle icon={<KeyRound size={17} />} eyebrow="01 · CONNECTION" title="填写 API Key" />
-            <p>视频接口已内置为 <code>https://1xxai.com</code>，不需要再配置供应商或模型。</p>
+            <SectionTitle icon={<KeyRound size={17} />} eyebrow="01 · ACCOUNT" title="注册与登录" />
+            <p>账号就是 <a href="https://1xxai.com" target="_blank" rel="noopener noreferrer">1xxai.com</a> 的账号：在这里注册的账号也能直接登录 1xxai.com 充值、查看账单；已有 1xxai.com 账号的话直接登录即可。</p>
             <div className="docs-steps">
-              <Step index="1" title="创建令牌">登录 <a href="https://1xxai.com" target="_blank" rel="noopener noreferrer">1xxai.com</a>，在「令牌」页面创建 API Key。</Step>
-              <Step index="2" title="填写到设置">打开左下角「设置」，粘贴 API Key 后点击「保存」，可以先点「验证」确认可用。</Step>
+              <Step index="1" title="注册或登录">点击左下角「登录 / 注册」。注册需要邮箱验证码，新用户赠送额度以中转站设置为准。</Step>
+              <Step index="2" title="充值">左下角显示账户余额，点击「充值」会打开 1xxai.com 的充值页面，充值后点「刷新」即可看到。</Step>
               <Step index="3" title="选择模型">回到首页，在顶部选择视频模型；旁边会显示它的分辨率、时长、素材上限和价格。</Step>
             </div>
-            <div className="docs-note"><CheckCircle2 size={16} /><span>API Key 只保存在你当前的浏览器里；「验证」只读取模型列表，不会产生费用。</span></div>
+            <div className="docs-note"><CheckCircle2 size={16} /><span>登录后本站会为账号自动创建一个名为「video.1xxai.com 工作台」的专用令牌，只保存在服务器上；请不要在 1xxai.com 删除它，删除后重新登录会自动再建一个。使用自定义中转站时，仍可以在「设置」里填写自己的 API Key。</span></div>
           </section>
           <section id="generate" className="docs-section">
             <SectionTitle icon={<Film size={17} />} eyebrow="02 · GENERATE" title="生成视频" />
@@ -64,7 +64,7 @@ export default function DocsPage() {
           </section>
           <section id="troubleshooting" className="docs-section docs-last">
             <SectionTitle icon={<CircleHelp size={17} />} eyebrow="04 · HELP" title="常见问题" />
-            <details open><summary>提示 API Key 无效</summary><p>到 1xxai.com 的「令牌」页面确认令牌未过期、未禁用，重新复制后在设置里保存并点击「验证」。</p></details>
+            <details open><summary>提示登录失效或 API Key 无效</summary><p>退出后重新登录即可，本站会自动为账号补建令牌。使用自定义中转站时，请到对应中转站确认令牌未过期、未禁用。</p></details>
             <details><summary>任务提交后一直生成中</summary><p>视频是异步任务，通常需要 1–6 分钟。关闭页面后重新打开对应会话，会继续查询结果。</p></details>
             <details><summary>提示余额不足</summary><p>按秒计费的模型会按所选时长预扣费用，任务失败会退回。请到中转站控制台充值后重试。</p></details>
             <details><summary>某个比例或时长点不了</summary><p>每个模型支持的比例、分辨率和时长不同，灰色选项表示当前模型不支持。换一个模型即可使用对应参数。</p></details>

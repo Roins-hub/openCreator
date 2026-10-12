@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft, Check, CircleCheck, CircleX, ExternalLink, Eye, EyeOff, LoaderCircle, Save, TestTube2, X,
+  ArrowLeft, Check, CircleCheck, CircleX, ExternalLink, Eye, EyeOff, LoaderCircle, LogIn, LogOut, Save, TestTube2, X,
 } from "lucide-react";
 import {
   apiKeyHeaders, openSession, readApiKey, readRelayBase, writeApiKey, writeRelayBase,
@@ -12,6 +12,7 @@ import {
   durationSummary, formatPrice, mediaSummary, TANGZHI_BASE_URL, TANGZHI_KEY_PAGE, type VideoModel,
 } from "@/lib/tangzhi";
 import { ThemePicker } from "@/components/theme-picker";
+import { logout, openAuthDialog, useAccount } from "@/lib/account-client";
 
 // 版本号在构建时由 next.config 注入；客户端直接读取内联值。
 const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
@@ -31,6 +32,9 @@ export function SettingsForm() {
   const base = customMode ? baseInput.trim().replace(/\/+$/, "") : "";
   const host = (savedBase || TANGZHI_BASE_URL).replace(/^https?:\/\//, "");
   const keyPage = savedBase ? `${savedBase}/console/token` : TANGZHI_KEY_PAGE;
+  const account = useAccount();
+  // 登录账号后,默认中转站用服务端保存的令牌,只有自定义中转站才需要填 Key
+  const keyNeeded = customMode || !account?.loggedIn;
 
   const loadModels = (relayBase: string) => {
     setModels(undefined);
@@ -111,11 +115,34 @@ export function SettingsForm() {
         <div className="settings-title">
           <span className="eyebrow">SETTINGS · v{appVersion}</span>
           <h1>设置</h1>
-          <p>视频由 <code>{host}</code> 中转站生成。API Key 只保存在当前浏览器。{savedBase
-            ? "使用自定义中转站时，对话和视频按「地址 + Key」单独存放，和默认中转站的记录互不相通。"
-            : "对话和视频按中转站账号存放，其他用户看不到；同一账号下换一个 Key，记录也都还在。"}</p>
+          <p>视频由 <code>{host}</code> 中转站生成。{savedBase
+            ? "使用自定义中转站时，API Key 只保存在当前浏览器，对话和视频按「地址 + Key」单独存放，和默认中转站的记录互不相通。"
+            : "登录账号后即可生成，余额与中转站通用；对话和视频按账号存放，其他用户看不到，换设备登录记录也都还在。"}</p>
         </div>
         {error && <div className="settings-error">{error}<button onClick={() => setError("")}><X size={14} /></button></div>}
+
+        <section className="settings-block" aria-labelledby="account-heading">
+          <div className="provider-number">账号</div>
+          <div>
+            <div className="section-head">
+              <h2 id="account-heading">{TANGZHI_BASE_URL.replace("https://", "")} 账号</h2>
+            </div>
+            {!account ? <p className="key-help">加载中…</p> : account.loggedIn ? (
+              <div className="settings-account">
+                <span>已登录 <b>{account.username}</b></span>
+                {account.balance && <span>余额 <b>{account.balance}</b></span>}
+                <a className="key-link" href={account.auth.topUpUrl} target="_blank" rel="noopener noreferrer">充值 <ExternalLink size={12} /></a>
+                <button type="button" className="key-link" onClick={() => void logout()}><LogOut size={12} /> 退出登录</button>
+              </div>
+            ) : (
+              <div className="settings-account">
+                <button type="button" className="primary-button" onClick={() => openAuthDialog("login")}><LogIn size={15} /> 登录</button>
+                <button type="button" className="key-link" onClick={() => openAuthDialog("register")}>没有账号？立即注册</button>
+              </div>
+            )}
+            <p className="key-help">账号与 {TANGZHI_BASE_URL.replace("https://", "")} 通用：在这里注册的账号也能登录中转站充值、查看账单；本站自动为账号创建专用令牌，不需要手动填写 API Key。</p>
+          </div>
+        </section>
 
         <section className="settings-block" aria-labelledby="key-heading">
           <div className="provider-number">连接</div>
@@ -143,6 +170,9 @@ export function SettingsForm() {
                 <li>必须能从公网访问，不能是内网或本机地址（如 192.168.x.x、127.0.0.1、localhost）。</li>
               </ul>
             </div>}
+            {!keyNeeded ? (
+              <p className="key-help" id="key-heading">已登录账号，默认中转站无需填写 API Key。只有切换到「自定义」中转站时才需要填写对应的 Key。</p>
+            ) : <>
             <div className="section-head">
               <h2 id="key-heading">中转站 API Key</h2>
               <a className="key-link" href={keyPage} target="_blank" rel="noopener noreferrer">
@@ -169,7 +199,10 @@ export function SettingsForm() {
               </button>
             </div>
             {check && check.state !== "loading" && <div className={`model-test-result ${check.state}`}>{check.message}</div>}
-            <p className="key-help">登录 {host}，在「令牌」页面创建 API Key，复制后粘贴到这里并保存即可使用。</p>
+            <p className="key-help">{customMode
+              ? "登录自定义中转站，在「令牌」页面创建 API Key，复制后粘贴到这里并保存即可使用。"
+              : `推荐直接登录账号使用；如果仍想用 Key，请登录 ${host}，在「令牌」页面创建后粘贴到这里。`}</p>
+            </>}
           </div>
         </section>
 

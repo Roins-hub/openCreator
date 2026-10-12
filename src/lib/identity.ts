@@ -8,7 +8,8 @@ import { mergeWorkspace, readProfile, writeProfile } from "./workspace-merge";
 
 /**
  * 用户身份:
- * - 配置了 RELAY_DB_URL 时按「中转站账号」隔离:同一账号下的所有 Key(包括新建的)看到同一份记录,
+ * - 站内登录(内置中转站)时按「中转站账号」隔离,令牌由服务端保存,浏览器不需要 Key;
+ * - 配置了 RELAY_DB_URL 时,粘贴 Key 的用户也按「中转站账号」隔离:同一账号下的所有 Key(包括新建的)看到同一份记录,
  *   Key 删除后换个新 Key 也能找回;以前按 Key 存的旧数据在账号首次使用时自动合并进来;
  * - 没配置时退回按 Key 隔离(身份 = Key 的哈希);
  * - 用户填了自定义中转站地址时,按「地址 + Key」隔离(我们读不到别人中转站的账号),和内置中转站的数据互不相通。
@@ -16,6 +17,9 @@ import { mergeWorkspace, readProfile, writeProfile } from "./workspace-merge";
  */
 export const API_KEY_HEADER = "x-tangzhi-key";
 export const SESSION_COOKIE = "mote_uid";
+/** 站内登录的会话 Cookie */
+export const AUTH_COOKIE = "mote_auth";
+const AUTH_MAX_AGE = 30 * 24 * 3600;
 
 export interface User { apiKey: string; userId: string; relay: Relay }
 
@@ -66,26 +70,28 @@ const preparedAccounts = new Map<string, Promise<void>>();
 function prepareAccount(lookup: RelayAccounts, accountId: string, userId: string) {
   let pending = preparedAccounts.get(userId);
   if (!pending) {
-    pending = (async () => {
-      const keys = await lookup.keysOfAccount(accountId);
-      const legacyIds = new Set(keys.flatMap((key) => [userIdOf(`sk-${key}`), userIdOf(key)]));
-      for (const legacyId of legacyIds) {
-        if (await mergeWorkspace(legacyId, userId)) {
-          console.info(`[mote] 已把旧空间 ${legacyId.slice(0, 8)} 合并到账号 ${accountId}`);
-        }
-      }
-      const profile = await readProfile(userId);
-      if (!profile || profile.accountId !== accountId) {
-        await mkdir(userDir(userId), { recursive: true });
-        await writeProfile(userId, { ...(profile || { createdAt: new Date().toISOString() }), accountId });
-      }
-      mediaPrefixCache.delete(userId);
-    })();
+    pending = lookup.keysOfAccount(accountId).then((keys) => mergeAccountWorkspaces(accountId, userId, keys));
     preparedAccounts.set(userId, pending);
     // 失败时下次请求重试
     pending.catch(() => preparedAccounts.delete(userId));
   }
   return pending;
+}
+
+/** 把账号名下这些 Key 以前按 Key 隔离的空间合并进账号空间,并记下账号 ID。 */
+export async function mergeAccountWorkspaces(accountId: string, userId: string, keys: string[]) {
+  const legacyIds = new Set(keys.flatMap((key) => [userIdOf(`sk-${key}`), userIdOf(key)]));
+  for (const legacyId of legacyIds) {
+    if (await mergeWorkspace(legacyId, userId)) {
+      console.info(`[mote] 已把旧空间 ${legacyId.slice(0, 8)} 合并到账号 ${accountId}`);
+    }
+  }
+  const profile = await readProfile(userId);
+  if (!profile || profile.accountId !== accountId) {
+    await mkdir(userDir(userId), { recursive: true });
+    await writeProfile(userId, { ...(profile || { createdAt: new Date().toISOString() }), accountId });
+  }
+  mediaPrefixCache.delete(userId);
 }
 
 async function resolveUserId(apiKey: string, relay: Relay) {
@@ -118,10 +124,53 @@ async function resolveUserId(apiKey: string, relay: Relay) {
 }
 
 export async function requireUser(request: Request): Promise<User> {
-  const apiKey = request.headers.get(API_KEY_HEADER)?.trim();
-  if (!apiKey) throw new Error("请先在设置中填写中转站 API Key");
   const relay = relayOf(request);
+  // 内置中转站优先用站内登录的账号;浏览器里残留的旧 Key 不再决定身份
+  if (!relay.custom) {
+    const account = await accountUser(request);
+    if (account) return account;
+  }
+  const apiKey = request.headers.get(API_KEY_HEADER)?.trim();
+  if (!apiKey) throw new Error(relay.custom ? "请先在设置中填写中转站 API Key" : "请先登录");
   return { apiKey, relay, userId: await resolveUserId(apiKey, relay) };
+}
+
+// ---- 站内登录:签名 Cookie 记录账号空间 ID 和过期时间,令牌从服务端读取
+
+const authSignature = async (userId: string, expires: number) =>
+  createHmac("sha256", await sessionSecret()).update(`auth:${userId}:${expires}`).digest("hex");
+
+const isSecure = (request: Request) =>
+  (request.headers.get("x-forwarded-proto") || new URL(request.url).protocol).startsWith("https");
+
+export async function authCookie(userId: string, request: Request) {
+  const expires = Math.floor(Date.now() / 1000) + AUTH_MAX_AGE;
+  const value = `${userId}.${expires}.${await authSignature(userId, expires)}`;
+  return `${AUTH_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${AUTH_MAX_AGE}${isSecure(request) ? "; Secure" : ""}`;
+}
+
+export const clearAuthCookie = () => `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+
+const readCookie = (request: Request, name: string) =>
+  request.headers.get("cookie")?.split(/;\s*/).find((item) => item.startsWith(`${name}=`))?.slice(name.length + 1);
+
+/** 站内登录的账号空间 ID;没登录或签名、有效期不对时返回 undefined */
+export async function authUserId(request: Request) {
+  const [userId, expiresText, sig] = readCookie(request, AUTH_COOKIE)?.split(".") || [];
+  const expires = Number(expiresText);
+  if (!userId || !sig || !/^[0-9a-f]{32}$/.test(userId) || !(expires > Date.now() / 1000)) return undefined;
+  const expected = Buffer.from(await authSignature(userId, expires));
+  const actual = Buffer.from(sig);
+  return expected.length === actual.length && timingSafeEqual(expected, actual) ? userId : undefined;
+}
+
+async function accountUser(request: Request): Promise<User | undefined> {
+  const userId = await authUserId(request);
+  if (!userId) return undefined;
+  const { readAccount, decryptSecret } = await import("./account-store");
+  const account = await readAccount(userId);
+  if (!account) return undefined;
+  return { apiKey: await decryptSecret(account.keyEnc), relay: DEFAULT_RELAY, userId };
 }
 
 /** 这个用户能访问的媒体前缀:自己的,加上合并进来的旧空间的 */
@@ -145,8 +194,7 @@ const signature = async (userId: string) =>
   createHmac("sha256", await sessionSecret()).update(`uid:${userId}`).digest("hex");
 
 export async function sessionCookie(userId: string, request: Request) {
-  const secure = (request.headers.get("x-forwarded-proto") || new URL(request.url).protocol).startsWith("https");
-  return `${SESSION_COOKIE}=${userId}.${await signature(userId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure ? "; Secure" : ""}`;
+  return `${SESSION_COOKIE}=${userId}.${await signature(userId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${isSecure(request) ? "; Secure" : ""}`;
 }
 
 export const clearSessionCookie = () => `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;

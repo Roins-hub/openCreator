@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, AtSign, BookOpen, Clapperboard, ImagePlus, Images, KeyRound, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, X, BookMarked, Pencil, Trash2,
+  ArrowUp, AtSign, BookOpen, Clapperboard, ImagePlus, Images, KeyRound, LogIn, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, X, BookMarked, Pencil, Trash2,
 } from "lucide-react";
 import type { Conversation, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
 import type { Asset } from "@/lib/asset-store";
@@ -15,6 +15,8 @@ import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
 import { acceptAttribute, MEDIA_KIND_LABEL, MEDIA_RULES, pickMediaFiles } from "@/lib/media-files";
 import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey, readRelayBase } from "@/lib/api-key";
+import { openAuthDialog, refreshAccount, useAccount } from "@/lib/account-client";
+import { AccountPanel } from "@/components/account-panel";
 import {
   countMedia, durationSummary, effectiveReferenceMode, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
   TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError, type MediaKind, type VideoModel,
@@ -93,6 +95,11 @@ export function AppShell() {
   const [groups, setGroups] = useState<ConversationGroup[]>([]);
   // 自定义中转站的域名;空 = 内置中转站
   const [relayHost, setRelayHost] = useState("");
+  const account = useAccount();
+  // 当前身份:内置中转站登录后用账号(令牌在服务端),否则用浏览器里的 Key;undefined = 还在读取
+  const credential = apiKey === undefined || account === undefined ? undefined
+    : account.loggedIn && !relayHost ? `account:${account.username}` : apiKey;
+  const accountMode = Boolean(credential?.startsWith("account:"));
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [referenceQuery, setReferenceQuery] = useState("");
   const [referencePickerPosition, setReferencePickerPosition] = useState<{ left: number; top?: number; bottom?: number }>({ left: 10, top: 8 });
@@ -132,7 +139,7 @@ export function AppShell() {
 
   const load = useCallback(async (key: string) => {
     if (!key) {
-      // 没有 Key 就没有个人空间
+      // 没登录也没有 Key 就没有个人空间
       setConversations([]);
       setFavorites(new Set());
       setCustomPrompts([]);
@@ -141,7 +148,8 @@ export function AppShell() {
       await openSession("");
       return;
     }
-    await openSession(key);
+    // 账号登录时看媒体用的 Cookie 已在登录时写好
+    if (!key.startsWith("account:")) await openSession(key);
     const [nextConversations, nextFavorites, nextPrompts, nextGroups] = await Promise.all([
       request<Conversation[]>("/api/conversations"),
       request<string[]>("/api/favorites").catch(() => []),
@@ -164,10 +172,10 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (apiKey === undefined) return;
-    const timer = window.setTimeout(() => load(apiKey).catch((cause) => setError(cause.message)), 0);
+    if (credential === undefined) return;
+    const timer = window.setTimeout(() => load(credential).catch((cause) => setError(cause.message)), 0);
     return () => clearTimeout(timer);
-  }, [load, apiKey]);
+  }, [load, credential]);
   useEffect(() => {
     const sync = () => { setApiKey(readApiKey()); setRelayHost(readRelayBase().replace(/^https?:\/\//, "")); };
     const timer = window.setTimeout(sync, 0);
@@ -482,8 +490,9 @@ export function AppShell() {
     const currentVideoOptions: VideoOptions = {
       ...fitted, referenceMode: effectiveReferenceMode(fitted.referenceMode, usedAttachments.length),
     };
-    if (!apiKey) {
-      setError("请先在「设置」中填写中转站 API Key");
+    if (!credential) {
+      if (relayHost) setError("请先在「设置」中填写自定义中转站的 API Key");
+      else openAuthDialog("login");
       return;
     }
     const invalid = videoRequestError(selected, prompt, currentVideoOptions, usedAttachments);
@@ -537,6 +546,8 @@ export function AppShell() {
       });
       inflightRef.current.delete(user.id);
       inflightRef.current.delete(pendingMessage.id);
+      // 提交时中转站已预扣费用
+      if (accountMode) void refreshAccount().catch(() => undefined);
       setConversations((items) => items.map((item) => item.id !== id ? item :
         patchMessage({
           ...item, title: result.conversation.title, providerId: result.conversation.providerId,
@@ -685,6 +696,10 @@ export function AppShell() {
         else if (result.value.message) patches.push({ conversationId: result.value.conversationId, message: result.value.message });
       }
       if (patches.length) {
+        // 任务结束(成功结算或失败退款)后余额会变
+        if (accountMode && patches.some((patch) => patch.message.status !== "processing")) {
+          void refreshAccount().catch(() => undefined);
+        }
         setConversations((items) => items.map((item) => patches
           .filter((patch) => patch.conversationId === item.id)
           .reduce((conversation, patch) => patchMessage(conversation, patch.message), item)));
@@ -697,7 +712,7 @@ export function AppShell() {
       }
     }, Math.min(5000 * 2 ** pollFailures, 30_000));
     return () => clearTimeout(timer);
-  }, [pendingKey, pollFailures, conversations]);
+  }, [pendingKey, pollFailures, conversations, accountMode]);
 
   return (
     <main className="app-frame">
@@ -725,6 +740,7 @@ export function AppShell() {
           <Link className="settings-link" href="/docs"><BookOpen size={16} /> 文档</Link>
           <Link className="settings-link" href="/settings"><Settings size={16} /> 设置</Link>
         </div>
+        {!relayHost && <AccountPanel />}
       </aside>
 
       {sidebarOpen && <button className="sidebar-scrim" onClick={() => setSidebarOpen(false)} aria-label="关闭侧栏" />}
@@ -741,7 +757,12 @@ export function AppShell() {
             <span>{selected.limits.images}图 · {selected.limits.videos}视频 · {selected.limits.audios}音频 · 合计≤{selected.limits.total}</span>
             <span>{formatPrice(selected)}</span>
           </span>}
-          {!apiKey && <Link className="key-missing" href="/settings"><KeyRound size={13} />填写 API Key</Link>}
+          {credential === "" && (relayHost
+            ? <Link className="key-missing" href="/settings"><KeyRound size={13} />填写 API Key</Link>
+            : <button type="button" className="key-missing" onClick={() => openAuthDialog("login")}><LogIn size={13} />登录 / 注册</button>)}
+          {accountMode && account?.balance && (
+            <span className="topbar-balance" title="中转站账户余额">余额 <b>{account.balance}</b></span>
+          )}
         </header>
 
         <div className="conversation" ref={conversationRef}>
@@ -749,10 +770,15 @@ export function AppShell() {
             <div className="empty-state">
               <LogoMark size={44} className="empty-mark" />
               <h1>今天，想创造什么？</h1>
-              {apiKey
+              {credential
                 ? <EmptyStatePrompt type="video" />
-                : <p>先到设置里填写 {TANGZHI_PROVIDER_NAME} 中转站的 API Key，然后开始。</p>}
-              {!apiKey && <Link className="text-link" href="/settings">前往设置 <span>↗</span></Link>}
+                : credential === undefined ? null
+                  : relayHost
+                    ? <p>先到设置里填写自定义中转站的 API Key，然后开始。</p>
+                    : <p>登录或注册 {TANGZHI_PROVIDER_NAME} 账号即可开始，余额与中转站通用。</p>}
+              {credential === "" && (relayHost
+                ? <Link className="text-link" href="/settings">前往设置 <span>↗</span></Link>
+                : <button type="button" className="text-link" onClick={() => openAuthDialog("register")}>注册账号 <span>↗</span></button>)}
               {selected && (
                 <button type="button" className="empty-library-link" data-prompt-library-trigger
                   onClick={() => setLibraryOpen(true)}><BookMarked size={14} />从提示词库开始</button>

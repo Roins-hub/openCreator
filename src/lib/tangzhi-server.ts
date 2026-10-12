@@ -79,7 +79,7 @@ async function call(relay: Relay, apiKey: string, path: string, init: RequestIni
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 401) throw new Error("API Key 无效或已过期，请在设置中检查");
+    if (response.status === 401) throw new Error("令牌无效或已过期：已登录账号请退出后重新登录，使用自定义中转站请在设置中检查 API Key");
     throw new Error(friendlyMessage(upstreamMessage(data, response.status), relayHost(relay)));
   }
   return data as Record<string, unknown>;

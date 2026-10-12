@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeWatcher } from "@/components/theme-watcher";
+import { AuthDialogHost } from "@/components/auth-dialog";
 import { themeBootScript } from "@/lib/themes";
 
 export const metadata: Metadata = {
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <ThemeWatcher />
         {children}
+        <AuthDialogHost />
       </body>
     </html>
   );

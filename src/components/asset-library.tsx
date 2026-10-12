@@ -7,7 +7,8 @@ import {
 } from "lucide-react";
 import type { Asset } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
-import { apiKeyHeaders, openSession, readApiKey } from "@/lib/api-key";
+import { apiKeyHeaders, openSession, readApiKey, readRelayBase } from "@/lib/api-key";
+import { openAuthDialog, useAccount } from "@/lib/account-client";
 
 type Filter = "all" | Asset["kind"] | "favorite" | "trash";
 type Sort = "newest" | "oldest";
@@ -39,16 +40,26 @@ export function AssetLibrary() {
     if (!response.ok) throw new Error(data.error || "无法读取资产");
     setAssets(data);
   };
+  const account = useAccount();
+  const loggedIn = account?.loggedIn;
   useEffect(() => {
+    if (loggedIn === undefined) return;
     const timer = window.setTimeout(() => {
+      setError("");
+      // 默认中转站登录后直接读取(看媒体的 Cookie 登录时已写好);否则沿用 API Key
+      if (loggedIn && !readRelayBase()) {
+        loadAssets().catch((cause) => setError(cause.message));
+        return;
+      }
       if (!readApiKey()) {
-        setError("请先在设置中填写中转站 API Key，才能查看你的资产");
+        setAssets([]);
+        setError(readRelayBase() ? "请先在设置中填写中转站 API Key，才能查看你的资产" : "请先登录，才能查看你的资产");
         return;
       }
       openSession().then(loadAssets).catch((cause) => setError(cause.message));
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [loggedIn]);
   const visible = useMemo(() => {
     const filtered = filter === "trash"
       ? assets.filter((asset) => asset.trashed)
@@ -140,7 +151,9 @@ export function AssetLibrary() {
       </div>
       </div>
       {query && !error && <p className="asset-result-count">找到 {visible.length} 个匹配「{query.trim()}」的资产</p>}
-      {error && <div className="settings-error">{error}</div>}
+      {error && <div className="settings-error">{error}
+        {account && !account.loggedIn && <button type="button" className="key-link" onClick={() => openAuthDialog("login")}>登录 / 注册</button>}
+      </div>}
       {!error && visible.length === 0 ? <div className="asset-empty">
         {query ? <>
           <Search size={24} />
