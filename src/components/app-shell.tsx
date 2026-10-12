@@ -14,6 +14,7 @@ import { ConversationList, type ConversationGroup } from "@/components/conversat
 import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
 import { acceptAttribute, MEDIA_KIND_LABEL, MEDIA_RULES, pickMediaFiles } from "@/lib/media-files";
+import { NETWORK_ERROR, readableError } from "@/lib/network-error";
 import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey, readRelayBase } from "@/lib/api-key";
 import {
   countMedia, durationSummary, effectiveReferenceMode, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
@@ -54,10 +55,26 @@ const videoDefaults: VideoOptions = {
 const MEDIA_KINDS: MediaKind[] = ["image", "video", "audio"];
 const RESOLUTION_ORDER: VideoOptions["resolution"][] = ["480p", "720p", "1080p", "4k"];
 
-/** 所有本站接口都带上当前用户的 API Key(服务端据此区分用户数据)。 */
+/**
+ * 所有本站接口都带上当前用户的 API Key(服务端据此区分用户数据)。
+ * 浏览器层面的网络失败(fetch 直接抛 TypeError,即「Failed to fetch」)换成中文提示;
+ * 读取类请求和幂等的保存(GET / PUT)先自动重试一次,提交生成等 POST 不重试,避免重复扣费。
+ */
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...init, headers: { ...apiKeyHeaders(), ...init?.headers } });
-  const data = await response.json();
+  const send = () => fetch(url, { ...init, headers: { ...apiKeyHeaders(), ...init?.headers } });
+  const method = (init?.method || "GET").toUpperCase();
+  let response: Response;
+  try {
+    response = await send().catch(async (cause) => {
+      if (!(cause instanceof TypeError) || (method !== "GET" && method !== "PUT")) throw cause;
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      return send();
+    });
+  } catch (cause) {
+    if (cause instanceof TypeError) throw new Error(NETWORK_ERROR);
+    throw cause;
+  }
+  const data = await response.json().catch(() => ({ error: `服务器返回异常（${response.status}），请稍后重试` }));
   if (!response.ok) throw new Error(data.error || "请求失败");
   return data;
 }
@@ -836,7 +853,7 @@ export function AppShell() {
           <PromptLibrary open={libraryOpen} onClose={closeLibrary} onUse={applyPromptTemplate}
             customPrompts={customPrompts} currentPrompt={draft}
             onSaveCustom={saveCustomPrompt} onDeleteCustom={deleteCustomPrompt} />
-          {error && <div className="inline-error">{error}<button onClick={() => setError("")}><X size={13} /></button></div>}
+          {error && <div className="inline-error">{readableError(error)}<button onClick={() => setError("")}><X size={13} /></button></div>}
           <div className="composer" ref={composerRef}>
             <div className="composer-body">
               {attachments.length > 0 && (

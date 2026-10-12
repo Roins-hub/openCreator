@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Check, ChevronDown, ChevronRight, Folder, FolderPlus, ListChecks, MoreHorizontal, Pencil, Trash2, X,
+  Check, ChevronDown, ChevronRight, Folder, FolderPlus, ListChecks, MoreHorizontal, Pencil, Search, Trash2, X,
 } from "lucide-react";
 import { Dropdown } from "@/components/dropdown";
 import { HistoryMenu } from "@/components/history-menu";
+import { matchConversation } from "@/lib/conversation-search";
 import type { Conversation } from "@/lib/types";
 
 export interface ConversationGroup {
@@ -17,11 +18,11 @@ export interface ConversationGroup {
 const DRAG_TYPE = "application/x-mote-conversation";
 
 /**
- * 侧边栏对话列表:分组(可折叠、重命名、解散,拖动对话放进分组)和「管理」模式
+ * 侧边栏对话列表:搜索过滤、分组(可折叠、重命名、解散,拖动对话放进分组)和「管理」模式
  * (多选 / 全选后一键删除或移动)。数据的读写由外层负责。
  */
 export function ConversationList({
-  conversations, groups, activeId, onOpen, onRename, onDelete, onMove, onGroupsChange, onCreateGroup,
+  conversations: allConversations, groups, activeId, onOpen, onRename, onDelete, onMove, onGroupsChange, onCreateGroup,
 }: {
   conversations: Conversation[];
   groups: ConversationGroup[];
@@ -42,6 +43,14 @@ export function ConversationList({
   const [groupMenu, setGroupMenu] = useState<string>();
   const [dropTarget, setDropTarget] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+
+  // 搜索时只显示匹配的对话;全选、批量删除和移动也只作用于这些对话
+  const searching = query.trim().length > 0;
+  const conversations = useMemo(
+    () => allConversations.filter((conversation) => matchConversation(conversation, query)),
+    [allConversations, query],
+  );
 
   const groupIds = useMemo(() => new Set(groups.map((group) => group.id)), [groups]);
   const inGroup = (conversation: Conversation) =>
@@ -153,10 +162,18 @@ export function ConversationList({
         <button type="button" onClick={() => { setCreating(true); setNewName(""); }} title="新建分组" aria-label="新建分组">
           <FolderPlus size={14} />
         </button>
-        <button type="button" onClick={() => setManaging(true)} disabled={!conversations.length}
+        <button type="button" onClick={() => setManaging(true)} disabled={!allConversations.length}
           title="管理对话（多选删除、移动）" aria-label="管理对话"><ListChecks size={14} /></button>
       </span>}
     </div>
+
+    {allConversations.length > 0 && <div className="history-search">
+      <Search size={13} />
+      <input type="search" value={query} placeholder="搜索标题或内容" aria-label="搜索侧栏对话"
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} />
+      {searching && <button type="button" onClick={() => setQuery("")} aria-label="清空搜索"><X size={13} /></button>}
+    </div>}
 
     {managing && <div className="manage-bar">
       <label>
@@ -184,6 +201,9 @@ export function ConversationList({
 
       {groups.map((group) => {
         const members = conversations.filter((item) => item.groupId === group.id);
+        // 搜索时隐藏没有匹配项的分组,有匹配的分组自动展开
+        if (searching && !members.length) return null;
+        const collapsed = !searching && group.collapsed;
         const memberIds = members.map((item) => item.id);
         const groupChecked = members.length > 0 && memberIds.every((id) => selected.has(id));
         return <section key={group.id} className={`history-group ${dropTarget === group.id ? "drop-target" : ""}`}
@@ -203,9 +223,9 @@ export function ConversationList({
                 const value = event.currentTarget.value.trim();
                 if (value && value !== group.name) updateGroup(group.id, { name: value });
                 setRenamingGroup(undefined);
-              }} /> : <button type="button" className="group-toggle" aria-expanded={!group.collapsed}
-                onClick={() => updateGroup(group.id, { collapsed: !group.collapsed })}>
-              {group.collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+              }} /> : <button type="button" className="group-toggle" aria-expanded={!collapsed}
+                disabled={searching} onClick={() => updateGroup(group.id, { collapsed: !group.collapsed })}>
+              {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
               <Folder size={13} />
               <span>{group.name}</span>
               <em>{members.length}</em>
@@ -228,16 +248,17 @@ export function ConversationList({
               </div>}
             </div>}
           </div>
-          {!group.collapsed && (members.length
+          {!collapsed && (members.length
             ? <div className="group-items">{members.map(row)}</div>
             : <p className="group-empty">{managing ? "空分组" : "把对话拖到这里，或在对话的「…」里选择移到分组"}</p>)}
         </section>;
       })}
 
       <section className={`history-ungrouped ${dropTarget === "" ? "drop-target" : ""}`} {...dropProps(undefined)}>
-        {groups.length > 0 && <div className="history-sublabel">未分组</div>}
+        {groups.length > 0 && (!searching || ungrouped.length > 0) && <div className="history-sublabel">未分组</div>}
         {ungrouped.map(row)}
       </section>
+      {searching && !conversations.length && <p className="history-empty">没有找到「{query.trim()}」相关的对话</p>}
     </nav>
 
     {managing && <div className="manage-actions">

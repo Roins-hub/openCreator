@@ -12,6 +12,7 @@ import {
   durationSummary, formatPrice, mediaSummary, TANGZHI_BASE_URL, TANGZHI_KEY_PAGE, type VideoModel,
 } from "@/lib/tangzhi";
 import { ThemePicker } from "@/components/theme-picker";
+import { readableError } from "@/lib/network-error";
 
 // 版本号在构建时由 next.config 注入；客户端直接读取内联值。
 const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
@@ -115,7 +116,7 @@ export function SettingsForm() {
             ? "使用自定义中转站时，对话和视频按「地址 + Key」单独存放，和默认中转站的记录互不相通。"
             : "对话和视频按中转站账号存放，其他用户看不到；同一账号下换一个 Key，记录也都还在。"}</p>
         </div>
-        {error && <div className="settings-error">{error}<button onClick={() => setError("")}><X size={14} /></button></div>}
+        {error && <div className="settings-error">{readableError(error)}<button onClick={() => setError("")}><X size={14} /></button></div>}
 
         <section className="settings-block" aria-labelledby="key-heading">
           <div className="provider-number">连接</div>

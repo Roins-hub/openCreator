@@ -48,6 +48,42 @@ describe("ConversationList", () => {
     expect(p.onMove).toHaveBeenCalledWith(["b"], "g1");
   });
 
+  it("filters by title or message content and hides groups without matches", () => {
+    const p = props();
+    p.conversations[2].messages = [{ id: "m1", role: "user", content: "晨雾里的鹿", createdAt: "" }] as Conversation["messages"];
+    render(<ConversationList {...p} />);
+    const search = screen.getByLabelText("搜索侧栏对话");
+
+    fireEvent.change(search, { target: { value: "沙漠" } });
+    expect(screen.getByRole("button", { name: "沙漠" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "雨夜" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^电影感/ })).toBeNull();
+
+    fireEvent.change(search, { target: { value: "鹿" } });
+    expect(screen.getByRole("button", { name: "森林" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "沙漠" })).toBeNull();
+
+    fireEvent.change(search, { target: { value: "雨" } });
+    expect(screen.getByRole("button", { name: "雨夜" })).toBeTruthy();
+    expect(screen.queryByText("未分组")).toBeNull();
+
+    fireEvent.change(search, { target: { value: "不存在" } });
+    expect(screen.getByText(/没有找到「不存在」/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "清空搜索" }));
+    for (const name of ["雨夜", "沙漠", "森林"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+  });
+
+  it("select-all only picks the conversations matching the search", () => {
+    const p = props();
+    render(<ConversationList {...p} />);
+    fireEvent.change(screen.getByLabelText("搜索侧栏对话"), { target: { value: "森" } });
+    fireEvent.click(screen.getByRole("button", { name: "管理对话" }));
+    fireEvent.click(screen.getByLabelText("全选"));
+    fireEvent.click(screen.getByRole("button", { name: /删除 1 个/ }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+    expect(p.onDelete).toHaveBeenCalledWith(["c"]);
+  });
+
   it("creates a group and dissolves one without deleting its conversations", () => {
     const p = props();
     render(<ConversationList {...p} />);

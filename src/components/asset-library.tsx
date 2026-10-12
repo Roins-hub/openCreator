@@ -8,6 +8,7 @@ import {
 import type { Asset } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
 import { apiKeyHeaders, openSession, readApiKey } from "@/lib/api-key";
+import { readableError } from "@/lib/network-error";
 
 type Filter = "all" | Asset["kind"] | "favorite" | "trash";
 type Sort = "newest" | "oldest";
@@ -140,7 +141,7 @@ export function AssetLibrary() {
       </div>
       </div>
       {query && !error && <p className="asset-result-count">找到 {visible.length} 个匹配「{query.trim()}」的资产</p>}
-      {error && <div className="settings-error">{error}</div>}
+      {error && <div className="settings-error">{readableError(error)}</div>}
       {!error && visible.length === 0 ? <div className="asset-empty">
         {query ? <>
           <Search size={24} />

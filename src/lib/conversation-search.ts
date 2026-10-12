@@ -20,6 +20,14 @@ function snippetAround(content: string, query: string) {
   return `${start ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
 }
 
+/** 标题或任意一条消息包含关键词(忽略大小写和多余空白);关键词为空时全部匹配 */
+export function matchConversation(conversation: Conversation, rawQuery: string) {
+  const query = compact(rawQuery).toLocaleLowerCase();
+  if (!query) return true;
+  return conversation.title.toLocaleLowerCase().includes(query)
+    || conversation.messages.some((message) => compact(message.content).toLocaleLowerCase().includes(query));
+}
+
 export function searchConversations(
   conversations: Conversation[], rawQuery: string, limit = 30,
 ): ConversationSearchResult[] {
