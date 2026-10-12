@@ -1,4 +1,4 @@
-import { getConversation, saveConversation } from "@/lib/conversation-store";
+import { getConversation, updateConversation } from "@/lib/conversation-store";
 import { failure, ok } from "@/lib/http";
 import { generateRequestSchema } from "@/lib/schemas";
 import {
@@ -27,6 +27,19 @@ export async function POST(request: Request) {
     const origin = publicOrigin(request);
     const urls = new Map(await Promise.all(input.attachments.map(async (item) =>
       [item.path, await externalMediaUrl(item.path, origin)] as const)));
+    // 先记下用户消息:提交失败时提示词也不会丢
+    if (input.userMessageId) {
+      const userMessage: Message = {
+        id: input.userMessageId, role: "user", content: input.prompt, attachments: input.attachments,
+        createdAt: new Date().toISOString(), status: "complete",
+      };
+      await updateConversation(userId, conversation.id, (current) => {
+        if (current.messages.some((item) => item.id === userMessage.id)) return;
+        if (!current.messages.length) current.title = (input.prompt || "视频生成").slice(0, 28);
+        current.messages.push(userMessage);
+        current.updatedAt = userMessage.createdAt;
+      });
+    }
     const batch = `mote_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
     const taskIds: string[] = [];
     for (let index = 0; index < options.count; index++) {
@@ -46,12 +59,14 @@ export async function POST(request: Request) {
         videoOptions: options,
       },
     };
-    conversation.providerId = TANGZHI_PROVIDER_ID;
-    conversation.modelId = model.id;
-    conversation.videoOptions = options;
-    conversation.messages.push(assistant);
-    conversation.updatedAt = new Date().toISOString();
-    await saveConversation(userId, conversation);
-    return ok({ conversation, assistant });
+    // 同一对话可以同时有多个生成任务:在锁内追加,不覆盖其他请求写入的消息
+    const saved = await updateConversation(userId, conversation.id, (current) => {
+      current.providerId = TANGZHI_PROVIDER_ID;
+      current.modelId = model.id;
+      current.videoOptions = options;
+      current.messages.push(assistant);
+      current.updatedAt = new Date().toISOString();
+    });
+    return ok({ conversation: saved, assistant });
   } catch (error) { return failure(error); }
 }

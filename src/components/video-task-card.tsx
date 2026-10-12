@@ -124,13 +124,12 @@ export function VideoTaskCard({
                 <div className="task-menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => void copy(prompt, "已复制提示词")}><Copy size={14} />复制提示词</button>
                   {taskId && <button type="button" role="menuitem" onClick={() => void copy(taskId, "已复制任务 ID")}><Copy size={14} />复制任务 ID</button>}
-                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onRegenerate(); }}
-                    disabled={message.status === "processing"}><RefreshCw size={14} />重新生成</button>
+                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onRegenerate(); }}>
+                    <RefreshCw size={14} />重新生成</button>
                   <Link role="menuitem" href="/assets" onClick={() => setMenuOpen(false)}><FolderOpen size={14} />在资产库查看</Link>
                   <hr />
                   <button type="button" role="menuitem" className="danger"
-                    disabled={message.status === "processing"}
-                    title={message.status === "processing" ? "生成中的任务请先停止" : undefined}
+                    title={message.status === "processing" ? "只删除记录，云端任务仍会继续生成并计费" : undefined}
                     onClick={() => {
                       if (!confirmDelete) { setConfirmDelete(true); return; }
                       setMenuOpen(false);
@@ -170,7 +169,8 @@ export function VideoTaskCard({
 
         <footer className="task-foot">
           {message.status === "failed" && <span className="task-error">{message.error || "视频生成失败"}</span>}
-          {message.status === "stopped" && <span className="task-note">{message.error || "已停止等待"}</span>}
+          {message.status === "stopped" && <span className="task-note">
+            {message.taskIds?.length || message.taskId ? "正在重新获取云端结果…" : message.error || "已停止"}</span>}
           {message.status === "processing" && <span className="task-note">已等待 <Elapsed since={message.createdAt} /></span>}
           <span className="task-meta">
             {meta.join(" | ")}

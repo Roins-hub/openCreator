@@ -70,6 +70,8 @@ export const conversationSchema = z.object({
 
 export const generateRequestSchema = z.object({
   conversationId: z.string(),
+  /** 浏览器生成的用户消息 ID:用户消息和生成任务都由服务端写入对话 */
+  userMessageId: z.string().regex(/^[\w-]{1,80}$/).optional(),
   modelId: z.string().min(1),
   prompt: z.string(),
   attachments: z.array(mediaRefSchema).default([]),

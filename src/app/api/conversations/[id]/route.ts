@@ -16,9 +16,10 @@ export async function PUT(request: Request, context: Context) {
   try {
     const { userId } = await requireUser(request);
     const id = (await context.params).id;
-    const body = await request.json();
+    const { removedMessageIds, ...body } = await request.json();
     if (body.id !== id) throw new Error("会话 ID 不匹配");
-    return ok(await saveConversation(userId, body));
+    const removed = Array.isArray(removedMessageIds) ? removedMessageIds.filter((item) => typeof item === "string") : [];
+    return ok(await saveConversation(userId, body, removed));
   } catch (error) { return failure(error); }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stopMessageText, unfinishedTaskIds } from "./generation-stop";
+import { unfinishedTaskIds } from "./generation-stop";
 
 describe("unfinishedTaskIds", () => {
   it("returns only video tasks that have not reached a terminal state", () => {
@@ -24,12 +24,5 @@ describe("unfinishedTaskIds", () => {
       status: "processing",
       taskId: "task-1",
     })).toEqual(["task-1"]);
-  });
-});
-
-describe("stopMessageText", () => {
-  it("keeps the cloud-running warning when a later task cancels successfully", () => {
-    expect(stopMessageText("已停止等待，云端任务可能仍在生成", ""))
-      .toBe("已停止等待，云端任务可能仍在生成");
   });
 });

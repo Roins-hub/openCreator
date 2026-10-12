@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, AtSign, BookOpen, Clapperboard, ImagePlus, Images, KeyRound, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, Square, X, BookMarked,
+  ArrowUp, AtSign, BookOpen, Clapperboard, ImagePlus, Images, KeyRound, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, X, BookMarked,
 } from "lucide-react";
 import type { Conversation, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
 import type { Asset } from "@/lib/asset-store";
@@ -18,7 +18,9 @@ import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey } from "@/lib/ap
 import {
   countMedia, durationSummary, effectiveReferenceMode, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
   TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError, type MediaKind, type VideoModel,
-} from "@/lib/tangzhi";import { unfinishedTaskIds } from "@/lib/generation-stop";
+} from "@/lib/tangzhi";
+import { unfinishedTaskIds } from "@/lib/generation-stop";
+import { keepLocalMessages, patchMessage } from "@/lib/conversation-merge";
 import { ConversationSearch } from "@/components/conversation-search";
 import {
   REFERENCE_CARD_CLASS, createReferenceCard, findReference, referenceLabels, serializePrompt, splitPromptReferences,
@@ -78,7 +80,6 @@ export function AppShell() {
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const uploading = attachments.some((item) => item.uploading);
-  const [busy, setBusy] = useState(false);
   const [pollFailures, setPollFailures] = useState(0);
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -98,7 +99,8 @@ export function AppShell() {
   const conversationRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
-  const generationControllerRef = useRef<AbortController | null>(null);
+  // 正在提交中的本地消息(用户消息、生成占位),服务端返回整份对话时要保留它们
+  const inflightRef = useRef(new Set<string>());
 
   const active = conversations.find((item) => item.id === activeId);
   // 默认选第一个支持多种比例的模型(个别渠道只支持竖屏)
@@ -117,8 +119,6 @@ export function AppShell() {
   // 当前模式下这个模型能接受的素材类型(不看已选数量),决定 @ 选择框和上传入口
   const modeKinds = MEDIA_KINDS.filter((kind) => selected && remainingMedia(selected, mode, [], kind) > 0);
   const labels = referenceLabels(attachments);
-  const processingMessage = active?.messages.find((message) => message.status === "processing");
-  const isGenerating = busy || Boolean(processingMessage);
 
   // 模型列表与个人数据分开加载:模型列表慢或失败不影响查看历史对话
   useEffect(() => {
@@ -211,7 +211,10 @@ export function AppShell() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(conversation),
     }));
-    setConversations((items) => [saved, ...items.filter((item) => item.id !== saved.id)]);
+    setConversations((items) => [
+      keepLocalMessages(saved, items.find((item) => item.id === saved.id), inflightRef.current),
+      ...items.filter((item) => item.id !== saved.id),
+    ]);
     return saved;
   };
 
@@ -414,7 +417,7 @@ export function AppShell() {
   };
 
   const send = () => {
-    if (isGenerating || !selected || (!draft.trim() && !attachments.length)) return;
+    if (!selected || (!draft.trim() && !attachments.length)) return;
     const prompt = editorRef.current
       ? serializePrompt(editorRef.current, attachments)
       : draft.trim();
@@ -425,11 +428,12 @@ export function AppShell() {
     return submit(prompt, attachments.map(toMediaRef), { clearComposer: true });
   };
 
+  // 同一对话可以连续提交多个生成任务,不必等上一个完成
   const submit = async (
     prompt: string, usedAttachments: MediaRef[],
     { clearComposer, videoOptions }: { clearComposer: boolean; videoOptions?: VideoOptions },
   ) => {
-    if (isGenerating || !selected) return;
+    if (!selected) return;
     const fitted = fitVideoOptions(selected, videoOptions || active?.videoOptions || videoDefaults);
     // 快照记录实际生成方式:没有素材时就是文生视频
     const currentVideoOptions: VideoOptions = {
@@ -444,87 +448,69 @@ export function AppShell() {
       setError(invalid);
       return;
     }
-    setBusy(true);
     setError("");
-    const controller = new AbortController();
-    generationControllerRef.current = controller;
-    let pendingMessageId: string | undefined;
+    // 先清空输入框,连点发送不会重复提交同一条
+    if (clearComposer) {
+      setDraft("");
+      attachments.forEach(revokePreview);
+      setAttachments([]);
+      if (editorRef.current) editorRef.current.innerHTML = "";
+    }
+    const now = new Date().toISOString();
+    const user: Message = {
+      id: createClientId(), role: "user", content: prompt,
+      attachments: usedAttachments, createdAt: now, status: "complete",
+    };
+    const pendingMessage: Message = {
+      id: `pending-${createClientId()}`, role: "assistant", content: "", createdAt: now, status: "processing",
+      generation: {
+        type: "video", providerName: TANGZHI_PROVIDER_NAME,
+        modelName: selected.id, modelId: selected.id, videoOptions: currentVideoOptions,
+      },
+    };
+    inflightRef.current.add(user.id);
+    inflightRef.current.add(pendingMessage.id);
+    let conversationId = active?.id;
     try {
-      let conversation = active || freshConversation(selected);
-      const now = new Date().toISOString();
-      const user: Message = {
-        id: createClientId(), role: "user", content: prompt,
-        attachments: usedAttachments, createdAt: now, status: "complete",
-      };
-      conversation = {
-        ...conversation,
-        title: conversation.messages.length ? conversation.title :
-          (prompt || "视频生成").slice(0, 28),
-        providerId: TANGZHI_PROVIDER_ID, modelId: selected.id,
-        updatedAt: now, messages: [...conversation.messages, user],
-      };
-      await persist(conversation);
-      setActiveId(conversation.id);
-      if (clearComposer) {
-        setDraft("");
-        attachments.forEach(revokePreview);
-        setAttachments([]);
-        if (editorRef.current) editorRef.current.innerHTML = "";
+      if (!active) {
+        const created = await persist(freshConversation(selected));
+        conversationId = created.id;
+        setActiveId(created.id);
       }
-      pendingMessageId = `pending-${createClientId()}`;
-      const pendingMessage: Message = {
-        id: pendingMessageId,
-        role: "assistant",
-        content: "",
-        createdAt: new Date().toISOString(),
-        status: "processing",
-        generation: {
-          type: "video", providerName: TANGZHI_PROVIDER_NAME,
-          modelName: selected.id, modelId: selected.id, videoOptions: currentVideoOptions,
-        },
-      };
-      const optimistic = {
-        ...conversation,
-        messages: [...conversation.messages, pendingMessage],
-      };
-      setConversations((items) => [
-        optimistic,
-        ...items.filter((item) => item.id !== optimistic.id),
-      ]);
-      const result = await request<{ conversation: Conversation }>("/api/generate", {
+      const id = conversationId as string;
+      setConversations((items) => items.map((item) => item.id !== id ? item : {
+        ...item,
+        title: item.messages.length ? item.title : (prompt || "视频生成").slice(0, 28),
+        providerId: TANGZHI_PROVIDER_ID, modelId: selected.id, updatedAt: now,
+        messages: [...item.messages, user, pendingMessage],
+      }));
+      const result = await request<{ conversation: Conversation; assistant: Message }>("/api/generate", {
         method: "POST", headers: { "Content-Type": "application/json", ...apiKeyHeaders(apiKey) },
-        signal: controller.signal,
         body: JSON.stringify({
-          conversationId: conversation.id, modelId: selected.id,
+          conversationId: id, userMessageId: user.id, modelId: selected.id,
           prompt, attachments: usedAttachments, videoOptions: currentVideoOptions,
         }),
       });
-      if (controller.signal.aborted) return;
-      setConversations((items) => [result.conversation, ...items.filter((item) => item.id !== result.conversation.id)]);
+      inflightRef.current.delete(user.id);
+      inflightRef.current.delete(pendingMessage.id);
+      setConversations((items) => items.map((item) => item.id !== id ? item :
+        patchMessage({
+          ...item, title: result.conversation.title, providerId: result.conversation.providerId,
+          modelId: result.conversation.modelId, videoOptions: result.conversation.videoOptions,
+          updatedAt: result.conversation.updatedAt,
+        }, result.assistant, pendingMessage.id)));
     } catch (cause) {
-      if (controller.signal.aborted || (cause as Error).name === "AbortError") return;
+      inflightRef.current.delete(pendingMessage.id);
       const message = (cause as Error).message;
       setError(message);
-      if (pendingMessageId) {
-        setConversations((items) => items.map((conversation) => ({
-          ...conversation,
-          messages: conversation.messages.map((item) =>
-            item.id === pendingMessageId ? { ...item, status: "failed", error: message } : item),
-        })));
-      }
-    }
-    finally {
-      if (generationControllerRef.current === controller) generationControllerRef.current = null;
-      setBusy(false);
+      setConversations((items) => items.map((item) => item.id !== conversationId ? item : {
+        ...item,
+        messages: item.messages.map((entry) =>
+          entry.id === pendingMessage.id ? { ...entry, status: "failed", error: message } : entry),
+      }));
     }
   };
 
-  const updateActiveMessages = (update: (messages: Message[]) => Message[]) => {
-    if (!active) return;
-    const updated = { ...active, messages: update(active.messages), updatedAt: new Date().toISOString() };
-    setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));
-    void persist(updated).catch((cause) => setError(cause.message));
-  };
 
   const toggleFavorite = async (paths: string[], favorite: boolean) => {
     if (!paths.length) return;
@@ -537,8 +523,23 @@ export function AppShell() {
     } catch (cause) { setError((cause as Error).message); }
   };
 
-  const deleteTurn = (messageId: string, userMessageId?: string) => updateActiveMessages((messages) =>
-    messages.filter((item) => item.id !== messageId && item.id !== userMessageId));
+  // 只告诉服务端删哪几条,不用浏览器里的整份副本覆盖(其他任务可能刚写入结果)
+  const deleteTurn = (messageId: string, userMessageId?: string) => {
+    if (!active) return;
+    const removed = [messageId, userMessageId].filter((id): id is string => Boolean(id));
+    removed.forEach((id) => inflightRef.current.delete(id));
+    const updated = {
+      ...active, updatedAt: new Date().toISOString(),
+      messages: active.messages.filter((item) => !removed.includes(item.id)),
+    };
+    setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));
+    void request<Conversation>(`/api/conversations/${updated.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...updated, removedMessageIds: removed }),
+    }).then((saved) => setConversations((items) => items.map((item) => item.id !== saved.id ? item :
+      keepLocalMessages(saved, item, inflightRef.current))))
+      .catch((cause) => setError(cause.message));
+  };
 
   const reedit = (prompt: string, references: MediaRef[], videoOptions?: VideoOptions) => {
     const editor = editorRef.current;
@@ -598,81 +599,12 @@ export function AppShell() {
     setLibraryOpen(false);
   };
 
-  const stop = async () => {
-    generationControllerRef.current?.abort();
-    generationControllerRef.current = null;
-    setBusy(false);
-    setError("");
-    if (!active) return;
-
-    const pending = active.messages.find((message) => message.status === "processing");
-    const taskIds = pending ? unfinishedTaskIds(pending) : [];
-    if (taskIds.length) {
-      let stoppedConversation = active;
-      for (const taskId of taskIds) {
-        try {
-          const result = await request<{ conversation: Conversation }>(
-            `/api/tasks/${taskId}?conversationId=${active.id}`,
-            { method: "DELETE" },
-          );
-          stoppedConversation = result.conversation;
-        } catch {
-          stoppedConversation = {
-            ...stoppedConversation,
-            updatedAt: new Date().toISOString(),
-            messages: stoppedConversation.messages.map((message) =>
-              message.id === pending?.id ? {
-                ...message,
-                status: "stopped",
-                error: "已停止等待，云端任务可能仍在生成",
-              } : message),
-          };
-        }
-      }
-      setConversations((items) => [
-        stoppedConversation,
-        ...items.filter((item) => item.id !== stoppedConversation.id),
-      ]);
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const stoppedConversation: Conversation = {
-      ...active,
-      updatedAt: now,
-      messages: pending
-        ? active.messages.map((message) => message.id === pending.id
-          ? { ...message, status: "stopped" as const, error: "已停止生成" }
-          : message)
-        : [...active.messages, {
-          id: createClientId(), role: "assistant", content: "",
-          createdAt: now, status: "stopped", error: "已停止生成",
-        }],
-    };
-    setConversations((items) => [
-      stoppedConversation,
-      ...items.filter((item) => item.id !== stoppedConversation.id),
-    ]);
-    try {
-      await request<Conversation>(`/api/conversations/${stoppedConversation.id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(stoppedConversation),
-      });
-    } catch (cause) {
-      setError((cause as Error).message);
-    }
-  };
-
   // 所有对话里未完成的视频任务都要查,不只当前打开的这一个:
-  // 切到别的对话后,后台任务完成也能及时取回视频
+  // 切到别的对话后,后台任务完成也能及时取回视频。
+  // 早期版本「停止」过的任务云端其实还在生成,也继续查,把结果取回来
   const pendingTasks = conversations.flatMap((conversation) => conversation.messages
-    .filter((message) => message.status === "processing" && (message.taskIds?.length || message.taskId))
-    .map((message) => ({
-      conversationId: conversation.id,
-      taskId: message.taskIds?.find((id) =>
-        !message.completedTaskIds?.includes(id) && !message.failedTaskIds?.includes(id)) || message.taskId,
-    }))
-    .filter((item): item is { conversationId: string; taskId: string } => Boolean(item.taskId)));
+    .filter((message) => message.status === "processing" || message.status === "stopped")
+    .flatMap((message) => unfinishedTaskIds(message).map((taskId) => ({ conversationId: conversation.id, taskId }))));
   const pendingKey = pendingTasks.map((item) => `${item.conversationId}:${item.taskId}`).join("|");
 
   useEffect(() => {
@@ -684,17 +616,20 @@ export function AppShell() {
     // 查询失败(网络抖动、中转站临时错误)时不放弃,逐步拉长间隔继续查
     const timer = window.setTimeout(async () => {
       const results = await Promise.allSettled(tasks.map((task) =>
-        request<{ conversation: Conversation }>(
+        request<{ message?: Message }>(
           `/api/tasks/${task.taskId}?conversationId=${task.conversationId}`, { headers: apiKeyHeaders() },
-        )));
-      const updated = new Map<string, Conversation>();
+        ).then((result) => ({ conversationId: task.conversationId, message: result.message }))));
+      // 同一对话可能有多个任务同时返回:逐条更新对应的消息,不整份替换
+      const patches: { conversationId: string; message: Message }[] = [];
       let failure: unknown;
       for (const result of results) {
-        if (result.status === "fulfilled") updated.set(result.value.conversation.id, result.value.conversation);
-        else failure ??= result.reason;
+        if (result.status === "rejected") failure ??= result.reason;
+        else if (result.value.message) patches.push({ conversationId: result.value.conversationId, message: result.value.message });
       }
-      if (updated.size) {
-        setConversations((items) => items.map((item) => updated.get(item.id) || item));
+      if (patches.length) {
+        setConversations((items) => items.map((item) => patches
+          .filter((patch) => patch.conversationId === item.id)
+          .reduce((conversation, patch) => patchMessage(conversation, patch.message), item)));
       }
       if (failure) {
         setError(`查询任务状态失败，稍后自动重试：${(failure as Error).message}`);
@@ -934,13 +869,10 @@ export function AppShell() {
                 attachmentCount={attachments.length}
                 onChange={(next) => changeGenerationOptions({ videoOptions: next })} />}
               <span className="composer-spacer">{attachmentSummary(mode, attachments)}</span>
-              <button className={`send-button ${isGenerating ? "is-stopping" : ""}`}
-                onClick={isGenerating ? () => void stop() : send}
-                disabled={!isGenerating && (!selected || uploading || (!draft.trim() && !attachments.length))}
-                aria-label={isGenerating ? "停止生成" : "发送"}>
-                {isGenerating
-                  ? <Square size={13} fill="currentColor" strokeWidth={2.4} />
-                  : <ArrowUp size={17} strokeWidth={2.4} />}
+              <button className="send-button" onClick={send}
+                disabled={!selected || uploading || (!draft.trim() && !attachments.length)}
+                aria-label="发送" title="发送（生成中也可以继续提交）">
+                <ArrowUp size={17} strokeWidth={2.4} />
               </button>
             </div>
             {referencePickerOpen && <div className="reference-picker" role="dialog" aria-label="选择参考内容"
