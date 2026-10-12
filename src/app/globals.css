@@ -1545,24 +1545,39 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .auth-switch a { margin-left: auto; color: var(--muted); }
 .auth-switch a:hover, .auth-switch button:hover { color: var(--ink); }
 
-/* 侧栏账号 */
-.account-panel { display: flex; flex-direction: column; gap: 8px; padding: 12px 10px; border-top: 1px solid var(--line); }
-.account-row { display: flex; align-items: center; gap: 9px; min-width: 0; }
+/* 侧栏账号:默认只显示头像和名字,点开向上弹出菜单 */
+.account-panel { position: relative; padding: 8px 6px 10px; border-top: 1px solid var(--line); }
+.account-panel.is-open { z-index: 40; }
+.account-trigger {
+  width: 100%; display: flex; align-items: center; gap: 9px; min-width: 0; padding: 6px; border-radius: 9px;
+  background: transparent; text-align: left;
+}
+.account-trigger:hover, .account-panel.is-open .account-trigger { background: var(--hover); }
 .account-avatar {
   flex: 0 0 auto; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%;
   color: var(--paper); background: var(--dark); font-size: 12px; font-weight: 700;
 }
 .account-name { min-width: 0; flex: 1; overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.account-balance { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
-.account-balance b { color: var(--ink); font-size: 14px; font-variant-numeric: tabular-nums; }
-.account-actions { display: flex; gap: 6px; }
-.account-actions a, .account-actions button {
-  display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px; border: 1px solid var(--line);
-  border-radius: 7px; color: var(--muted); font-size: 11px; font-weight: 600;
+.account-chevron { flex: 0 0 auto; color: var(--faint); }
+.account-menu {
+  position: absolute; z-index: 30; left: 6px; right: 6px; bottom: calc(100% - 2px); padding: 6px;
+  border: 1px solid var(--line); border-radius: 11px; background: var(--paper);
+  box-shadow: 0 12px 32px oklch(20% .02 80 / .14);
+  animation: popover-in .14s cubic-bezier(.16, 1, .3, 1);
 }
-.account-actions a:hover, .account-actions button:hover { color: var(--ink); border-color: var(--line-strong); }
+.account-menu-head { display: flex; flex-direction: column; gap: 2px; padding: 7px 9px 9px; min-width: 0; }
+.account-menu-head b { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.account-menu-head span { color: var(--faint); font-size: 11px; }
+.account-menu-balance {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 4px; padding: 8px 6px 8px 9px; border-radius: 8px;
+  background: var(--warm); color: var(--muted); font-size: 11px;
+}
+.account-menu-balance b { flex: 1; color: var(--ink); font-size: 15px; font-variant-numeric: tabular-nums; text-align: right; }
+.account-menu-balance .icon-button { width: 24px; height: 24px; }
+.account-menu-divider { height: 1px; margin: 4px 2px; background: var(--line); }
+.account-menu .history-action { text-decoration: none; }
 .account-login {
-  display: flex; align-items: center; justify-content: center; gap: 7px; height: 36px; border-radius: 9px;
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; height: 36px; border-radius: 9px;
   color: var(--paper); background: var(--dark); font-size: 13px; font-weight: 600;
 }
 .topbar-balance {
@@ -1576,3 +1591,5 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 /* 文字样式的按钮去掉浏览器默认底色 */
 button.text-link, .auth-switch button, .settings-account button.key-link { background: none; }
 .auth-switch button, .settings-account button.key-link { padding: 0; }
+.account-refresh-spin { animation: spin .6s cubic-bezier(.45, 0, .25, 1) infinite; }
+.account-menu-balance .icon-button:disabled { opacity: 1; cursor: default; color: var(--ink); }
