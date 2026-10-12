@@ -3,7 +3,7 @@ import { stat } from "node:fs/promises";
 import { extname } from "node:path";
 import { Readable } from "node:stream";
 import { failure } from "@/lib/http";
-import { mediaPrefix, sessionUserId } from "@/lib/identity";
+import { ownsMedia, sessionUserId } from "@/lib/identity";
 import { assertKey, signedUrl, verifyMediaSignature } from "@/lib/object-store";
 import { inside, outDir } from "@/lib/paths";
 import { parseByteRange } from "@/lib/byte-range";
@@ -28,7 +28,7 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
     const key = assertKey((await context.params).path.join("/"));
     const query = new URL(request.url).searchParams;
     const userId = await sessionUserId(request);
-    const allowed = (userId && key.startsWith(mediaPrefix(userId))) ||
+    const allowed = (userId && await ownsMedia(userId, key)) ||
       await verifyMediaSignature(key, query.get("exp"), query.get("sig"));
     if (!allowed) return failure(new Error("无权访问该文件"), 404);
 

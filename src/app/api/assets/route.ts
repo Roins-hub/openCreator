@@ -2,7 +2,7 @@ import { listAssets, permanentlyDeleteAsset, setAssetTrashed } from "@/lib/asset
 import { listConversations } from "@/lib/conversation-store";
 import { listFavorites, setFavorite } from "@/lib/favorite-store";
 import { failure, ok } from "@/lib/http";
-import { mediaPrefix, requireUser, userDir } from "@/lib/identity";
+import { mediaPrefixes, requireUser, userDir } from "@/lib/identity";
 
 export async function GET(request: Request) {
   try {
@@ -36,7 +36,7 @@ export async function DELETE(request: Request) {
     const path = new URL(request.url).searchParams.get("path");
     if (!path) throw new Error("缺少资产路径");
     await permanentlyDeleteAsset(userId, path);
-    await setFavorite(path, false, userDir(userId), mediaPrefix(userId)).catch(() => undefined);
+    await setFavorite(path, false, userDir(userId), await mediaPrefixes(userId)).catch(() => undefined);
     return ok({ deleted: true });
   } catch (error) {
     return failure(error, 400);

@@ -4,7 +4,7 @@ import { generateRequestSchema } from "@/lib/schemas";
 import {
   buildVideoRequest, TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError,
 } from "@/lib/tangzhi";
-import { mediaPrefix, requireUser } from "@/lib/identity";
+import { mediaPrefixes, requireUser } from "@/lib/identity";
 import { externalMediaUrl } from "@/lib/object-store";
 import { encodeTaskId, findVideoModel, publicOrigin, submitVideoTask } from "@/lib/tangzhi-server";
 import type { Message } from "@/lib/types";
@@ -21,7 +21,8 @@ export async function POST(request: Request) {
     if (invalid) throw new Error(invalid);
 
     // 只能引用自己的素材;给中转站的是 24 小时有效的临时链接
-    if (input.attachments.some((item) => !item.path.startsWith(mediaPrefix(userId)))) {
+    const prefixes = await mediaPrefixes(userId);
+    if (input.attachments.some((item) => !prefixes.some((prefix) => item.path.startsWith(prefix)))) {
       throw new Error("参考素材不存在，请重新上传");
     }
     const origin = publicOrigin(request);
