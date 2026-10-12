@@ -62,6 +62,7 @@ export const conversationSchema = z.object({
   title: z.string().min(1),
   providerId: z.string().optional(),
   modelId: z.string().optional(),
+  groupId: z.string().max(80).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   imageOptions: imageOptionsSchema.optional(),

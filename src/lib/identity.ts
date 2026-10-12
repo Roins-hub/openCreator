@@ -2,7 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { dataDir, inside } from "./paths";
 import { sessionSecret } from "./session-secret";
-import { TANGZHI_BASE_URL } from "./tangzhi";
+import { DEFAULT_RELAY, relayFetch, relayOf, type Relay } from "./relay";
 import { relayAccounts, type RelayAccounts } from "./relay-accounts";
 import { mergeWorkspace, readProfile, writeProfile } from "./workspace-merge";
 
@@ -10,13 +10,14 @@ import { mergeWorkspace, readProfile, writeProfile } from "./workspace-merge";
  * 用户身份:
  * - 配置了 RELAY_DB_URL 时按「中转站账号」隔离:同一账号下的所有 Key(包括新建的)看到同一份记录,
  *   Key 删除后换个新 Key 也能找回;以前按 Key 存的旧数据在账号首次使用时自动合并进来;
- * - 没配置时退回按 Key 隔离(身份 = Key 的哈希)。
+ * - 没配置时退回按 Key 隔离(身份 = Key 的哈希);
+ * - 用户填了自定义中转站地址时,按「地址 + Key」隔离(我们读不到别人中转站的账号),和内置中转站的数据互不相通。
  * 服务器只保存哈希,不保存 Key。
  */
 export const API_KEY_HEADER = "x-tangzhi-key";
 export const SESSION_COOKIE = "mote_uid";
 
-export interface User { apiKey: string; userId: string }
+export interface User { apiKey: string; userId: string; relay: Relay }
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex").slice(0, 32);
 
@@ -24,6 +25,9 @@ const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 export function userIdOf(apiKey: string) {
   return hash(`mote:${apiKey.trim()}`);
 }
+
+/** 自定义中转站的身份 */
+export const customRelayUserId = (base: string, apiKey: string) => hash(`mote-relay:${base}:${apiKey.trim()}`);
 
 /** 按中转站账号隔离时的身份 */
 export const accountUserId = (accountId: string) => hash(`mote-account:${accountId}`);
@@ -34,14 +38,16 @@ export const mediaPrefix = (userId: string) => `users/${userId}/`;
 const verified = new Set<string>();
 
 /** 按 Key 隔离:首次出现的 Key 先到中转站验证,确认有效才建立空间,避免随便填的 Key 占用存储。 */
-async function ensureKeyUser(apiKey: string, userId: string) {
+async function ensureKeyUser(apiKey: string, userId: string, relay: Relay = DEFAULT_RELAY) {
   if (verified.has(userId)) return;
   const profile = inside(userDir(userId), "profile.json");
   const known = await access(profile).then(() => true, () => false);
   if (!known) {
-    const response = await fetch(`${TANGZHI_BASE_URL}/v1/models`, {
-      headers: { Authorization: `Bearer ${apiKey}` }, cache: "no-store", signal: AbortSignal.timeout(15_000),
-    }).catch(() => { throw new Error("暂时无法连接中转站验证 API Key，请稍后重试"); });
+    const response = await relayFetch(relay, "/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
+    }).catch((error) => {
+      throw new Error(relay.custom ? (error as Error).message : "暂时无法连接中转站验证 API Key，请稍后重试");
+    });
     if (response.status === 401 || response.status === 403) throw new Error("API Key 无效或已过期，请在设置中检查");
     if (!response.ok) throw new Error(`验证 API Key 失败（中转站返回 ${response.status}）`);
     await mkdir(userDir(userId), { recursive: true });
@@ -82,7 +88,12 @@ function prepareAccount(lookup: RelayAccounts, accountId: string, userId: string
   return pending;
 }
 
-async function resolveUserId(apiKey: string) {
+async function resolveUserId(apiKey: string, relay: Relay) {
+  if (relay.custom) {
+    const userId = customRelayUserId(relay.base, apiKey);
+    await ensureKeyUser(apiKey, userId, relay);
+    return userId;
+  }
   const lookup = relayAccounts();
   if (!lookup) {
     const userId = userIdOf(apiKey);
@@ -109,7 +120,8 @@ async function resolveUserId(apiKey: string) {
 export async function requireUser(request: Request): Promise<User> {
   const apiKey = request.headers.get(API_KEY_HEADER)?.trim();
   if (!apiKey) throw new Error("请先在设置中填写中转站 API Key");
-  return { apiKey, userId: await resolveUserId(apiKey) };
+  const relay = relayOf(request);
+  return { apiKey, relay, userId: await resolveUserId(apiKey, relay) };
 }
 
 /** 这个用户能访问的媒体前缀:自己的,加上合并进来的旧空间的 */

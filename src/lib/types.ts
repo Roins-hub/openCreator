@@ -40,6 +40,8 @@ export interface Conversation {
   title: string;
   providerId?: string;
   modelId?: string;
+  /** 侧边栏分组;分组被解散后残留的 ID 当作未分组 */
+  groupId?: string;
   createdAt: string;
   updatedAt: string;
   imageOptions?: ImageOptions;

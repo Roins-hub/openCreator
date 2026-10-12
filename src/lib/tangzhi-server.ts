@@ -1,19 +1,24 @@
-import { TANGZHI_BASE_URL, toVideoModels, type VideoModel } from "./tangzhi";
+import { toVideoModels, type VideoModel } from "./tangzhi";
+import { DEFAULT_RELAY, relayFetch, relayHost, type Relay } from "./relay";
 
 const CATALOG_TTL = 60_000;
-let catalog: { at: number; models: VideoModel[] } | undefined;
+const MAX_CATALOGS = 50;
+// 每个中转站地址各自缓存
+const catalogs = new Map<string, { at: number; models: VideoModel[] }>();
 
-/** 读取中转站公开定价接口里的视频模型(1 分钟缓存,失败时沿用上次结果)。 */
-export async function videoModels(): Promise<VideoModel[]> {
+/** 读取中转站公开定价接口(new-api 的 /api/pricing)里的视频模型(1 分钟缓存,失败时沿用上次结果)。 */
+export async function videoModels(relay: Relay = DEFAULT_RELAY): Promise<VideoModel[]> {
+  const catalog = catalogs.get(relay.base);
   if (catalog && Date.now() - catalog.at < CATALOG_TTL) return catalog.models;
   try {
-    const response = await fetch(`${TANGZHI_BASE_URL}/api/pricing`, {
-      cache: "no-store", signal: AbortSignal.timeout(15_000),
-    });
+    const response = await relayFetch(relay, "/api/pricing", { signal: AbortSignal.timeout(15_000) });
     if (!response.ok) throw new Error(`模型列表返回 ${response.status}`);
-    const models = toVideoModels(await response.json());
+    const models = toVideoModels(await response.json().catch(() => {
+      throw new Error("模型列表格式不正确（需要 new-api 兼容的中转站）");
+    }));
     if (!models.length) throw new Error("中转站暂无可用视频模型");
-    catalog = { at: Date.now(), models };
+    if (catalogs.size >= MAX_CATALOGS && !catalogs.has(relay.base)) catalogs.delete(catalogs.keys().next().value as string);
+    catalogs.set(relay.base, { at: Date.now(), models });
     return models;
   } catch (error) {
     if (catalog) return catalog.models;
@@ -21,8 +26,8 @@ export async function videoModels(): Promise<VideoModel[]> {
   }
 }
 
-export async function findVideoModel(id: string) {
-  const model = (await videoModels()).find((item) => item.id === id);
+export async function findVideoModel(id: string, relay: Relay = DEFAULT_RELAY) {
+  const model = (await videoModels(relay)).find((item) => item.id === id);
   if (!model) throw new Error("所选模型已下线，请重新选择模型");
   return model;
 }
@@ -55,30 +60,31 @@ export function upstreamMessage(data: unknown, status: number): string {
 }
 
 /** 把中转站的扣费失败提示换成用户看得懂的话。 */
-export function friendlyMessage(message: string) {
+export function friendlyMessage(message: string, host = relayHost(DEFAULT_RELAY)) {
   if (!/预扣费额度失败|额度不足|余额不足|insufficient/i.test(message)) return message;
   const left = message.match(/剩余额度[:：]\s*[^\d-]*([\d.]+)/)?.[1];
   const need = message.match(/需要预扣费额度[:：]\s*[^\d-]*([\d.]+)/)?.[1];
   const detail = left && need ? `本次需预扣 ${Number(need).toFixed(2)}，当前剩余 ${Number(left).toFixed(2)}。` : "";
-  return `中转站余额不足：${detail}请到 new.tangzhi.org 充值，或改用更短时长、更便宜的模型。`;
+  return `中转站余额不足：${detail}请到 ${host} 充值，或改用更短时长、更便宜的模型。`;
 }
 
-async function call(apiKey: string, path: string, init: RequestInit = {}) {
-  const response = await fetch(`${TANGZHI_BASE_URL}${path}`, {
+async function call(relay: Relay, apiKey: string, path: string, init: RequestInit = {}) {
+  const response = await relayFetch(relay, path, {
     ...init,
-    cache: "no-store",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", ...init.headers },
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401) throw new Error("API Key 无效或已过期，请在设置中检查");
-    throw new Error(friendlyMessage(upstreamMessage(data, response.status)));
+    throw new Error(friendlyMessage(upstreamMessage(data, response.status), relayHost(relay)));
   }
   return data as Record<string, unknown>;
 }
 
-export async function submitVideoTask(apiKey: string, body: Record<string, unknown>, signal?: AbortSignal) {
-  const data = await call(apiKey, "/v1/videos", { method: "POST", body: JSON.stringify(body), signal });
+export async function submitVideoTask(
+  apiKey: string, body: Record<string, unknown>, signal?: AbortSignal, relay: Relay = DEFAULT_RELAY,
+) {
+  const data = await call(relay, apiKey, "/v1/videos", { method: "POST", body: JSON.stringify(body), signal });
   const id = data.id || data.task_id;
   if (typeof id !== "string" || !id) throw new Error("中转站未返回任务 ID");
   return id;
@@ -90,8 +96,8 @@ export interface TaskResult {
   error?: string;
 }
 
-export async function queryVideoTask(apiKey: string, taskId: string): Promise<TaskResult> {
-  const data = await call(apiKey, `/v1/videos/${encodeURIComponent(taskId)}`);
+export async function queryVideoTask(apiKey: string, taskId: string, relay: Relay = DEFAULT_RELAY): Promise<TaskResult> {
+  const data = await call(relay, apiKey, `/v1/videos/${encodeURIComponent(taskId)}`);
   const status = String(data.status || "").toLowerCase();
   if (["completed", "succeeded", "success"].includes(status)) return { status: "succeeded" };
   if (["failed", "cancelled", "canceled", "expired"].includes(status)) {
@@ -101,9 +107,9 @@ export async function queryVideoTask(apiKey: string, taskId: string): Promise<Ta
 }
 
 /** 完成后的视频需要带鉴权从 /content 下载。 */
-export async function downloadVideo(apiKey: string, taskId: string) {
-  const response = await fetch(`${TANGZHI_BASE_URL}/v1/videos/${encodeURIComponent(taskId)}/content`, {
-    headers: { Authorization: `Bearer ${apiKey}` }, cache: "no-store",
+export async function downloadVideo(apiKey: string, taskId: string, relay: Relay = DEFAULT_RELAY) {
+  const response = await relayFetch(relay, `/v1/videos/${encodeURIComponent(taskId)}/content`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
   });
   if (!response.ok) {
     throw new Error(upstreamMessage(await response.json().catch(() => ({})), response.status));

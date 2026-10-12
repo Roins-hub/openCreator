@@ -5,7 +5,9 @@ import Link from "next/link";
 import {
   ArrowLeft, Check, CircleCheck, CircleX, ExternalLink, Eye, EyeOff, LoaderCircle, Save, TestTube2, X,
 } from "lucide-react";
-import { apiKeyHeaders, openSession, readApiKey, writeApiKey } from "@/lib/api-key";
+import {
+  apiKeyHeaders, openSession, readApiKey, readRelayBase, writeApiKey, writeRelayBase,
+} from "@/lib/api-key";
 import {
   durationSummary, formatPrice, mediaSummary, TANGZHI_BASE_URL, TANGZHI_KEY_PAGE, type VideoModel,
 } from "@/lib/tangzhi";
@@ -22,18 +24,34 @@ export function SettingsForm() {
   const [error, setError] = useState("");
   const [check, setCheck] = useState<{ state: "loading" | "success" | "error"; message: string }>();
   const [models, setModels] = useState<VideoModel[]>();
+  // 中转站地址:空字符串 = 内置的默认中转站
+  const [customMode, setCustomMode] = useState(false);
+  const [baseInput, setBaseInput] = useState("");
+  const [savedBase, setSavedBase] = useState("");
+  const base = customMode ? baseInput.trim().replace(/\/+$/, "") : "";
+  const host = (savedBase || TANGZHI_BASE_URL).replace(/^https?:\/\//, "");
+  const keyPage = savedBase ? `${savedBase}/console/token` : TANGZHI_KEY_PAGE;
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const key = readApiKey();
-      setApiKey(key);
-      setSaved(key);
-    }, 0);
-    fetch("/api/models").then(async (response) => {
+  const loadModels = (relayBase: string) => {
+    setModels(undefined);
+    fetch("/api/models", { headers: apiKeyHeaders("", relayBase) }).then(async (response) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "无法获取模型列表");
       setModels(data);
     }).catch((cause) => setError((cause as Error).message));
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const key = readApiKey();
+      const relayBase = readRelayBase();
+      setApiKey(key);
+      setSaved(key);
+      setSavedBase(relayBase);
+      setBaseInput(relayBase);
+      setCustomMode(Boolean(relayBase));
+      loadModels(relayBase);
+    }, 0);
     return () => clearTimeout(timer);
   }, []);
 
@@ -41,13 +59,17 @@ export function SettingsForm() {
   const save = async () => {
     const key = apiKey.trim();
     setError("");
+    if (customMode && !base) return setError("请填写自定义中转站地址，或切换回默认中转站");
     setSaving(true);
     try {
-      // 先验证 Key 并切换到它对应的个人空间,成功后才保存
-      await openSession(key);
+      // 先用新的地址和 Key 验证并切换到对应的个人空间,成功后才保存
+      await openSession(key, base);
+      writeRelayBase(base);
       writeApiKey(key);
       setApiKey(key);
       setSaved(key);
+      if (base !== savedBase) loadModels(base);
+      setSavedBase(base);
       setStatus(key ? "已保存" : "已清除");
       window.setTimeout(() => setStatus(""), 2000);
     } catch (cause) {
@@ -62,7 +84,7 @@ export function SettingsForm() {
     if (!key) return setCheck({ state: "error", message: "请先填写 API Key" });
     setCheck({ state: "loading", message: "正在验证…" });
     try {
-      const response = await fetch("/api/key-check", { method: "POST", headers: apiKeyHeaders(key) });
+      const response = await fetch("/api/key-check", { method: "POST", headers: apiKeyHeaders(key, base) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "验证失败");
       setCheck({ state: "success", message: data.message });
@@ -71,7 +93,7 @@ export function SettingsForm() {
     }
   };
 
-  const dirty = apiKey.trim() !== saved;
+  const dirty = apiKey.trim() !== saved || base !== savedBase;
 
   return (
     <main className="settings-page">
@@ -89,16 +111,36 @@ export function SettingsForm() {
         <div className="settings-title">
           <span className="eyebrow">SETTINGS · v{appVersion}</span>
           <h1>设置</h1>
-          <p>视频由 <code>{TANGZHI_BASE_URL.replace("https://", "")}</code> 中转站生成。API Key 只保存在当前浏览器；你的对话和视频按 Key 单独存放，其他用户看不到。换一个 Key 会进入另一个空间。</p>
+          <p>视频由 <code>{host}</code> 中转站生成。API Key 只保存在当前浏览器。{savedBase
+            ? "使用自定义中转站时，对话和视频按「地址 + Key」单独存放，和默认中转站的记录互不相通。"
+            : "对话和视频按中转站账号存放，其他用户看不到；同一账号下换一个 Key，记录也都还在。"}</p>
         </div>
         {error && <div className="settings-error">{error}<button onClick={() => setError("")}><X size={14} /></button></div>}
 
         <section className="settings-block" aria-labelledby="key-heading">
           <div className="provider-number">连接</div>
           <div>
+            <div className="relay-choice" role="radiogroup" aria-label="中转站地址">
+              <span className="relay-label">中转站地址</span>
+              <button type="button" role="radio" aria-checked={!customMode}
+                className={!customMode ? "active" : ""} onClick={() => { setCustomMode(false); setCheck(undefined); }}>
+                默认 · {TANGZHI_BASE_URL.replace("https://", "")}
+              </button>
+              <button type="button" role="radio" aria-checked={customMode}
+                className={customMode ? "active" : ""} onClick={() => { setCustomMode(true); setCheck(undefined); }}>
+                自定义
+              </button>
+            </div>
+            {customMode && <div className="relay-custom">
+              <input aria-label="自定义中转站地址" value={baseInput} placeholder="https://api.example.com"
+                autoComplete="off" spellCheck={false} inputMode="url"
+                onChange={(event) => { setBaseInput(event.target.value); setCheck(undefined); }}
+                onKeyDown={(event) => { if (event.key === "Enter" && dirty) void save(); }} />
+              <p className="key-help">需要是 new-api 兼容的中转站，地址以 https:// 开头，不能是内网地址。保存后模型列表会按新地址刷新。</p>
+            </div>}
             <div className="section-head">
               <h2 id="key-heading">中转站 API Key</h2>
-              <a className="key-link" href={TANGZHI_KEY_PAGE} target="_blank" rel="noopener noreferrer">
+              <a className="key-link" href={keyPage} target="_blank" rel="noopener noreferrer">
                 获取 API Key <ExternalLink size={12} />
               </a>
             </div>
@@ -122,7 +164,7 @@ export function SettingsForm() {
               </button>
             </div>
             {check && check.state !== "loading" && <div className={`model-test-result ${check.state}`}>{check.message}</div>}
-            <p className="key-help">登录 {TANGZHI_BASE_URL.replace("https://", "")}，在「令牌」页面创建 API Key，复制后粘贴到这里并保存即可使用。</p>
+            <p className="key-help">登录 {host}，在「令牌」页面创建 API Key，复制后粘贴到这里并保存即可使用。</p>
           </div>
         </section>
 

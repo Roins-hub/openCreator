@@ -2,12 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, Image as ImageIcon, Images, Star, Trash2, Video } from "lucide-react";
+import {
+  ArrowDownWideNarrow, ArrowLeft, ArrowUpNarrowWide, Download, Image as ImageIcon, Images, Search, Star, Trash2, Video, X,
+} from "lucide-react";
 import type { Asset } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
 import { apiKeyHeaders, openSession, readApiKey } from "@/lib/api-key";
 
 type Filter = "all" | Asset["kind"] | "favorite" | "trash";
+type Sort = "newest" | "oldest";
+
+/** 按提示词、对话标题、文件名搜索(多个关键词用空格分开,需全部命中) */
+export function matchAsset(asset: Pick<Asset, "prompt" | "conversationTitle" | "name">, query: string) {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const text = [asset.prompt, asset.conversationTitle, asset.name].filter(Boolean).join(" ").toLowerCase();
+  return words.every((word) => text.includes(word));
+}
 
 const retentionDays = Number(process.env.NEXT_PUBLIC_RETENTION_DAYS) || 0;
 const retentionNote = retentionDays ? `生成结果保留 ${retentionDays} 天，请及时下载需要长期保存的视频。` : "";
@@ -20,6 +30,8 @@ function formatSize(bytes: number) {
 export function AssetLibrary() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<Sort>("newest");
   const [error, setError] = useState("");
   const loadAssets = async () => {
     const response = await fetch("/api/assets", { headers: apiKeyHeaders() });
@@ -37,12 +49,17 @@ export function AssetLibrary() {
     }, 0);
     return () => clearTimeout(timer);
   }, []);
-  const visible = useMemo(() => filter === "trash"
-    ? assets.filter((asset) => asset.trashed)
-    : filter === "favorite"
-      ? assets.filter((asset) => !asset.trashed && asset.favorite)
-      : assets.filter((asset) => !asset.trashed && (filter === "all" || asset.kind === filter)),
-  [assets, filter]);
+  const visible = useMemo(() => {
+    const filtered = filter === "trash"
+      ? assets.filter((asset) => asset.trashed)
+      : filter === "favorite"
+        ? assets.filter((asset) => !asset.trashed && asset.favorite)
+        : assets.filter((asset) => !asset.trashed && (filter === "all" || asset.kind === filter));
+    const direction = sort === "newest" ? -1 : 1;
+    return filtered
+      .filter((asset) => matchAsset(asset, query))
+      .sort((a, b) => direction * a.createdAt.localeCompare(b.createdAt));
+  }, [assets, filter, query, sort]);
   const activeAssets = assets.filter((asset) => !asset.trashed);
   const toggleFavorite = async (asset: Asset) => {
     setError("");
@@ -88,8 +105,9 @@ export function AssetLibrary() {
       <div className="asset-heading">
         <span className="eyebrow">MY LIBRARY</span>
         <h1>资产</h1>
-        <p>这里只显示当前 API Key 生成的视频，其他用户看不到。{retentionNote}</p>
+        <p>这里只显示你的账号生成的视频，其他用户看不到。{retentionNote}</p>
       </div>
+      <div className="asset-toolbar-row">
       <div className="asset-toolbar" aria-label="资产筛选">
         {([
           ["all", "全部", Images],
@@ -107,9 +125,28 @@ export function AssetLibrary() {
                 activeAssets.filter((asset) => asset.kind === value).length}</span>
           </button>)}
       </div>
+      <div className="asset-tools">
+        <label className="asset-search">
+          <Search size={14} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)}
+            placeholder="搜索提示词、对话标题" aria-label="搜索资产" />
+          {query && <button type="button" onClick={() => setQuery("")} aria-label="清空搜索"><X size={13} /></button>}
+        </label>
+        <button type="button" className="asset-sort" onClick={() => setSort((value) => value === "newest" ? "oldest" : "newest")}
+          title="切换排序" aria-label={`按时间排序：${sort === "newest" ? "最新在前" : "最早在前"}`}>
+          {sort === "newest" ? <ArrowDownWideNarrow size={14} /> : <ArrowUpNarrowWide size={14} />}
+          {sort === "newest" ? "最新在前" : "最早在前"}
+        </button>
+      </div>
+      </div>
+      {query && !error && <p className="asset-result-count">找到 {visible.length} 个匹配「{query.trim()}」的资产</p>}
       {error && <div className="settings-error">{error}</div>}
       {!error && visible.length === 0 ? <div className="asset-empty">
-        {filter === "favorite" ? <>
+        {query ? <>
+          <Search size={24} />
+          <h2>没有找到匹配的资产</h2>
+          <p>换个关键词试试，可以搜提示词里的词，或者对话标题。</p>
+        </> : filter === "favorite" ? <>
           <Star size={24} />
           <h2>还没有收藏</h2>
           <p>在对话的任务卡片或资产卡片上点击星标，收藏的作品会集中出现在这里。</p>
@@ -125,7 +162,7 @@ export function AssetLibrary() {
         <Link href="/">开始创作</Link>
       </div> : <div className="asset-grid">
         {visible.map((asset) => <article className="asset-card" key={asset.id}>
-          <div className="asset-preview">
+          <div className="asset-preview" title={asset.prompt}>
             {!asset.trashed && <button type="button" className={`asset-star ${asset.favorite ? "is-on" : ""}`}
               onClick={() => void toggleFavorite(asset)} aria-pressed={Boolean(asset.favorite)}
               aria-label={asset.favorite ? "取消收藏" : "收藏"} title={asset.favorite ? "取消收藏" : "收藏"}>

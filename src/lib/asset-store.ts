@@ -2,6 +2,7 @@ import { inside } from "./paths";
 import { userDir } from "./identity";
 import { readJson, writeJsonAtomic } from "./json-store";
 import { assertKey, deleteObject } from "./object-store";
+import { buildTurns } from "./turns";
 import type { Conversation } from "./types";
 
 export interface Asset {
@@ -15,11 +16,13 @@ export interface Asset {
   createdAt: string;
   conversationId?: string;
   conversationTitle?: string;
+  /** 生成这个视频的提示词,用于搜索 */
+  prompt?: string;
   trashed?: boolean;
   favorite?: boolean;
 }
 
-export type AssetRecord = Omit<Asset, "id" | "conversationTitle" | "favorite">;
+export type AssetRecord = Omit<Asset, "id" | "conversationTitle" | "prompt" | "favorite">;
 
 /** 生成结果的索引:文件在对象存储里,索引记录名称、大小、来源对话和回收站状态。 */
 const indexFile = (userId: string) => inside(userDir(userId), "assets.json");
@@ -47,6 +50,14 @@ export async function recordAsset(userId: string, record: AssetRecord) {
 
 export function enrichAssets(records: AssetRecord[], conversations: Conversation[], favorites: string[] = []) {
   const titles = new Map(conversations.map((item) => [item.id, item.title]));
+  // 视频路径 -> 生成它的提示词
+  const prompts = new Map<string, string>();
+  for (const conversation of conversations) {
+    for (const turn of buildTurns(conversation.messages, (message) => message.role === "assistant")) {
+      if (turn.kind !== "video" || !turn.user?.content) continue;
+      for (const media of turn.message.media || []) prompts.set(media.path, turn.user.content);
+    }
+  }
   const favoriteSet = new Set(favorites);
   return records
     .filter((record) => !isExpired(record))
@@ -54,6 +65,7 @@ export function enrichAssets(records: AssetRecord[], conversations: Conversation
       ...record,
       id: record.path,
       conversationTitle: record.conversationId ? titles.get(record.conversationId) : undefined,
+      prompt: prompts.get(record.path),
       conversationId: record.conversationId && titles.has(record.conversationId) ? record.conversationId : undefined,
       favorite: favoriteSet.has(record.path),
     }))

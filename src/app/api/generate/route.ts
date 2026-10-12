@@ -11,11 +11,11 @@ import type { Message } from "@/lib/types";
 
 export async function POST(request: Request) {
   try {
-    const { apiKey, userId } = await requireUser(request);
+    const { apiKey, userId, relay } = await requireUser(request);
     const input = generateRequestSchema.parse(await request.json());
     const conversation = await getConversation(userId, input.conversationId);
     if (!conversation) throw new Error("会话不存在");
-    const model = await findVideoModel(input.modelId);
+    const model = await findVideoModel(input.modelId, relay);
     const options = input.videoOptions;
     const invalid = videoRequestError(model, input.prompt, options, input.attachments);
     if (invalid) throw new Error(invalid);
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
           model, input.prompt, options, input.attachments,
           (media) => urls.get(media.path) || "", `${batch}_${index + 1}`,
         );
-        taskIds.push(encodeTaskId(await submitVideoTask(apiKey, body, request.signal)));
+        taskIds.push(encodeTaskId(await submitVideoTask(apiKey, body, request.signal, relay)));
       }
     } catch (error) {
       // 一个都没提交成功、也没有记下提示词时,直接把错误返回给浏览器

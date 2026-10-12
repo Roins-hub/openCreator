@@ -10,11 +10,11 @@ import type { Asset } from "@/lib/asset-store";
 import { createClientId } from "@/lib/client-id";
 import { GenerationStatus } from "@/components/generation-status";
 import { VideoControls } from "@/components/generation-controls";
-import { HistoryMenu } from "@/components/history-menu";
+import { ConversationList, type ConversationGroup } from "@/components/conversation-list";
 import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
 import { acceptAttribute, MEDIA_KIND_LABEL, MEDIA_RULES, pickMediaFiles } from "@/lib/media-files";
-import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey } from "@/lib/api-key";
+import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey, readRelayBase } from "@/lib/api-key";
 import {
   countMedia, durationSummary, effectiveReferenceMode, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
   TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError, type MediaKind, type VideoModel,
@@ -90,6 +90,9 @@ export function AppShell() {
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [customPrompts, setCustomPrompts] = useState<PromptTemplate[]>([]);
+  const [groups, setGroups] = useState<ConversationGroup[]>([]);
+  // 自定义中转站的域名;空 = 内置中转站
+  const [relayHost, setRelayHost] = useState("");
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [referenceQuery, setReferenceQuery] = useState("");
   const [referencePickerPosition, setReferencePickerPosition] = useState<{ left: number; top?: number; bottom?: number }>({ left: 10, top: 8 });
@@ -133,18 +136,21 @@ export function AppShell() {
       setConversations([]);
       setFavorites(new Set());
       setCustomPrompts([]);
+      setGroups([]);
       setActiveId(undefined);
       await openSession("");
       return;
     }
     await openSession(key);
-    const [nextConversations, nextFavorites, nextPrompts] = await Promise.all([
+    const [nextConversations, nextFavorites, nextPrompts, nextGroups] = await Promise.all([
       request<Conversation[]>("/api/conversations"),
       request<string[]>("/api/favorites").catch(() => []),
       request<PromptTemplate[]>("/api/prompts").catch(() => []),
+      request<ConversationGroup[]>("/api/groups").catch(() => []),
     ]);
     setFavorites(new Set(nextFavorites));
     setCustomPrompts(nextPrompts);
+    setGroups(nextGroups);
     setConversations(nextConversations);
     if (nextConversations.length) {
       const requested = typeof window === "undefined" ? null :
@@ -163,7 +169,7 @@ export function AppShell() {
     return () => clearTimeout(timer);
   }, [load, apiKey]);
   useEffect(() => {
-    const sync = () => setApiKey(readApiKey());
+    const sync = () => { setApiKey(readApiKey()); setRelayHost(readRelayBase().replace(/^https?:\/\//, "")); };
     const timer = window.setTimeout(sync, 0);
     const unsubscribe = onApiKeyChange(sync);
     return () => { clearTimeout(timer); unsubscribe(); };
@@ -338,11 +344,43 @@ export function AppShell() {
     closeSidebarOnMobile();
   };
 
-  const remove = async (id: string) => {
-    await request(`/api/conversations/${id}`, { method: "DELETE" });
-    const rest = conversations.filter((item) => item.id !== id);
-    setConversations(rest);
-    if (activeId === id) setActiveId(rest[0]?.id);
+  const removeConversations = async (ids: string[]) => {
+    try {
+      await request("/api/conversations", {
+        method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }),
+      });
+      const gone = new Set(ids);
+      const rest = conversations.filter((item) => !gone.has(item.id));
+      setConversations((items) => items.filter((item) => !gone.has(item.id)));
+      if (activeId && gone.has(activeId)) setActiveId(rest[0]?.id);
+    } catch (cause) { setError((cause as Error).message); }
+  };
+
+  const moveConversations = async (ids: string[], groupId: string | undefined) => {
+    const targets = new Set(ids);
+    const previous = conversations;
+    setConversations((items) => items.map((item) => !targets.has(item.id) ? item : { ...item, groupId }));
+    try {
+      await request("/api/conversations", {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, groupId }),
+      });
+    } catch (cause) {
+      setConversations(previous);
+      setError((cause as Error).message);
+    }
+  };
+
+  const saveGroups = (next: ConversationGroup[]) => {
+    setGroups(next);
+    void request<ConversationGroup[]>("/api/groups", {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next),
+    }).catch((cause) => setError((cause as Error).message));
+  };
+
+  const createGroup = (name: string) => {
+    const group: ConversationGroup = { id: createClientId(), name };
+    saveGroups([group, ...groups]);
+    return group;
   };
 
   const rename = async (conversation: Conversation, title: string) => {
@@ -678,21 +716,11 @@ export function AppShell() {
         </div>
         <button className="new-chat" onClick={create}><Plus size={16} /> 新对话</button>
         <Link className="asset-link" href="/assets"><Images size={16} /> 资产</Link>
-        <div className="history-label">最近</div>
-        <nav className="history">
-          {conversations.map((conversation) => (
-            <div key={conversation.id}
-              className={`history-row ${conversation.id === activeId ? "active" : ""}`}>
-              <button className="history-title"
-                onClick={() => { setActiveId(conversation.id); closeSidebarOnMobile(); }}>
-                {conversation.title}
-              </button>
-              <HistoryMenu title={conversation.title}
-                onRename={(title) => void rename(conversation, title)}
-                onDelete={() => void remove(conversation.id)} />
-            </div>
-          ))}
-        </nav>
+        <ConversationList conversations={conversations} groups={groups} activeId={activeId}
+          onOpen={(id) => { setActiveId(id); closeSidebarOnMobile(); }}
+          onRename={(conversation, title) => void rename(conversation, title)}
+          onDelete={removeConversations} onMove={moveConversations}
+          onGroupsChange={saveGroups} onCreateGroup={createGroup} />
         <div className="sidebar-utilities">
           <Link className="settings-link" href="/docs"><BookOpen size={16} /> 文档</Link>
           <Link className="settings-link" href="/settings"><Settings size={16} /> 设置</Link>
@@ -915,7 +943,7 @@ export function AppShell() {
                 })}</div>}
             </div>}
           </div>
-          <p className="composer-note">由 {TANGZHI_PROVIDER_NAME} 中转站生成 · Enter 发送，Shift + Enter 换行</p>
+          <p className="composer-note">由 {relayHost || `${TANGZHI_PROVIDER_NAME} `}中转站生成 · Enter 发送，Shift + Enter 换行</p>
         </div>
       </section>
       {searchOpen && <ConversationSearch conversations={conversations}

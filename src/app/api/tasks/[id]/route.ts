@@ -6,6 +6,7 @@ import { mediaKey } from "@/lib/media-store";
 import { deleteObject, putObject } from "@/lib/object-store";
 import { decodeTaskId, downloadVideo, queryVideoTask, type TaskResult } from "@/lib/tangzhi-server";
 import type { MediaRef, Message } from "@/lib/types";
+import type { Relay } from "@/lib/relay";
 
 const hasTask = (message: Message, taskId: string) => message.taskId === taskId || Boolean(message.taskIds?.includes(taskId));
 const isTerminal = (message: Message, taskId: string) =>
@@ -13,13 +14,13 @@ const isTerminal = (message: Message, taskId: string) =>
 
 /** 同一任务被多个标签页/请求同时查到完成时,只下载一次 */
 const downloads = new Map<string, Promise<{ video: MediaRef; size: number }>>();
-function fetchVideo(apiKey: string, userId: string, upstreamId: string) {
+function fetchVideo(apiKey: string, userId: string, upstreamId: string, relay: Relay) {
   const key = `${userId}/${upstreamId}`;
   let pending = downloads.get(key);
   if (!pending) {
     pending = (async () => {
       // 从中转站取回视频,直接写入对象存储(不落服务器磁盘)
-      const bytes = await downloadVideo(apiKey, upstreamId);
+      const bytes = await downloadVideo(apiKey, upstreamId, relay);
       const name = `mote-${new Date().toISOString().slice(0, 10)}-${upstreamId.slice(-8)}.mp4`;
       const video: MediaRef = { kind: "video", path: mediaKey(userId, "videos", name), name, mimeType: "video/mp4" };
       await putObject(video.path, bytes, "video/mp4");
@@ -37,7 +38,7 @@ function fetchVideo(apiKey: string, userId: string, upstreamId: string) {
  */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const { apiKey, userId } = await requireUser(request);
+    const { apiKey, userId, relay } = await requireUser(request);
     const taskId = (await context.params).id;
     const conversationId = new URL(request.url).searchParams.get("conversationId") || "";
     const snapshot = await getConversation(userId, conversationId);
@@ -48,9 +49,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     const upstreamId = decodeTaskId(taskId);
     // 切换到 Tangzhi 之前由其他供应商提交的任务,已无法查询
-    const task: TaskResult = upstreamId ? await queryVideoTask(apiKey, upstreamId)
+    const task: TaskResult = upstreamId ? await queryVideoTask(apiKey, upstreamId, relay)
       : { status: "failed", error: "该任务来自已移除的供应商，无法继续查询" };
-    const fetched = task.status === "succeeded" && upstreamId ? await fetchVideo(apiKey, userId, upstreamId) : undefined;
+    const fetched = task.status === "succeeded" && upstreamId ? await fetchVideo(apiKey, userId, upstreamId, relay) : undefined;
 
     let applied = false;
     const conversation = await updateConversation(userId, conversationId, (latest) => {
