@@ -27,14 +27,14 @@ export default function DocsPage() {
           <section id="overview" className="docs-hero docs-section">
             <span className="docs-kicker">使用说明 · VIDEO WORKBENCH</span>
             <h1>把一段描述，变成一段视频。</h1>
-            <p>Mote 通过 new.tangzhi.org 中转站生成视频。只需要在中转站创建一个 API Key，填到设置里就能开始；每个模型支持的分辨率、时长和素材数量会自动同步。</p>
+            <p>Mote 通过 1xxai.com 中转站生成视频。只需要在中转站创建一个 API Key，填到设置里就能开始；当前开放两个豆包视频模型。</p>
             <div className="docs-quick-links"><Link href="/settings"><KeyRound size={16} /> 填写 API Key</Link><a href="#generate"><Film size={16} /> 开始生成</a></div>
           </section>
           <section id="connect" className="docs-section">
             <SectionTitle icon={<KeyRound size={17} />} eyebrow="01 · CONNECTION" title="填写 API Key" />
-            <p>视频接口已内置为 <code>https://new.tangzhi.org</code>，不需要再配置供应商或模型。</p>
+            <p>视频接口已内置为 <code>https://1xxai.com</code>，不需要再配置供应商或模型。</p>
             <div className="docs-steps">
-              <Step index="1" title="创建令牌">登录 <a href="https://new.tangzhi.org" target="_blank" rel="noopener noreferrer">new.tangzhi.org</a>，在「令牌」页面创建 API Key。</Step>
+              <Step index="1" title="创建令牌">登录 <a href="https://1xxai.com" target="_blank" rel="noopener noreferrer">1xxai.com</a>，在「令牌」页面创建 API Key。</Step>
               <Step index="2" title="填写到设置">打开左下角「设置」，粘贴 API Key 后点击「保存」，可以先点「验证」确认可用。</Step>
               <Step index="3" title="选择模型">回到首页，在顶部选择视频模型；旁边会显示它的分辨率、时长、素材上限和价格。</Step>
             </div>
@@ -64,7 +64,7 @@ export default function DocsPage() {
           </section>
           <section id="troubleshooting" className="docs-section docs-last">
             <SectionTitle icon={<CircleHelp size={17} />} eyebrow="04 · HELP" title="常见问题" />
-            <details open><summary>提示 API Key 无效</summary><p>到 new.tangzhi.org 的「令牌」页面确认令牌未过期、未禁用，重新复制后在设置里保存并点击「验证」。</p></details>
+            <details open><summary>提示 API Key 无效</summary><p>到 1xxai.com 的「令牌」页面确认令牌未过期、未禁用，重新复制后在设置里保存并点击「验证」。</p></details>
             <details><summary>任务提交后一直生成中</summary><p>视频是异步任务，通常需要 1–6 分钟。关闭页面后重新打开对应会话，会继续查询结果。</p></details>
             <details><summary>提示余额不足</summary><p>按秒计费的模型会按所选时长预扣费用，任务失败会退回。请到中转站控制台充值后重试。</p></details>
             <details><summary>某个比例或时长点不了</summary><p>每个模型支持的比例、分辨率和时长不同，灰色选项表示当前模型不支持。换一个模型即可使用对应参数。</p></details>

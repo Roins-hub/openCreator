@@ -6,7 +6,7 @@ const withBase = (base?: string) => new Request("https://vip.example/api", { hea
 describe("custom relay address", () => {
   it("uses the built-in relay unless the browser sends another address", () => {
     expect(relayOf(withBase())).toBe(DEFAULT_RELAY);
-    expect(relayOf(withBase("https://new.tangzhi.org/"))).toBe(DEFAULT_RELAY);
+    expect(relayOf(withBase(`${DEFAULT_RELAY.base}/`))).toBe(DEFAULT_RELAY);
     expect(relayOf(withBase("https://api.example.com/v/"))).toEqual({ base: "https://api.example.com/v", custom: true });
   });
 

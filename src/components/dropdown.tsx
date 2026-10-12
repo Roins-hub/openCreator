@@ -8,6 +8,8 @@ export interface DropdownOption<T extends string> {
   label: string;
   /** 选项右侧的小标签,例如模型类型 */
   hint?: string;
+  /** 选项下方的补充说明 */
+  detail?: string;
   /** 同组选项会归到同一个小标题下 */
   group?: string;
 }
@@ -100,7 +102,10 @@ export function Dropdown<T extends string>({
                   onMouseEnter={() => setActive(index)}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => choose(index)}>
-                  <span className="dropdown-option-label">{option.label}</span>
+                  <span className="dropdown-option-copy">
+                    <span className="dropdown-option-label">{option.label}</span>
+                    {option.detail && <span className="dropdown-option-detail">{option.detail}</span>}
+                  </span>
                   {option.hint && <span className="dropdown-option-hint">{option.hint}</span>}
                   <Check size={14} className="dropdown-check" aria-hidden="true" />
                 </div>

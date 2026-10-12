@@ -1,4 +1,4 @@
-import { toVideoModels, type VideoModel } from "./tangzhi";
+import { FIXED_VIDEO_MODELS, toVideoModels, type VideoModel } from "./tangzhi";
 import { DEFAULT_RELAY, relayFetch, relayHost, type Relay } from "./relay";
 
 const CATALOG_TTL = 60_000;
@@ -6,8 +6,12 @@ const MAX_CATALOGS = 50;
 // 每个中转站地址各自缓存
 const catalogs = new Map<string, { at: number; models: VideoModel[] }>();
 
-/** 读取中转站公开定价接口(new-api 的 /api/pricing)里的视频模型(1 分钟缓存,失败时沿用上次结果)。 */
+/**
+ * 内置中转站(1xxAI)使用当前开放的固定视频目录;
+ * 自定义中转站读取公开定价接口(new-api 的 /api/pricing)里的视频模型(1 分钟缓存,失败时沿用上次结果)。
+ */
 export async function videoModels(relay: Relay = DEFAULT_RELAY): Promise<VideoModel[]> {
+  if (!relay.custom) return FIXED_VIDEO_MODELS;
   const catalog = catalogs.get(relay.base);
   if (catalog && Date.now() - catalog.at < CATALOG_TTL) return catalog.models;
   try {

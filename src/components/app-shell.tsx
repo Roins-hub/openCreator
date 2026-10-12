@@ -913,6 +913,7 @@ export function AppShell() {
                     label: model.id,
                     group: model.resolution.toUpperCase(),
                     hint: `${durationSummary(model.durations)} · ${formatPrice(model)}`,
+                    detail: model.description.replace(/^\(按[次秒]计费\)\s*/, "").replace(/\s+/g, " "),
                   }))}
                 renderValue={() => selected
                   ? <><Clapperboard size={14} /><span className="composer-model-name">{selected.id}</span></>

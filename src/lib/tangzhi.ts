@@ -1,10 +1,10 @@
 import type { MediaRef, VideoOptions } from "./types";
 
 /** 唯一内置的中转站。用户只需要在这里创建 API Key。 */
-export const TANGZHI_BASE_URL = "https://new.tangzhi.org";
-export const TANGZHI_KEY_PAGE = "https://new.tangzhi.org/console/token";
+export const TANGZHI_BASE_URL = "https://1xxai.com";
+export const TANGZHI_KEY_PAGE = "https://1xxai.com/console/token";
 export const TANGZHI_PROVIDER_ID = "tangzhi";
-export const TANGZHI_PROVIDER_NAME = "Tangzhi";
+export const TANGZHI_PROVIDER_NAME = "1xxAI";
 
 export type VideoResolution = VideoOptions["resolution"];
 export type VideoRatio = Exclude<VideoOptions["ratio"], "adaptive">;
@@ -55,6 +55,40 @@ const TAG_DEFAULTS: Record<string, { promptMax: number; ratios: VideoRatio[] }> 
   CH14: { promptMax: 6000, ratios: ALL_RATIOS },
 };
 const FALLBACK_DEFAULTS = { promptMax: 5000, ratios: ALL_RATIOS };
+
+/** 1xxAI 当前为本工作台开放的固定视频目录。 */
+export const FIXED_VIDEO_MODELS: VideoModel[] = [
+  {
+    id: "doubao-seedance-2-0-260128",
+    tag: "DOLA",
+    protocol: "ark",
+    description: "(按次计费) 10图片，0音频，0视频，合计≤10，720p，5s/10s/15s",
+    resolution: "720p",
+    durations: [5, 10, 15],
+    ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"],
+    limits: { images: 10, audios: 0, videos: 0, total: 10 },
+    face: "",
+    billing: "per_request",
+    price: 5,
+    promptMin: 10,
+    promptMax: 5000,
+  },
+  {
+    id: "doubao-seedance-2-5-260628",
+    tag: "DOLA",
+    protocol: "ark",
+    description: "(按次计费) 10图片，0音频，0视频，合计≤10，720p，5s/10s/30s",
+    resolution: "720p",
+    durations: [5, 10, 30],
+    ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"],
+    limits: { images: 10, audios: 0, videos: 0, total: 10 },
+    face: "",
+    billing: "per_request",
+    price: 9,
+    promptMin: 10,
+    promptMax: 5000,
+  },
+];
 
 /**
  * 解析模型描述,例如

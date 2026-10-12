@@ -4,7 +4,7 @@ import { Agent, fetch as undiciFetch } from "undici";
 import { TANGZHI_BASE_URL } from "./tangzhi";
 
 /**
- * 中转站地址:默认是内置的 new.tangzhi.org;用户可以在设置里改成自己的 new-api 兼容中转站,
+ * 中转站地址:默认是内置的 1xxai.com;用户可以在设置里改成自己的 new-api 兼容中转站,
  * 浏览器通过请求头 x-tangzhi-base 告诉服务端。
  * 服务端会替用户请求这个地址,所以自定义地址只允许 https、公网地址:
  * 解析出的 IP 落在内网/本机/云元数据等网段时直接拒绝(连接时再校验一次,防 DNS 重绑定)。
@@ -12,7 +12,7 @@ import { TANGZHI_BASE_URL } from "./tangzhi";
 export const RELAY_HEADER = "x-tangzhi-base";
 
 export interface Relay {
-  /** 不带末尾斜杠的地址,如 https://new.tangzhi.org */
+  /** 不带末尾斜杠的地址,如 https://1xxai.com */
   base: string;
   custom: boolean;
 }

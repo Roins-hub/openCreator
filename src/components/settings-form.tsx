@@ -178,7 +178,7 @@ export function SettingsForm() {
           <div>
             <div className="section-head">
               <h2 id="models-heading">可用视频模型</h2>
-              <span className="theme-note">{models ? `${models.length} 个 · 与中转站实时同步` : "加载中…"}</span>
+              <span className="theme-note">{models ? `${models.length} 个 · 当前开放模型` : "加载中…"}</span>
             </div>
             <div className="catalog-table" role="table" aria-label="可用视频模型">
               <div className="catalog-row head" role="row">

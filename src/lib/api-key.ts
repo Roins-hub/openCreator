@@ -2,7 +2,7 @@
 
 /** 每位用户的中转站 API Key 只保存在自己的浏览器里,请求时通过请求头交给本站服务端转发。 */
 const STORAGE_KEY = "mote.tangzhi.apiKey";
-/** 自定义中转站地址;没设置时用内置的 new.tangzhi.org */
+/** 自定义中转站地址;没设置时用内置的 1xxai.com */
 const BASE_STORAGE_KEY = "mote.tangzhi.baseUrl";
 export const API_KEY_HEADER = "x-tangzhi-key";
 export const RELAY_HEADER = "x-tangzhi-base";
