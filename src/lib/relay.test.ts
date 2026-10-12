@@ -18,6 +18,8 @@ describe("custom relay address", () => {
       expect(() => normalizeRelayBase(`https://${host}:5433`)).toThrow(/内网/);
     }
     expect(normalizeRelayBase("https://8.8.8.8")).toBe("https://8.8.8.8");
+    expect(normalizeRelayBase("https://api.example.com:8443/")).toBe("https://api.example.com:8443");
+    expect(normalizeRelayBase("https://api.example.com:443")).toBe("https://api.example.com");
   });
 
   it("classifies private addresses, including IPv4-mapped IPv6", () => {

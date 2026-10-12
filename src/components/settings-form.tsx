@@ -132,11 +132,16 @@ export function SettingsForm() {
               </button>
             </div>
             {customMode && <div className="relay-custom">
-              <input aria-label="自定义中转站地址" value={baseInput} placeholder="https://api.example.com"
+              <input aria-label="自定义中转站地址" value={baseInput} placeholder="https://api.example.com 或 https://api.example.com:8443"
                 autoComplete="off" spellCheck={false} inputMode="url"
                 onChange={(event) => { setBaseInput(event.target.value); setCheck(undefined); }}
                 onKeyDown={(event) => { if (event.key === "Enter" && dirty) void save(); }} />
-              <p className="key-help">需要是 new-api 兼容的中转站，地址以 https:// 开头，不能是内网地址。保存后模型列表会按新地址刷新。</p>
+              <ul className="key-help relay-rules">
+                <li>需要是 new-api 兼容的中转站，保存后模型列表会按新地址刷新。</li>
+                <li>必须是 <code>https://</code> 地址；端口默认 443，其他端口写在域名后面，如 <code>https://api.example.com:8443</code>。</li>
+                <li>不支持 <code>http://</code>：new-api 默认的 <code>http://服务器IP:3000</code> 不能直接用，请先给中转站配好域名和 HTTPS 证书。</li>
+                <li>必须能从公网访问，不能是内网或本机地址（如 192.168.x.x、127.0.0.1、localhost）。</li>
+              </ul>
             </div>}
             <div className="section-head">
               <h2 id="key-heading">中转站 API Key</h2>
