@@ -9,9 +9,13 @@ export interface PromptCategory {
   name: string;
 }
 
+/** 用户自己添加的提示词归到这个分类 */
+export const MY_PROMPTS = { id: "mine", name: "我的提示词" } as const;
+export type PromptFilter = PromptCategoryId | typeof MY_PROMPTS.id | "all";
+
 export interface PromptTemplate {
   id: string;
-  category: PromptCategoryId;
+  category: PromptCategoryId | typeof MY_PROMPTS.id;
   title: string;
   prompt: string;
   tags: string[];
@@ -313,9 +317,9 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 ];
 
 /** 按分类与关键词(标题、提示词、标签)筛选 */
-export function searchPrompts(query: string, category: PromptCategoryId | "all" = "all") {
+export function searchPrompts(query: string, category: PromptFilter = "all", templates = PROMPT_TEMPLATES) {
   const keyword = query.trim().toLowerCase();
-  return PROMPT_TEMPLATES.filter((template) => {
+  return templates.filter((template) => {
     if (category !== "all" && template.category !== category) return false;
     if (!keyword) return true;
     return [template.title, template.prompt, ...template.tags].some((text) => text.toLowerCase().includes(keyword));
@@ -335,4 +339,9 @@ export function requiredReferences(template: PromptTemplate) {
   if (template.referenceMode === "first_last") return 2;
   if (template.referenceMode === "first" || template.referenceMode === "references") return 1;
   return 0;
+}
+
+/** 自定义提示词的标签:逗号/顿号/空格分隔,去重,最多 6 个 */
+export function parsePromptTags(text: string) {
+  return [...new Set(text.split(/[,，、\s]+/).map((tag) => tag.trim().slice(0, 12)).filter(Boolean))].slice(0, 6);
 }

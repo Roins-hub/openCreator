@@ -28,7 +28,7 @@ import {
 import { VideoTaskCard } from "@/components/video-task-card";
 import { LogoMark } from "@/components/logo-mark";
 import { Dropdown } from "@/components/dropdown";
-import { PromptLibrary, type PromptUseMode } from "@/components/prompt-library";
+import { PromptLibrary, type CustomPromptInput, type PromptUseMode } from "@/components/prompt-library";
 import { fitDuration, type PromptTemplate } from "@/lib/prompt-library";
 import { MediaThumb } from "@/components/media-thumb";
 
@@ -88,6 +88,7 @@ export function AppShell() {
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
+  const [customPrompts, setCustomPrompts] = useState<PromptTemplate[]>([]);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [referenceQuery, setReferenceQuery] = useState("");
   const [referencePickerPosition, setReferencePickerPosition] = useState<{ left: number; top?: number; bottom?: number }>({ left: 10, top: 8 });
@@ -130,16 +131,19 @@ export function AppShell() {
       // 没有 Key 就没有个人空间
       setConversations([]);
       setFavorites(new Set());
+      setCustomPrompts([]);
       setActiveId(undefined);
       await openSession("");
       return;
     }
     await openSession(key);
-    const [nextConversations, nextFavorites] = await Promise.all([
+    const [nextConversations, nextFavorites, nextPrompts] = await Promise.all([
       request<Conversation[]>("/api/conversations"),
       request<string[]>("/api/favorites").catch(() => []),
+      request<PromptTemplate[]>("/api/prompts").catch(() => []),
     ]);
     setFavorites(new Set(nextFavorites));
+    setCustomPrompts(nextPrompts);
     setConversations(nextConversations);
     if (nextConversations.length) {
       const requested = typeof window === "undefined" ? null :
@@ -569,6 +573,20 @@ export function AppShell() {
 
   const closeLibrary = useCallback(() => setLibraryOpen(false), []);
 
+  const saveCustomPrompt = async (input: CustomPromptInput) => {
+    const saved = await request<PromptTemplate>("/api/prompts", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    });
+    setCustomPrompts((items) => [saved, ...items.filter((item) => item.id !== saved.id)]);
+  };
+
+  const deleteCustomPrompt = async (id: string) => {
+    try {
+      await request(`/api/prompts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      setCustomPrompts((items) => items.filter((item) => item.id !== id));
+    } catch (cause) { setError((cause as Error).message); }
+  };
+
   const applyPromptTemplate = (template: PromptTemplate, mode: PromptUseMode, applyParams: boolean) => {
     const editor = editorRef.current;
     if (editor) {
@@ -782,7 +800,9 @@ export function AppShell() {
                 : "已达到当前模型的素材上限"}</span>
             </div>
           )}
-          <PromptLibrary open={libraryOpen} onClose={closeLibrary} onUse={applyPromptTemplate} />
+          <PromptLibrary open={libraryOpen} onClose={closeLibrary} onUse={applyPromptTemplate}
+            customPrompts={customPrompts} currentPrompt={draft}
+            onSaveCustom={saveCustomPrompt} onDeleteCustom={deleteCustomPrompt} />
           {error && <div className="inline-error">{error}<button onClick={() => setError("")}><X size={13} /></button></div>}
           <div className="composer" ref={composerRef}>
             <div className="composer-body">
