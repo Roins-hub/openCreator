@@ -49,8 +49,8 @@ const RESOLUTIONS: VideoResolution[] = ["480p", "720p", "1080p", "4k"];
 const TAG_DEFAULTS: Record<string, { promptMax: number; ratios: VideoRatio[] }> = {
   CH01: { promptMax: 15000, ratios: ALL_RATIOS },
   CH08: { promptMax: 5000, ratios: ["9:16"] },
-  // Dola 号池(方舟兼容接口)只认这 5 种比例,没有 21:9
-  DOLA: { promptMax: 5000, ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"] },
+  // Dola 号池 2.2.5 起方舟兼容接口也放行 21:9
+  DOLA: { promptMax: 5000, ratios: ALL_RATIOS },
   CH13: { promptMax: 5000, ratios: ALL_RATIOS },
   CH14: { promptMax: 6000, ratios: ALL_RATIOS },
 };

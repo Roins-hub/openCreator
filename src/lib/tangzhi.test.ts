@@ -158,11 +158,11 @@ describe("Dola (Ark) models", () => {
   const dola = byId("doubao-seedance-2-5-260628");
   const url = (item: MediaRef) => `https://media.example/${item.path}`;
 
-  it("are routed through the Ark protocol with Dola's ratios", () => {
+  it("are routed through the Ark protocol with every ratio including 21:9", () => {
     expect(dola.protocol).toBe("ark");
     expect(ch01.protocol).toBe("videos");
     expect(dola.durations).toEqual([5, 10, 30]);
-    expect(dola.ratios).not.toContain("21:9");
+    expect(dola.ratios).toContain("21:9");
   });
 
   it("sends duration as seconds and ratio in metadata (30 s must not become 5 s)", () => {
@@ -177,6 +177,11 @@ describe("Dola (Ark) models", () => {
     });
     expect(body).not.toHaveProperty("duration");
     expect(body).not.toHaveProperty("references");
+  });
+
+  it("passes 21:9 through in metadata.ratio", () => {
+    const body = buildVideoRequest(dola, "广袤的金色沙漠，一位旅人缓缓走过", options({ ratio: "21:9", duration: 10 }), [], url, "mote_w");
+    expect(body.metadata).toEqual({ ratio: "21:9", resolution: "720p" });
   });
 
   it("puts first and last frames into metadata.content with roles", () => {
