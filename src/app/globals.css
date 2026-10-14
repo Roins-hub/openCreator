@@ -1185,6 +1185,14 @@ body { transition: background-color .2s ease, color .2s ease; }
   color: var(--muted); background: var(--warm); opacity: 0; pointer-events: none;
 }
 .stack-add:hover { color: var(--ink); border-color: var(--focus); }
+.stack-clear { border-style: solid; border-color: var(--line); }
+.stack-clear:hover { color: var(--danger); border-color: currentColor; }
+/* 清空提示词:输入框右上角的小 × */
+.composer-clear {
+  flex: 0 0 auto; width: 28px; height: 28px; display: grid; place-items: center; margin: 2px -4px 0 -8px;
+  border-radius: 8px; color: var(--faint); background: transparent;
+}
+.composer-clear:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .stack-count {
   position: absolute; top: -6px; right: -6px; z-index: 30; min-width: 18px; height: 18px; padding: 0 5px;
   border: 2px solid var(--paper); border-radius: 9px; color: var(--paper); background: var(--ink);
