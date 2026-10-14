@@ -347,6 +347,19 @@ export function AppShell() {
     setReferencePickerOpen(false);
   };
 
+  const clearAttachments = () => {
+    attachments.forEach(revokePreview);
+    setAttachments([]);
+  };
+
+  const clearPrompt = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.innerHTML = "";
+    setDraft("");
+    editor.focus();
+  };
+
   const create = async () => {
     const conversation = freshConversation(selected);
     await persist(conversation);
@@ -874,7 +887,7 @@ export function AppShell() {
             <div className="composer-body">
               {attachments.length > 0 && (
                 <div className="attachment-stack" aria-label={`${attachments.length} 个参考素材`}
-                  style={{ "--count": attachments.length } as React.CSSProperties}>
+                  style={{ "--count": attachments.length + 1 } as React.CSSProperties}>
                   {attachments.map((item, index) => (
                     <div className={`stack-card kind-${item.kind} ${item.uploading ? "is-uploading" : ""}`} key={item.path}
                       title={item.uploading ? `正在上传 · ${item.name}` : `${labels[index]} · ${item.name}`}
@@ -892,6 +905,9 @@ export function AppShell() {
                     disabled={uploadLimit === 0}
                     style={{ "--i": attachments.length } as React.CSSProperties}
                     aria-label="继续添加参考素材" title="继续添加参考素材"><Plus size={16} /></button>
+                  <button type="button" className="stack-add stack-clear" onClick={clearAttachments}
+                    style={{ "--i": attachments.length + 1 } as React.CSSProperties}
+                    aria-label="清空全部素材" title="清空全部素材"><Trash2 size={15} /></button>
                   {attachments.length > 1 && <span className="stack-count">{attachments.length}</span>}
                 </div>
               )}
@@ -915,6 +931,8 @@ export function AppShell() {
                   if (!leftover && !editor.querySelector(`.${REFERENCE_CARD_CLASS}`)) editor.innerHTML = "";
                   setDraft(editor.innerText);
                 }} />
+              {draft.trim() && <button type="button" className="composer-clear" onClick={clearPrompt}
+                aria-label="清空提示词" title="清空提示词"><X size={15} /></button>}
             </div>
             <div className="composer-tools">
               <input ref={fileRef} type="file" accept={acceptAttribute(allowedKinds)} multiple hidden
