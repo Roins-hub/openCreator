@@ -908,7 +908,13 @@ export function AppShell() {
                   }
                   if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
                 }}
-                onInput={(event) => setDraft(event.currentTarget.innerText)} />
+                onInput={(event) => {
+                  const editor = event.currentTarget;
+                  // 删光文字后浏览器常留下 <br>、换行或零宽字符,:empty 不再成立,占位提示就不显示了
+                  const leftover = (editor.textContent || "").replace(/[\s\u200b\ufeff]/g, "");
+                  if (!leftover && !editor.querySelector(`.${REFERENCE_CARD_CLASS}`)) editor.innerHTML = "";
+                  setDraft(editor.innerText);
+                }} />
             </div>
             <div className="composer-tools">
               <input ref={fileRef} type="file" accept={acceptAttribute(allowedKinds)} multiple hidden
