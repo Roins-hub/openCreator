@@ -1,29 +1,49 @@
 import { toVideoModels, type VideoModel } from "./tangzhi";
-import { DEFAULT_RELAY, relayFetch, relayHost, type Relay } from "./relay";
+import { toImageModels, type ImageModel } from "./image-models";
+import { DEFAULT_RELAY, publicFetch, relayFetch, relayHost, type Relay } from "./relay";
+
+export type CatalogModel = VideoModel | ImageModel;
 
 const CATALOG_TTL = 60_000;
 const MAX_CATALOGS = 50;
 // 每个中转站地址各自缓存
-const catalogs = new Map<string, { at: number; models: VideoModel[] }>();
+const catalogs = new Map<string, { at: number; videos: VideoModel[]; images: ImageModel[] }>();
 
-/** 读取中转站公开定价接口(new-api 的 /api/pricing)里的视频模型(1 分钟缓存,失败时沿用上次结果)。 */
-export async function videoModels(relay: Relay = DEFAULT_RELAY): Promise<VideoModel[]> {
-  const catalog = catalogs.get(relay.base);
-  if (catalog && Date.now() - catalog.at < CATALOG_TTL) return catalog.models;
+/** 读取中转站公开定价接口(new-api 的 /api/pricing)里的视频、生图模型(1 分钟缓存,失败时沿用上次结果)。 */
+async function catalog(relay: Relay) {
+  const cached = catalogs.get(relay.base);
+  if (cached && Date.now() - cached.at < CATALOG_TTL) return cached;
   try {
     const response = await relayFetch(relay, "/api/pricing", { signal: AbortSignal.timeout(15_000) });
     if (!response.ok) throw new Error(`模型列表返回 ${response.status}`);
-    const models = toVideoModels(await response.json().catch(() => {
+    const payload = await response.json().catch(() => {
       throw new Error("模型列表格式不正确（需要 new-api 兼容的中转站）");
-    }));
-    if (!models.length) throw new Error("中转站暂无可用视频模型");
+    });
+    const entry = { at: Date.now(), videos: toVideoModels(payload), images: toImageModels(payload) };
+    if (!entry.videos.length && !entry.images.length) throw new Error("中转站暂无可用的视频或生图模型");
     if (catalogs.size >= MAX_CATALOGS && !catalogs.has(relay.base)) catalogs.delete(catalogs.keys().next().value as string);
-    catalogs.set(relay.base, { at: Date.now(), models });
-    return models;
+    catalogs.set(relay.base, entry);
+    return entry;
   } catch (error) {
-    if (catalog) return catalog.models;
+    if (cached) return cached;
     throw new Error(`无法获取中转站模型：${(error as Error).message}`);
   }
+}
+
+export async function videoModels(relay: Relay = DEFAULT_RELAY): Promise<VideoModel[]> {
+  return (await catalog(relay)).videos;
+}
+
+/** 视频模型在前,生图模型在后 */
+export async function catalogModels(relay: Relay = DEFAULT_RELAY): Promise<CatalogModel[]> {
+  const { videos, images } = await catalog(relay);
+  return [...videos, ...images];
+}
+
+export async function findModel(id: string, relay: Relay = DEFAULT_RELAY) {
+  const model = (await catalogModels(relay)).find((item) => item.id === id);
+  if (!model) throw new Error("所选模型已下线，请重新选择模型");
+  return model;
 }
 
 export async function findVideoModel(id: string, relay: Relay = DEFAULT_RELAY) {
@@ -65,7 +85,7 @@ export function friendlyMessage(message: string, host = relayHost(DEFAULT_RELAY)
   const left = message.match(/剩余额度[:：]\s*[^\d-]*([\d.]+)/)?.[1];
   const need = message.match(/需要预扣费额度[:：]\s*[^\d-]*([\d.]+)/)?.[1];
   const detail = left && need ? `本次需预扣 ${Number(need).toFixed(2)}，当前剩余 ${Number(left).toFixed(2)}。` : "";
-  return `中转站余额不足：${detail}请到 ${host} 充值，或改用更短时长、更便宜的模型。`;
+  return `中转站余额不足：${detail}请到 ${host} 充值，或改用更便宜的模型、更短时长或更小尺寸。`;
 }
 
 async function call(relay: Relay, apiKey: string, path: string, init: RequestInit = {}) {
@@ -141,4 +161,46 @@ export function encodeTaskId(upstreamId: string) {
 /** 只有本版本提交的任务可以查询;旧供应商留下的任务返回 undefined。 */
 export function decodeTaskId(value: string) {
   return value.startsWith(PREFIX) ? value.slice(PREFIX.length) : undefined;
+}
+
+// ---- 生图:OpenAI 兼容的 /v1/images/generations 与 /v1/images/edits(同步返回,最长等 5 分钟)
+
+export interface ImageResult {
+  bytes: Uint8Array;
+  mimeType: string;
+}
+
+async function imageResponse(response: Response, relay: Relay): Promise<ImageResult> {
+  const data = await response.json().catch(() => ({})) as { data?: Array<{ b64_json?: string; url?: string; mime_type?: string }> };
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("API Key 无效或已过期，请在设置中检查");
+    throw new Error(friendlyMessage(upstreamMessage(data, response.status), relayHost(relay)));
+  }
+  const item = data.data?.find((entry) => entry.b64_json || entry.url);
+  if (!item) throw new Error("中转站没有返回图片");
+  if (item.b64_json) {
+    return { bytes: new Uint8Array(Buffer.from(item.b64_json, "base64")), mimeType: item.mime_type || "" };
+  }
+  const download = await publicFetch(item.url as string);
+  const type = download.headers.get("content-type") || "";
+  if (!download.ok || !type.startsWith("image/")) throw new Error("无法读取中转站返回的图片");
+  const bytes = new Uint8Array(await download.arrayBuffer());
+  if (bytes.byteLength > 50 * 1024 * 1024) throw new Error("图片超过 50MB 限制");
+  return { bytes, mimeType: type };
+}
+
+export async function generateImage(apiKey: string, body: Record<string, unknown>, relay: Relay = DEFAULT_RELAY) {
+  const response = await relayFetch(relay, "/v1/images/generations", {
+    method: "POST", body: JSON.stringify(body), signal: AbortSignal.timeout(300_000),
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+  });
+  return imageResponse(response, relay);
+}
+
+export async function editImage(apiKey: string, form: FormData, relay: Relay = DEFAULT_RELAY) {
+  const response = await relayFetch(relay, "/v1/images/edits", {
+    method: "POST", body: form, signal: AbortSignal.timeout(300_000),
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  return imageResponse(response, relay);
 }

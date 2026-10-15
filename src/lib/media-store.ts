@@ -8,7 +8,7 @@ const safeName = (name: string) =>
   basename(name).replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(-80) || "file";
 
 /** 随机文件名(不可猜测)+ 用户目录前缀,存进对象存储。 */
-export const mediaKey = (userId: string, folder: "uploads" | "videos", name: string) =>
+export const mediaKey = (userId: string, folder: "uploads" | "videos" | "images", name: string) =>
   `${mediaPrefix(userId)}${folder}/${Date.now()}-${crypto.randomUUID().replace(/-/g, "")}-${safeName(name)}`;
 
 export async function saveUpload(userId: string, file: File): Promise<MediaRef> {

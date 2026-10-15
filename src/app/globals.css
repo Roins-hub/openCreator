@@ -1516,3 +1516,48 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .composer-model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-model .dropdown-list { top: auto; bottom: calc(100% + 8px); min-width: 340px; max-height: min(420px, 60vh); }
 @media (max-width: 700px) { .composer-model .dropdown-list { min-width: min(340px, calc(100vw - 40px)); } }
+
+/* ---------- 生图:参数面板、图片记录卡片、设置页的生图模型表 ---------- */
+.image-parameter-popover { width: min(560px, calc(100vw - 32px)); }
+.image-parameter-popover .image-ratios { grid-template-columns: repeat(5, 1fr); }
+.parameter-note { margin: 14px 0 0; color: var(--faint); font-size: 11px; }
+.task-card.image-task { grid-template-columns: minmax(0, 1fr); }
+.image-results {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; margin-top: 12px;
+}
+.image-result {
+  position: relative; margin: 0; overflow: hidden; aspect-ratio: var(--shape, 1 / 1);
+  border-radius: 11px; background: var(--hover);
+}
+.image-result-open { display: block; width: 100%; height: 100%; padding: 0; background: transparent; cursor: zoom-in; }
+.image-result-open img { width: 100%; height: 100%; object-fit: cover; transition: transform .35s ease; }
+.image-result:hover .image-result-open img { transform: scale(1.03); }
+.image-result-actions {
+  position: absolute; left: 6px; right: 6px; bottom: 6px; display: flex; gap: 4px; justify-content: flex-end;
+  opacity: 0; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease;
+}
+.image-result:hover .image-result-actions, .image-result:focus-within .image-result-actions { opacity: 1; transform: none; }
+.image-result-actions button, .image-result-actions a {
+  display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border-radius: 7px;
+  color: oklch(98% 0 0); background: oklch(15% .01 80 / .72); font-size: 11px; backdrop-filter: blur(6px);
+}
+.image-result-actions a { width: 26px; padding: 0; justify-content: center; }
+.image-result-actions button:hover, .image-result-actions a:hover { background: oklch(15% .01 80 / .9); }
+.image-result.is-pending { color: var(--run); background: var(--run-soft); }
+.image-result.is-pending .shimmer {
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 20%, oklch(100% 0 0 / .55) 50%, transparent 80%);
+  background-size: 220% 100%; animation: shimmer 1.6s linear infinite;
+}
+.image-viewer-img { width: 100%; max-height: calc(100dvh - 160px); object-fit: contain; border-radius: 12px; background: oklch(12% 0 0); }
+@media (hover: none) {
+  .image-result-actions { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .image-result.is-pending .shimmer { animation: none; }
+}
+.catalog-subhead { margin-top: 22px; }
+.catalog-table-image .catalog-row { grid-template-columns: minmax(180px, 1.2fr) 2fr .8fr; }
+@media (max-width: 760px) {
+  .catalog-table-image .catalog-row { grid-template-columns: 1fr 1fr; }
+}

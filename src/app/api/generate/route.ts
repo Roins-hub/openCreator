@@ -6,8 +6,60 @@ import {
 } from "@/lib/tangzhi";
 import { mediaPrefixes, requireUser } from "@/lib/identity";
 import { externalMediaUrl } from "@/lib/object-store";
-import { encodeTaskId, findVideoModel, publicOrigin, submitVideoTask } from "@/lib/tangzhi-server";
-import type { Message } from "@/lib/types";
+import { encodeTaskId, findModel, publicOrigin, submitVideoTask } from "@/lib/tangzhi-server";
+import { fitImageOptions, imageRequestError, type ImageModel } from "@/lib/image-models";
+import { newImageTaskId, startImageJob } from "@/lib/image-jobs";
+import type { Relay } from "@/lib/relay";
+import type { Conversation, MediaRef, Message } from "@/lib/types";
+
+/** 先记下用户消息:提交失败时提示词也不会丢 */
+async function recordUserMessage(userId: string, conversationId: string, id: string | undefined, prompt: string, attachments: MediaRef[], fallbackTitle: string) {
+  if (!id) return;
+  const userMessage: Message = {
+    id, role: "user", content: prompt, attachments, createdAt: new Date().toISOString(), status: "complete",
+  };
+  await updateConversation(userId, conversationId, (current) => {
+    if (current.messages.some((item) => item.id === userMessage.id)) return;
+    if (!current.messages.length) current.title = (prompt || fallbackTitle).slice(0, 28);
+    current.messages.push(userMessage);
+    current.updatedAt = userMessage.createdAt;
+  });
+}
+
+/** 生图:写一条「生成中」记录后立刻返回,每张图各自在后台生成(见 image-jobs) */
+async function generateImages(
+  { apiKey, userId, relay }: { apiKey: string; userId: string; relay: Relay },
+  conversation: Conversation, model: ImageModel,
+  input: { prompt: string; attachments: MediaRef[]; userMessageId?: string; imageOptions?: unknown },
+) {
+  const options = fitImageOptions(input.imageOptions as never);
+  const invalid = imageRequestError(model, input.prompt, options, input.attachments);
+  if (invalid) throw new Error(invalid);
+  await recordUserMessage(userId, conversation.id, input.userMessageId, input.prompt, input.attachments, "图片生成");
+  const taskIds = Array.from({ length: options.count }, newImageTaskId);
+  const assistant: Message = {
+    id: crypto.randomUUID(), role: "assistant", content: "", createdAt: new Date().toISOString(),
+    status: "processing", taskId: taskIds[0], taskIds, completedTaskIds: [], failedTaskIds: [],
+    ...(input.userMessageId ? { replyTo: input.userMessageId } : {}),
+    generation: {
+      type: "image", providerName: TANGZHI_PROVIDER_NAME, modelName: model.id, modelId: model.id, imageOptions: options,
+    },
+  };
+  const saved = await updateConversation(userId, conversation.id, (current) => {
+    current.providerId = TANGZHI_PROVIDER_ID;
+    current.modelId = model.id;
+    current.imageOptions = options;
+    current.messages.push(assistant);
+    current.updatedAt = new Date().toISOString();
+  });
+  for (const taskId of taskIds) {
+    startImageJob({
+      userId, apiKey, relay, conversationId: conversation.id, taskId, model,
+      prompt: input.prompt, options, references: input.attachments,
+    });
+  }
+  return ok({ conversation: saved, assistant });
+}
 
 export async function POST(request: Request) {
   try {
@@ -15,32 +67,23 @@ export async function POST(request: Request) {
     const input = generateRequestSchema.parse(await request.json());
     const conversation = await getConversation(userId, input.conversationId);
     if (!conversation) throw new Error("会话不存在");
-    const model = await findVideoModel(input.modelId, relay);
-    const options = input.videoOptions;
-    const invalid = videoRequestError(model, input.prompt, options, input.attachments);
-    if (invalid) throw new Error(invalid);
-
-    // 只能引用自己的素材;给中转站的是 24 小时有效的临时链接
+    const model = await findModel(input.modelId, relay);
+    // 只能引用自己的素材
     const prefixes = await mediaPrefixes(userId);
     if (input.attachments.some((item) => !prefixes.some((prefix) => item.path.startsWith(prefix)))) {
       throw new Error("参考素材不存在，请重新上传");
     }
+    if (model.type === "image") return await generateImages({ apiKey, userId, relay }, conversation, model, input);
+
+    const options = input.videoOptions;
+    if (!options) throw new Error("缺少视频参数");
+    const invalid = videoRequestError(model, input.prompt, options, input.attachments);
+    if (invalid) throw new Error(invalid);
+    // 给中转站的是 24 小时有效的临时链接
     const origin = publicOrigin(request);
     const urls = new Map(await Promise.all(input.attachments.map(async (item) =>
       [item.path, await externalMediaUrl(item.path, origin)] as const)));
-    // 先记下用户消息:提交失败时提示词也不会丢
-    if (input.userMessageId) {
-      const userMessage: Message = {
-        id: input.userMessageId, role: "user", content: input.prompt, attachments: input.attachments,
-        createdAt: new Date().toISOString(), status: "complete",
-      };
-      await updateConversation(userId, conversation.id, (current) => {
-        if (current.messages.some((item) => item.id === userMessage.id)) return;
-        if (!current.messages.length) current.title = (input.prompt || "视频生成").slice(0, 28);
-        current.messages.push(userMessage);
-        current.updatedAt = userMessage.createdAt;
-      });
-    }
+    await recordUserMessage(userId, conversation.id, input.userMessageId, input.prompt, input.attachments, "视频生成");
     const batch = `mote_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
     const taskIds: string[] = [];
     let submitError: unknown;

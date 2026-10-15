@@ -79,7 +79,8 @@ function guardedLookup(hostname: string, options: { all?: boolean } | number, ca
   });
 }
 
-const customAgent = new Agent({ connect: { lookup: guardedLookup as never }, headersTimeout: 60_000, bodyTimeout: 300_000 });
+// 生图要等上游出图后才返回响应头,头部超时放宽到 5 分钟
+const customAgent = new Agent({ connect: { lookup: guardedLookup as never }, headersTimeout: 300_000, bodyTimeout: 300_000 });
 
 /** 请求中转站。自定义地址走带内网防护的连接,并且不跟随跳转。 */
 export async function relayFetch(relay: Relay, path: string, init: RequestInit = {}): Promise<Response> {
@@ -96,4 +97,21 @@ export async function relayFetch(relay: Relay, path: string, init: RequestInit =
     if (error instanceof Error && /^中转站/.test(error.message)) throw error;
     throw new Error(`无法连接自定义中转站：${cause || (error as Error).message}`);
   }
+}
+
+/**
+ * 下载中转站返回的公网结果地址(生图结果有时给 URL 而不是 base64)。
+ * 不带 API Key;只允许 http/https 公网地址,不跟随跳转,连接时同样做内网防护。
+ */
+export async function publicFetch(input: string, timeoutMs = 60_000): Promise<Response> {
+  let url: URL;
+  try { url = new URL(input); } catch { throw new Error("中转站返回的图片地址无效"); }
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("中转站返回的图片地址无效");
+  if (url.username || url.password) throw new Error("中转站返回的图片地址无效");
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  if (isIP(host) && isPrivateAddress(host)) throw new Error("中转站返回的图片地址指向内网，已拒绝");
+  const response = await undiciFetch(url, {
+    redirect: "error", dispatcher: customAgent, signal: AbortSignal.timeout(timeoutMs),
+  } as Parameters<typeof undiciFetch>[1]);
+  return response as unknown as Response;
 }

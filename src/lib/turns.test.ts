@@ -8,7 +8,7 @@ const video = (id: string, replyTo?: string): Message => ({
 });
 const isVideo = (message: Message) => message.role === "assistant";
 const shape = (messages: Message[]) => buildTurns(messages, isVideo)
-  .map((turn) => turn.kind === "video" ? `${turn.message.id}<${turn.user?.id ?? "-"}` : turn.message.id);
+  .map((turn) => turn.kind === "generation" ? `${turn.message.id}<${turn.user?.id ?? "-"}` : turn.message.id);
 
 describe("buildTurns", () => {
   it("pairs records with their own prompt even when concurrent submissions interleave", () => {

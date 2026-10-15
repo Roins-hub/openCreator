@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { AwsClient } from "aws4fetch";
 import { inside, outDir } from "./paths";
@@ -10,7 +10,7 @@ import { sessionSecret } from "./session-secret";
  * - S3_* 环境变量:通用配置,目前用于火山引擎 TOS(只支持「桶名.域名」虚拟主机寻址);
  * - R2_* 环境变量:Cloudflare R2(路径寻址,region=auto),作为旧配置继续兼容;
  * - 都没配置时存本机 out/ 目录,供本地开发使用。
- * 对象 key 形如 users/<用户ID>/videos/<随机名>.mp4。
+ * 对象 key 形如 users/<用户ID>/videos/<随机名>.mp4(生成的图片在 images/,上传的素材在 uploads/)。
  */
 interface StoreConfig {
   name: string;
@@ -67,7 +67,7 @@ function store(): StoreConfig | null {
 export const storageName = () => store()?.name || "local";
 
 export function assertKey(key: string) {
-  if (!/^users\/[0-9a-f]{32}\/(videos|uploads)\/[^/]+$/.test(key) || key.includes("..")) {
+  if (!/^users\/[0-9a-f]{32}\/(videos|images|uploads)\/[^/]+$/.test(key) || key.includes("..")) {
     throw new Error("非法媒体路径");
   }
   return key;
@@ -98,6 +98,16 @@ export async function deleteObject(key: string) {
   }
   const response = await config.client.fetch(config.objectUrl(key), { method: "DELETE" });
   if (!response.ok && response.status !== 404) throw new Error(`云存储删除失败（${response.status}）`);
+}
+
+/** 读取对象内容(生图时把参考图转交给中转站) */
+export async function getObject(key: string) {
+  assertKey(key);
+  const config = store();
+  if (!config) return new Uint8Array(await readFile(inside(outDir, key)));
+  const response = await config.client.fetch(config.objectUrl(key), { method: "GET" });
+  if (!response.ok) throw new Error(`云存储读取失败（${response.status}）`);
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 const contentDisposition = (name: string) =>

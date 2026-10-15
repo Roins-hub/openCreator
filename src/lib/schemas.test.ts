@@ -90,10 +90,11 @@ describe("generateRequestSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("requires video options", () => {
-    const result = generateRequestSchema.safeParse({
-      conversationId: "conversation-1", modelId: "ch0101-sd-2.0-720p", prompt: "测试", attachments: [],
-    });
-    expect(result.success).toBe(false);
+  it("leaves the options to the model type: video options or image options", () => {
+    const base = { conversationId: "conversation-1", modelId: "gpt-image-2", prompt: "测试", attachments: [] };
+    expect(generateRequestSchema.safeParse(base).success).toBe(true);
+    const image = { ratio: "16:9", resolution: "2k", quality: "high", background: "auto", format: "png", count: 2 };
+    expect(generateRequestSchema.safeParse({ ...base, imageOptions: image }).success).toBe(true);
+    expect(generateRequestSchema.safeParse({ ...base, imageOptions: { ...image, ratio: "21:9" } }).success).toBe(false);
   });
 });

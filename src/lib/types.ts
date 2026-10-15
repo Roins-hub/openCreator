@@ -52,11 +52,13 @@ export interface Conversation {
 }
 
 export interface ImageOptions {
-  ratio: "adaptive" | "1:1" | "3:4" | "4:3" | "16:9" | "9:16" | "2:3" | "3:2" | "21:9" | "custom";
-  resolution: "2K" | "4K";
+  ratio: "1:1" | "4:3" | "3:4" | "16:9" | "9:16";
+  /** 720P / 1080P 为常规尺寸,2K / 4K 由中转站原生生成 */
+  resolution: "720p" | "1080p" | "2k" | "4k";
+  quality: "auto" | "low" | "medium" | "high";
+  background: "auto" | "opaque" | "transparent";
+  format: "png" | "jpeg" | "webp";
   count: number;
-  width?: number;
-  height?: number;
 }
 
 export interface VideoOptions {

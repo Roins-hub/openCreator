@@ -2,7 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
-import type { VideoOptions } from "@/lib/types";
+import type { ImageOptions, VideoOptions } from "@/lib/types";
+import {
+  BACKGROUND_LABEL, IMAGE_BACKGROUNDS, IMAGE_FORMATS, IMAGE_QUALITIES, IMAGE_RATIOS, IMAGE_RESOLUTIONS,
+  imageSize, QUALITY_LABEL, type ImageModel,
+} from "@/lib/image-models";
 import {
   durationSummary, normalizeReferenceMode, type ReferenceMode, type VideoModel, type VideoRatio,
 } from "@/lib/tangzhi";
@@ -159,6 +163,70 @@ export function VideoControls({
           <Segmented values={[1, 2, 3, 4] as const} value={value.count}
             onChange={(count) => onChange({ ...value, count })} />
         </section>
+      </div>}
+    </div>
+  </div>;
+}
+
+/** 生图参数:比例、分辨率、画质、背景、格式、数量 */
+export function ImageControls({
+  value, model, onChange,
+}: {
+  value: ImageOptions;
+  model: ImageModel;
+  onChange: (value: ImageOptions) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useDismiss(open, () => setOpen(false));
+  const { width, height } = imageSize(value.ratio, value.resolution);
+  return <div className="video-parameter-group" ref={ref}>
+    <div className="parameter-control">
+      <button type="button" className={`parameter-trigger ${open ? "active" : ""}`}
+        aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+        <SlidersHorizontal size={14} />
+        <span>{value.ratio}</span><i /><span>{value.resolution.toUpperCase()}</span><i />
+        <span>{value.format.toUpperCase()}</span><i /><span>{value.count}张</span>
+      </button>
+      {open && <div className="parameter-popover video-parameter-popover image-parameter-popover">
+        <section><h3>图片比例<small>{width} × {height}</small></h3>
+          <div className="ratio-grid image-ratios">
+            {IMAGE_RATIOS.map((ratio) => <button type="button" key={ratio}
+              className={value.ratio === ratio ? "selected" : ""}
+              onClick={() => onChange({ ...value, ratio })}>
+              <span className={`ratio-shape ratio-${ratio.replace(":", "-")}`} /><b>{ratio}</b>
+            </button>)}
+          </div>
+        </section>
+        <section><h3>分辨率<small>2K / 4K 由中转站原生生成，耗时和费用更高</small></h3>
+          <Segmented values={IMAGE_RESOLUTIONS} value={value.resolution}
+            format={(resolution) => resolution.toUpperCase()}
+            onChange={(resolution) => onChange({ ...value, resolution })} />
+        </section>
+        <section><h3>画质</h3>
+          <Segmented values={IMAGE_QUALITIES} value={value.quality}
+            format={(quality) => QUALITY_LABEL[quality]}
+            onChange={(quality) => onChange({ ...value, quality })} />
+        </section>
+        <section><h3>背景</h3>
+          <Segmented values={IMAGE_BACKGROUNDS} value={value.background}
+            format={(background) => BACKGROUND_LABEL[background]}
+            onChange={(background) => onChange({
+              ...value, background,
+              // 透明背景只有 PNG / WebP 能保存
+              format: background === "transparent" && value.format === "jpeg" ? "png" : value.format,
+            })} />
+        </section>
+        <section><h3>格式</h3>
+          <Segmented values={IMAGE_FORMATS} value={value.format}
+            format={(format) => format.toUpperCase()}
+            isDisabled={(format) => format === "jpeg" && value.background === "transparent"}
+            onChange={(format) => onChange({ ...value, format })} />
+        </section>
+        <section><h3>生成数量<small>每张单独生成并计费</small></h3>
+          <Segmented values={[1, 2, 3, 4] as const} value={value.count}
+            onChange={(count) => onChange({ ...value, count })} />
+        </section>
+        <p className="parameter-note">最多 {model.maxReferences} 张参考图；有参考图时按图修改。</p>
       </div>}
     </div>
   </div>;

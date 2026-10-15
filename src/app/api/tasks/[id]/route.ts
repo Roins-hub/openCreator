@@ -5,12 +5,10 @@ import { requireUser } from "@/lib/identity";
 import { mediaKey } from "@/lib/media-store";
 import { deleteObject, putObject } from "@/lib/object-store";
 import { decodeTaskId, downloadVideo, queryVideoTask, type TaskResult } from "@/lib/tangzhi-server";
-import type { MediaRef, Message } from "@/lib/types";
+import { checkImageTask, isImageTask } from "@/lib/image-jobs";
+import { hasTask, isTerminal, settleTask } from "@/lib/task-settle";
+import type { MediaRef } from "@/lib/types";
 import type { Relay } from "@/lib/relay";
-
-const hasTask = (message: Message, taskId: string) => message.taskId === taskId || Boolean(message.taskIds?.includes(taskId));
-const isTerminal = (message: Message, taskId: string) =>
-  Boolean(message.completedTaskIds?.includes(taskId) || message.failedTaskIds?.includes(taskId));
 
 /** 同一任务被多个标签页/请求同时查到完成时,只下载一次 */
 const downloads = new Map<string, Promise<{ video: MediaRef; size: number }>>();
@@ -46,6 +44,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const current = snapshot.messages.find((item) => hasTask(item, taskId));
     if (!current) throw new Error("生成消息不存在");
     if (isTerminal(current, taskId)) return ok({ status: "unchanged", conversation: snapshot, message: current });
+    // 生图在服务端后台进行,这里只看任务是否还在跑
+    if (isImageTask(taskId)) {
+      const conversation = await checkImageTask(userId, conversationId, taskId);
+      return ok({ status: "processing", conversation, message: conversation.messages.find((item) => hasTask(item, taskId)) });
+    }
 
     const upstreamId = decodeTaskId(taskId);
     // 切换到 Tangzhi 之前由其他供应商提交的任务,已无法查询
@@ -59,23 +62,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       if (!message || isTerminal(message, taskId)) return;
       applied = true;
       if (task.status === "succeeded") {
-        if (fetched) message.media = [...(message.media || []), fetched.video];
-        message.completedTaskIds = [...(message.completedTaskIds || []), taskId];
+        settleTask(message, taskId, { status: "succeeded", media: fetched?.video, elapsedMs: task.elapsedMs });
         latest.updatedAt = new Date().toISOString();
       } else if (task.status === "failed") {
-        message.failedTaskIds = [...(message.failedTaskIds || []), taskId];
-        message.error = task.error || "部分生成任务失败";
-      }
-      if (task.status !== "processing") {
-        // 优先用中转站记录的用时;拿不到时按提交到现在估算
-        const elapsed = task.elapsedMs ?? Date.now() - new Date(message.createdAt).getTime();
-        if (elapsed >= 0) message.elapsedMs = Math.max(message.elapsedMs || 0, Math.round(elapsed));
-      }
-      const terminalCount = (message.completedTaskIds?.length || 0) + (message.failedTaskIds?.length || 0);
-      const totalCount = message.taskIds?.length || 1;
-      if (terminalCount >= totalCount) {
-        message.status = message.completedTaskIds?.length ? "complete" : "failed";
-        if (message.status === "complete" && !message.failedTaskIds?.length) delete message.error;
+        settleTask(message, taskId, { status: "failed", error: task.error, elapsedMs: task.elapsedMs });
       } else if (message.status === "stopped") {
         message.status = "processing";
         delete message.error;

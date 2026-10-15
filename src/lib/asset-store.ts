@@ -16,7 +16,7 @@ export interface Asset {
   createdAt: string;
   conversationId?: string;
   conversationTitle?: string;
-  /** 生成这个视频的提示词,用于搜索 */
+  /** 生成这个视频 / 图片的提示词,用于搜索 */
   prompt?: string;
   trashed?: boolean;
   favorite?: boolean;
@@ -50,11 +50,11 @@ export async function recordAsset(userId: string, record: AssetRecord) {
 
 export function enrichAssets(records: AssetRecord[], conversations: Conversation[], favorites: string[] = []) {
   const titles = new Map(conversations.map((item) => [item.id, item.title]));
-  // 视频路径 -> 生成它的提示词
+  // 视频 / 图片路径 -> 生成它的提示词
   const prompts = new Map<string, string>();
   for (const conversation of conversations) {
     for (const turn of buildTurns(conversation.messages, (message) => message.role === "assistant")) {
-      if (turn.kind !== "video" || !turn.user?.content) continue;
+      if (turn.kind !== "generation" || !turn.user?.content) continue;
       for (const media of turn.message.media || []) prompts.set(media.path, turn.user.content);
     }
   }

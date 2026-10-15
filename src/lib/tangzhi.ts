@@ -19,6 +19,7 @@ export interface MediaLimits {
 }
 
 export interface VideoModel {
+  type: "video";
   /** 中转站模型名,同时作为提交时的 model 参数 */
   id: string;
   tag: string;
@@ -127,6 +128,7 @@ export function toVideoModels(payload: unknown, group = "default"): VideoModel[]
     const perSecond = entry.billing_mode === "tiered_expr" && /u\("seconds"\)/.test(entry.billing_expr || "");
     const perSecondPrice = entry.billing_expr?.match(/u\("seconds"\)\s*\*\s*([\d.]+)/)?.[1];
     models.push({
+      type: "video",
       id: entry.model_name,
       tag,
       protocol: arkProtocol(tag, entry.model_name) ? "ark" : "videos",

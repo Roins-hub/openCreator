@@ -14,7 +14,8 @@ const generationMetaSchema = z.object({
   modelName: z.string(),
   modelId: z.string(),
   videoOptions: z.lazy(() => videoOptionsSchema).optional(),
-  imageOptions: z.lazy(() => imageOptionsSchema).optional(),
+  // 早期版本的生图参数格式不同,读不懂时丢掉,不让整条消息校验失败
+  imageOptions: z.lazy(() => imageOptionsSchema).optional().catch(undefined),
 });
 
 export const messageSchema = z.object({
@@ -36,15 +37,12 @@ export const messageSchema = z.object({
 });
 
 export const imageOptionsSchema = z.object({
-  ratio: z.enum(["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9", "custom"]),
-  resolution: z.enum(["2K", "4K"]),
+  ratio: z.enum(["1:1", "4:3", "3:4", "16:9", "9:16"]),
+  resolution: z.enum(["720p", "1080p", "2k", "4k"]),
+  quality: z.enum(["auto", "low", "medium", "high"]),
+  background: z.enum(["auto", "opaque", "transparent"]),
+  format: z.enum(["png", "jpeg", "webp"]),
   count: z.number().int().min(1).max(4),
-  width: z.number().int().min(512).max(4096).optional(),
-  height: z.number().int().min(512).max(4096).optional(),
-}).superRefine((options, ctx) => {
-  if (options.ratio === "custom" && (!options.width || !options.height)) {
-    ctx.addIssue({ code: "custom", message: "自定义尺寸需要填写宽和高" });
-  }
 });
 
 export const videoOptionsSchema = z.object({
@@ -66,7 +64,7 @@ export const conversationSchema = z.object({
   groupId: z.string().max(80).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  imageOptions: imageOptionsSchema.optional(),
+  imageOptions: imageOptionsSchema.optional().catch(undefined),
   videoOptions: videoOptionsSchema.optional(),
   messages: z.array(messageSchema),
 });
@@ -78,5 +76,7 @@ export const generateRequestSchema = z.object({
   modelId: z.string().min(1),
   prompt: z.string(),
   attachments: z.array(mediaRefSchema).default([]),
-  videoOptions: videoOptionsSchema,
+  /** 视频模型用 videoOptions,生图模型用 imageOptions */
+  videoOptions: videoOptionsSchema.optional(),
+  imageOptions: imageOptionsSchema.optional(),
 });

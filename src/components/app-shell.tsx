@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, AtSign, BookOpen, Clapperboard, ImagePlus, Images, KeyRound, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, X, BookMarked, Pencil, Trash2,
+  ArrowUp, AtSign, BookOpen, Clapperboard, Image as ImageIcon, ImagePlus, Images, KeyRound, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, X, BookMarked, Pencil, Trash2,
 } from "lucide-react";
-import type { Conversation, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
+import type { Conversation, GenerationMeta, ImageOptions, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
 import type { Asset } from "@/lib/asset-store";
 import { createClientId } from "@/lib/client-id";
 import { GenerationStatus } from "@/components/generation-status";
-import { VideoControls } from "@/components/generation-controls";
+import { ImageControls, VideoControls } from "@/components/generation-controls";
 import { ConversationList, type ConversationGroup } from "@/components/conversation-list";
 import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
@@ -28,6 +28,10 @@ import {
   REFERENCE_CARD_CLASS, createReferenceCard, findReference, referenceLabels, serializePrompt, splitPromptReferences,
 } from "@/lib/prompt-references";
 import { VideoTaskCard } from "@/components/video-task-card";
+import { ImageTaskCard } from "@/components/image-task-card";
+import {
+  fitImageOptions, IMAGE_RATIOS, imageDefaults, imageRequestError, type ImageModel, type ImageRatio,
+} from "@/lib/image-models";
 import { LogoMark } from "@/components/logo-mark";
 import { Dropdown } from "@/components/dropdown";
 import { PromptLibrary, type CustomPromptInput, type PromptUseMode } from "@/components/prompt-library";
@@ -35,6 +39,8 @@ import { fitDuration, type PromptTemplate } from "@/lib/prompt-library";
 import { MediaThumb } from "@/components/media-thumb";
 
 type PickerAsset = { id: string; kind: MediaKind; path: string; name: string; mimeType: string };
+/** /api/models 返回的视频模型和生图模型 */
+type CatalogModel = VideoModel | ImageModel;
 /** 输入框里的素材:上传完成前用本地 blob 预览,上传完成后换成服务器路径(仍保留 blob 预览避免闪烁)。 */
 type ComposerAttachment = MediaRef & { previewUrl?: string; uploading?: boolean };
 
@@ -79,18 +85,28 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
-function freshConversation(model?: VideoModel): Conversation {
+function freshConversation(model?: CatalogModel): Conversation {
   const now = new Date().toISOString();
   return {
     id: createClientId(), title: "新对话",
     providerId: TANGZHI_PROVIDER_ID, modelId: model?.id,
     createdAt: now, updatedAt: now,
-    videoOptions: model ? fitVideoOptions(model, videoDefaults) : videoDefaults, messages: [],
+    videoOptions: model?.type === "video" ? fitVideoOptions(model, videoDefaults) : videoDefaults,
+    imageOptions: imageDefaults, messages: [],
+  };
+}
+
+/** 同一套参数对象:切换模型时视频、生图参数各自保留 */
+function withModel(conversation: Conversation, model: CatalogModel): Conversation {
+  return {
+    ...conversation, providerId: TANGZHI_PROVIDER_ID, modelId: model.id,
+    videoOptions: model.type === "video" ? fitVideoOptions(model, conversation.videoOptions || videoDefaults) : conversation.videoOptions,
+    imageOptions: fitImageOptions(conversation.imageOptions),
   };
 }
 
 export function AppShell() {
-  const [models, setModels] = useState<VideoModel[]>([]);
+  const [models, setModels] = useState<CatalogModel[]>([]);
   // undefined = 还没读到浏览器里保存的 Key
   const [apiKey, setApiKey] = useState<string>();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -125,26 +141,33 @@ export function AppShell() {
   const inflightRef = useRef(new Set<string>());
 
   const active = conversations.find((item) => item.id === activeId);
-  // 默认选第一个支持多种比例的模型(个别渠道只支持竖屏)
-  const selected = models.find((item) => item.id === active?.modelId) ||
-    models.find((item) => item.ratios.length > 1) || models[0];
+  const videoModels = models.filter((item): item is VideoModel => item.type === "video");
+  const imageModels = models.filter((item): item is ImageModel => item.type === "image");
+  // 默认选第一个支持多种比例的视频模型(个别渠道只支持竖屏)
+  const selected: CatalogModel | undefined = models.find((item) => item.id === active?.modelId) ||
+    videoModels.find((item) => item.ratios.length > 1) || videoModels[0] || models[0];
+  const videoModel = selected?.type === "video" ? selected : undefined;
+  const imageModel = selected?.type === "image" ? selected : undefined;
   // 当前模型可用的参数:模型不支持的比例/分辨率/时长自动收回到可用值
-  const videoOptions = selected ? fitVideoOptions(selected, active?.videoOptions || videoDefaults) : videoDefaults;
-  const mode = normalizeReferenceMode(videoOptions.referenceMode);
-  const remaining = Object.fromEntries(MEDIA_KINDS.map((kind) => [
-    kind, selected ? remainingMedia(selected, mode, attachments, kind) : 0,
-  ])) as Record<MediaKind, number>;
+  const videoOptions = videoModel ? fitVideoOptions(videoModel, active?.videoOptions || videoDefaults) : videoDefaults;
+  const imageOptions = fitImageOptions(active?.imageOptions);
+  // 生图只有「参考图」一种方式
+  const mode = imageModel ? "references" : normalizeReferenceMode(videoOptions.referenceMode);
+  const remainingFor = (kind: MediaKind, current: readonly Pick<MediaRef, "kind">[]) =>
+    imageModel ? (kind === "image" ? Math.max(0, imageModel.maxReferences - current.length) : 0)
+      : videoModel ? remainingMedia(videoModel, mode, current, kind) : 0;
+  const remaining = Object.fromEntries(MEDIA_KINDS.map((kind) => [kind, remainingFor(kind, attachments)])) as Record<MediaKind, number>;
   const allowedKinds = MEDIA_KINDS.filter((kind) => remaining[kind] > 0);
-  const remainingTotal = !selected ? 0 :
-    mode === "first_last" ? remaining.image : Math.max(0, selected.limits.total - attachments.length);
+  const remainingTotal = imageModel ? remaining.image : !videoModel ? 0 :
+    mode === "first_last" ? remaining.image : Math.max(0, videoModel.limits.total - attachments.length);
   const uploadLimit = allowedKinds.length ? remainingTotal : 0;
   // 当前模式下这个模型能接受的素材类型(不看已选数量),决定 @ 选择框和上传入口
-  const modeKinds = MEDIA_KINDS.filter((kind) => selected && remainingMedia(selected, mode, [], kind) > 0);
+  const modeKinds = MEDIA_KINDS.filter((kind) => remainingFor(kind, []) > 0);
   const labels = referenceLabels(attachments);
 
   // 模型列表与个人数据分开加载:模型列表慢或失败不影响查看历史对话
   useEffect(() => {
-    request<VideoModel[]>("/api/models").then(setModels).catch((cause) => setError(cause.message));
+    request<CatalogModel[]>("/api/models").then(setModels).catch((cause) => setError(cause.message));
   }, []);
 
   const load = useCallback(async (key: string) => {
@@ -426,14 +449,10 @@ export function AppShell() {
       setActiveId(conversation.id);
       return;
     }
-    await persist({
-      ...active, providerId: TANGZHI_PROVIDER_ID, modelId,
-      videoOptions: fitVideoOptions(model, active.videoOptions || videoDefaults),
-      updatedAt: new Date().toISOString(),
-    });
+    await persist({ ...withModel(active, model), updatedAt: new Date().toISOString() });
   };
 
-  const changeGenerationOptions = (options: { videoOptions?: VideoOptions }) => {
+  const changeGenerationOptions = (options: { videoOptions?: VideoOptions; imageOptions?: ImageOptions }) => {
     if (!active) {
       const conversation = { ...freshConversation(selected), ...options };
       setConversations((items) => [conversation, ...items]);
@@ -504,19 +523,30 @@ export function AppShell() {
   // 同一对话可以连续提交多个生成任务,不必等上一个完成
   const submit = async (
     prompt: string, usedAttachments: MediaRef[],
-    { clearComposer, videoOptions }: { clearComposer: boolean; videoOptions?: VideoOptions },
+    { clearComposer, videoOptions, imageOptions: recordImageOptions, model = selected }: {
+      clearComposer: boolean; videoOptions?: VideoOptions; imageOptions?: ImageOptions; model?: CatalogModel;
+    },
   ) => {
-    if (!selected) return;
-    const fitted = fitVideoOptions(selected, videoOptions || active?.videoOptions || videoDefaults);
-    // 快照记录实际生成方式:没有素材时就是文生视频
-    const currentVideoOptions: VideoOptions = {
-      ...fitted, referenceMode: effectiveReferenceMode(fitted.referenceMode, usedAttachments.length),
-    };
+    if (!model) return;
+    let generation: GenerationMeta;
+    let invalid: string;
+    if (model.type === "image") {
+      const options = fitImageOptions(recordImageOptions || active?.imageOptions);
+      invalid = imageRequestError(model, prompt, options, usedAttachments);
+      generation = { type: "image", providerName: TANGZHI_PROVIDER_NAME, modelName: model.id, modelId: model.id, imageOptions: options };
+    } else {
+      const fitted = fitVideoOptions(model, videoOptions || active?.videoOptions || videoDefaults);
+      // 快照记录实际生成方式:没有素材时就是文生视频
+      const options: VideoOptions = {
+        ...fitted, referenceMode: effectiveReferenceMode(fitted.referenceMode, usedAttachments.length),
+      };
+      invalid = videoRequestError(model, prompt, options, usedAttachments);
+      generation = { type: "video", providerName: TANGZHI_PROVIDER_NAME, modelName: model.id, modelId: model.id, videoOptions: options };
+    }
     if (!apiKey) {
       setError("请先在「设置」中填写中转站 API Key");
       return;
     }
-    const invalid = videoRequestError(selected, prompt, currentVideoOptions, usedAttachments);
     if (invalid) {
       setError(invalid);
       return;
@@ -536,33 +566,29 @@ export function AppShell() {
     };
     const pendingMessage: Message = {
       id: `pending-${createClientId()}`, role: "assistant", content: "", createdAt: now, status: "processing",
-      replyTo: user.id,
-      generation: {
-        type: "video", providerName: TANGZHI_PROVIDER_NAME,
-        modelName: selected.id, modelId: selected.id, videoOptions: currentVideoOptions,
-      },
+      replyTo: user.id, generation,
     };
     inflightRef.current.add(user.id);
     inflightRef.current.add(pendingMessage.id);
     let conversationId = active?.id;
     try {
       if (!active) {
-        const created = await persist(freshConversation(selected));
+        const created = await persist(freshConversation(model));
         conversationId = created.id;
         setActiveId(created.id);
       }
       const id = conversationId as string;
       setConversations((items) => items.map((item) => item.id !== id ? item : {
         ...item,
-        title: item.messages.length ? item.title : (prompt || "视频生成").slice(0, 28),
-        providerId: TANGZHI_PROVIDER_ID, modelId: selected.id, updatedAt: now,
+        title: item.messages.length ? item.title : (prompt || (model.type === "image" ? "图片生成" : "视频生成")).slice(0, 28),
+        providerId: TANGZHI_PROVIDER_ID, modelId: model.id, updatedAt: now,
         messages: [...item.messages, user, pendingMessage],
       }));
       const result = await request<{ conversation: Conversation; assistant: Message }>("/api/generate", {
         method: "POST", headers: { "Content-Type": "application/json", ...apiKeyHeaders(apiKey) },
         body: JSON.stringify({
-          conversationId: id, userMessageId: user.id, modelId: selected.id,
-          prompt, attachments: usedAttachments, videoOptions: currentVideoOptions,
+          conversationId: id, userMessageId: user.id, modelId: model.id,
+          prompt, attachments: usedAttachments, videoOptions: generation.videoOptions, imageOptions: generation.imageOptions,
         }),
       });
       inflightRef.current.delete(user.id);
@@ -571,6 +597,7 @@ export function AppShell() {
         patchMessage({
           ...item, title: result.conversation.title, providerId: result.conversation.providerId,
           modelId: result.conversation.modelId, videoOptions: result.conversation.videoOptions,
+          imageOptions: result.conversation.imageOptions,
           updatedAt: result.conversation.updatedAt,
         }, result.assistant, pendingMessage.id)));
     } catch (cause) {
@@ -615,7 +642,69 @@ export function AppShell() {
       .catch((cause) => setError(cause.message));
   };
 
-  const reedit = (prompt: string, references: MediaRef[], videoOptions?: VideoOptions) => {
+  /** 生成记录用的模型:当前选的模型类型不同时,换回记录里的模型(已下线就用同类第一个) */
+  const modelForRecord = (generation?: GenerationMeta): CatalogModel | undefined => {
+    if (!generation || generation.type === "chat" || selected?.type === generation.type) return selected;
+    return models.find((item) => item.id === generation.modelId && item.type === generation.type) ||
+      (generation.type === "image" ? imageModels[0] : videoModels[0]);
+  };
+
+  /** 把记录的模型和参数放回输入框(一次保存,避免两次保存互相覆盖) */
+  const restoreSettings = (generation?: GenerationMeta) => {
+    const model = modelForRecord(generation);
+    if (!active || !model || !generation) return;
+    const updated = {
+      ...withModel({
+        ...active,
+        ...(generation.videoOptions ? { videoOptions: generation.videoOptions } : {}),
+        ...(generation.imageOptions ? { imageOptions: generation.imageOptions } : {}),
+      }, model),
+      updatedAt: new Date().toISOString(),
+    };
+    setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));
+    void persist(updated).catch((cause) => setError(cause.message));
+  };
+
+  const focusEditorEnd = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  };
+
+  /** 生成的图片带去做视频:切到最近用过的视频模型,把图片作为参考图(或首帧) */
+  const makeVideoFrom = (image: MediaRef) => {
+    if (!active) return;
+    const recent = [...active.messages].reverse().find((message) => message.generation?.type === "video")?.generation?.modelId;
+    const model = videoModels.find((item) => item.id === recent) || videoModels.find((item) => item.ratios.length > 1) || videoModels[0];
+    if (!model) { setError("中转站暂无可用的视频模型"); return; }
+    attachments.forEach(revokePreview);
+    setAttachments([toMediaRef(image)]);
+    const updated = { ...withModel(active, model), updatedAt: new Date().toISOString() };
+    setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));
+    void persist(updated).catch((cause) => setError(cause.message));
+    setError("");
+    focusEditorEnd();
+  };
+
+  /** 生成的图片作为参考图继续改:保持生图模型 */
+  const attachImageAsReference = (image: MediaRef, generation?: GenerationMeta) => {
+    const model = selected?.type === "image" ? selected : modelForRecord(generation);
+    if (selected?.type !== "image") restoreSettings(generation);
+    const limit = model?.type === "image" ? model.maxReferences : 4;
+    const kept = attachments.filter((item) => item.kind === "image" && item.path !== image.path);
+    if (kept.length >= limit) { setError(`最多 ${limit} 张参考图`); return; }
+    setAttachments([...kept, toMediaRef(image)]);
+    setError("");
+    focusEditorEnd();
+  };
+
+  const reedit = (prompt: string, references: MediaRef[], generation?: GenerationMeta) => {
     const editor = editorRef.current;
     if (!editor) return;
     setAttachments(references);
@@ -631,14 +720,8 @@ export function AppShell() {
       if (ref) editor.append(createReferenceCard(ref.path, ref.name, labels[position], ref.kind));
     }
     setDraft(editor.innerText);
-    if (videoOptions) changeGenerationOptions({ videoOptions });
-    editor.focus();
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    range.collapse(false);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
+    restoreSettings(generation);
+    focusEditorEnd();
   };
 
   const closeLibrary = useCallback(() => setLibraryOpen(false), []);
@@ -673,7 +756,11 @@ export function AppShell() {
       selection?.removeAllRanges();
       selection?.addRange(range);
     }
-    if (applyParams && selected) {
+    if (applyParams && imageModel && template.ratio && IMAGE_RATIOS.includes(template.ratio as ImageRatio)) {
+      changeGenerationOptions({ imageOptions: { ...imageOptions, ratio: template.ratio as ImageRatio } });
+    }
+    if (applyParams && videoModel) {
+      const selected = videoModel;
       const max = selected.durations[selected.durations.length - 1];
       changeGenerationOptions({
         videoOptions: fitVideoOptions(selected, {
@@ -764,12 +851,18 @@ export function AppShell() {
           {!sidebarOpen && <button className="icon-button" onClick={() => setSidebarOpen(true)} aria-label="打开侧栏">
             <Menu size={18} />
           </button>}
-          {selected && <span className="model-spec" title={selected.description}>
-            <b>{selected.id}</b>
-            <span>{selected.resolution.toUpperCase()}</span>
-            <span>{durationSummary(selected.durations)}</span>
-            <span>{selected.limits.images}图 · {selected.limits.videos}视频 · {selected.limits.audios}音频 · 合计≤{selected.limits.total}</span>
-            <span>{formatPrice(selected)}</span>
+          {videoModel && <span className="model-spec" title={videoModel.description}>
+            <b>{videoModel.id}</b>
+            <span>{videoModel.resolution.toUpperCase()}</span>
+            <span>{durationSummary(videoModel.durations)}</span>
+            <span>{videoModel.limits.images}图 · {videoModel.limits.videos}视频 · {videoModel.limits.audios}音频 · 合计≤{videoModel.limits.total}</span>
+            <span>{formatPrice(videoModel)}</span>
+          </span>}
+          {imageModel && <span className="model-spec" title={imageModel.description}>
+            <b>{imageModel.id}</b>
+            <span>生图</span>
+            <span>最多 {imageModel.maxReferences} 张参考图</span>
+            <span>{imageModel.priceLabel}</span>
           </span>}
           {!apiKey && <Link className="key-missing" href="/settings"><KeyRound size={13} />填写 API Key</Link>}
         </header>
@@ -780,7 +873,7 @@ export function AppShell() {
               <LogoMark size={44} className="empty-mark" />
               <h1>今天，想创造什么？</h1>
               {apiKey
-                ? <EmptyStatePrompt type="video" />
+                ? <EmptyStatePrompt type={selected?.type || "video"} />
                 : <p>先到设置里填写 {TANGZHI_PROVIDER_NAME} 中转站的 API Key，然后开始。</p>}
               {!apiKey && <Link className="text-link" href="/settings">前往设置 <span>↗</span></Link>}
               {selected && (
@@ -792,7 +885,7 @@ export function AppShell() {
             <div className="message-list">
               {(() => {
                 let lastDate = "";
-                return buildTurns(active.messages, isVideoTurn).map((turn) => {
+                return buildTurns(active.messages, isGenerationTurn).map((turn) => {
                   const { message } = turn;
                   if (turn.kind === "message") {
                     return message.role === "user"
@@ -805,22 +898,31 @@ export function AppShell() {
                   const userMessage = turn.user;
                   const prompt = userMessage?.content || "";
                   const references = userMessage?.attachments || [];
-                  const videoPaths = (message.media || []).filter((item) => item.kind === "video").map((item) => item.path);
-                  const favorite = videoPaths.length > 0 && videoPaths.every((path) => favorites.has(path));
+                  const image = isImageRecord(message);
+                  const mediaPaths = (message.media || []).filter((item) => item.kind === (image ? "image" : "video")).map((item) => item.path);
+                  const favorite = mediaPaths.length > 0 && mediaPaths.every((path) => favorites.has(path));
                   const date = localDate(message.createdAt);
                   const showDate = date !== lastDate;
                   lastDate = date;
+                  const generation = message.generation;
+                  const shared = {
+                    prompt, references, message, favorite,
+                    onReedit: () => reedit(prompt, references, generation),
+                    onRegenerate: () => void submit(prompt, references, {
+                      clearComposer: false, videoOptions: generation?.videoOptions, imageOptions: generation?.imageOptions,
+                      model: modelForRecord(generation),
+                    }),
+                    onToggleFavorite: () => void toggleFavorite(mediaPaths, !favorite),
+                    onDelete: () => deleteTurn(message.id, userMessage?.id),
+                  };
                   return (
                     <div key={message.id}>
                       {showDate && <div className="task-date">{date}</div>}
-                      <VideoTaskCard prompt={prompt} references={references} message={message}
-                        fallbackModelName={selected?.id} favorite={favorite}
-                        onReedit={() => reedit(prompt, references, message.generation?.videoOptions)}
-                        onRegenerate={() => void submit(prompt, references, {
-                          clearComposer: false, videoOptions: message.generation?.videoOptions,
-                        })}
-                        onToggleFavorite={() => void toggleFavorite(videoPaths, !favorite)}
-                        onDelete={() => deleteTurn(message.id, userMessage?.id)} />
+                      {image
+                        ? <ImageTaskCard {...shared} fallbackModelName={imageModel?.id}
+                          onMakeVideo={makeVideoFrom}
+                          onUseAsReference={(media) => attachImageAsReference(media, generation)} />
+                        : <VideoTaskCard {...shared} fallbackModelName={videoModel?.id} />}
                     </div>
                   );
                 });
@@ -896,8 +998,10 @@ export function AppShell() {
                 </div>
               )}
               <div ref={editorRef} className="composer-editor" contentEditable suppressContentEditableWarning role="textbox" aria-label="提示词"
-                data-placeholder={attachments.length ? "描述画面、运动和镜头，输入 @ 引用素材（至少 10 个字）…" :
-                  "描述画面、运动、镜头和氛围（至少 10 个字）；添加素材可按参考图或首尾帧生成"}
+                data-placeholder={imageModel
+                  ? attachments.length ? "描述想怎样修改或组合这些图片，输入 @ 引用参考图…" : "描述你想要的画面、风格和构图；添加参考图可按图修改"
+                  : attachments.length ? "描述画面、运动和镜头，输入 @ 引用素材（至少 10 个字）…" :
+                    "描述画面、运动、镜头和氛围（至少 10 个字）；添加素材可按参考图或首尾帧生成"}
                 onPaste={pastedImages}
                 onKeyDown={(event) => {
                   if (event.key === "@" && !event.ctrlKey && !event.metaKey) {
@@ -947,20 +1051,27 @@ export function AppShell() {
               )}
               <Dropdown className="model-dropdown composer-model" ariaLabel="选择模型" placeholder="正在加载模型"
                 value={selected?.id || ""}
-                options={[...models].sort((a, b) => RESOLUTION_ORDER.indexOf(a.resolution) - RESOLUTION_ORDER.indexOf(b.resolution))
-                  .map((model) => ({
-                    value: model.id,
-                    label: model.id,
-                    group: model.resolution.toUpperCase(),
-                    hint: `${durationSummary(model.durations)} · ${formatPrice(model)}`,
-                  }))}
+                options={[
+                  ...[...videoModels].sort((a, b) => RESOLUTION_ORDER.indexOf(a.resolution) - RESOLUTION_ORDER.indexOf(b.resolution))
+                    .map((model) => ({
+                      value: model.id,
+                      label: model.id,
+                      group: `视频 · ${model.resolution.toUpperCase()}`,
+                      hint: `${durationSummary(model.durations)} · ${formatPrice(model)}`,
+                    })),
+                  ...imageModels.map((model) => ({
+                    value: model.id, label: model.id, group: "图片", hint: model.priceLabel,
+                  })),
+                ]}
                 renderValue={() => selected
-                  ? <><Clapperboard size={14} /><span className="composer-model-name">{selected.id}</span></>
+                  ? <>{selected.type === "image" ? <ImageIcon size={14} /> : <Clapperboard size={14} />}<span className="composer-model-name">{selected.id}</span></>
                   : <span className="dropdown-placeholder">正在加载模型</span>}
                 onChange={(value) => void chooseModel(value)} />
-              {selected && <VideoControls key={selected.id} value={videoOptions} model={selected}
+              {videoModel && <VideoControls key={videoModel.id} value={videoOptions} model={videoModel}
                 attachmentCount={attachments.length}
                 onChange={(next) => changeGenerationOptions({ videoOptions: next })} />}
+              {imageModel && <ImageControls key={imageModel.id} value={imageOptions} model={imageModel}
+                onChange={(next) => changeGenerationOptions({ imageOptions: next })} />}
               <span className="composer-spacer">{attachmentSummary(mode, attachments)}</span>
               <button className="send-button" onClick={send}
                 disabled={!selected || uploading || (!draft.trim() && !attachments.length)}
@@ -1003,9 +1114,16 @@ function stackTilt(index: number) {
   return (index % 2 ? 1 : -1) * Math.min(6 + index * 3, 14);
 }
 
-function isVideoTurn(message: Message) {
+/** 生图记录:有生图快照,或旧记录只产出了图片 */
+function isImageRecord(message: Message) {
+  if (message.generation) return message.generation.type === "image";
+  return Boolean(message.media?.length && message.media.every((item) => item.kind === "image"));
+}
+
+function isGenerationTurn(message: Message) {
   if (message.role !== "assistant") return false;
-  if (message.generation) return message.generation.type === "video";
+  if (message.generation) return message.generation.type === "video" || message.generation.type === "image";
+  if (isImageRecord(message)) return true;
   if (message.media?.some((item) => item.kind === "video")) return true;
   // 旧记录没有 generation 快照:有任务 ID 或正在生成时按视频任务展示。
   const hasTask = message.taskIds?.length || message.taskId || message.id.startsWith("pending-");

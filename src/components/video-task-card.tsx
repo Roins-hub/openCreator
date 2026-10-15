@@ -52,13 +52,13 @@ export function formatDate(iso: string, now = new Date()) {
   return date.getFullYear() === now.getFullYear() ? `${day} ${time}` : `${date.getFullYear()}年${day} ${time}`;
 }
 
-function formatTime(iso: string) {
+export function formatTime(iso: string) {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? "" :
     date.toLocaleString("zh-CN", { hour12: false, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-function Elapsed({ since }: { since: string }) {
+export function Elapsed({ since }: { since: string }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -67,7 +67,7 @@ function Elapsed({ since }: { since: string }) {
   return <>{formatElapsed(now - new Date(since).getTime())}</>;
 }
 
-function StatusBadge({ status }: { status: Message["status"] }) {
+export function StatusBadge({ status }: { status: Message["status"] }) {
   if (status === "complete") return <span className="task-badge ok"><CheckCircle2 size={13} />已完成</span>;
   if (status === "processing") return <span className="task-badge running"><Loader2 size={13} className="spin" />生成中</span>;
   if (status === "stopped") return <span className="task-badge muted"><PauseCircle size={13} />已停止</span>;

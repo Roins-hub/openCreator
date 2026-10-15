@@ -13,6 +13,7 @@ import {
 } from "@/lib/tangzhi";
 import { ThemePicker } from "@/components/theme-picker";
 import { readableError } from "@/lib/network-error";
+import type { ImageModel } from "@/lib/image-models";
 
 // 版本号在构建时由 next.config 注入；客户端直接读取内联值。
 const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
@@ -25,6 +26,7 @@ export function SettingsForm() {
   const [error, setError] = useState("");
   const [check, setCheck] = useState<{ state: "loading" | "success" | "error"; message: string }>();
   const [models, setModels] = useState<VideoModel[]>();
+  const [imageModels, setImageModels] = useState<ImageModel[]>([]);
   // 中转站地址:空字符串 = 内置的默认中转站
   const [customMode, setCustomMode] = useState(false);
   const [baseInput, setBaseInput] = useState("");
@@ -38,7 +40,9 @@ export function SettingsForm() {
     fetch("/api/models", { headers: apiKeyHeaders("", relayBase) }).then(async (response) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "无法获取模型列表");
-      setModels(data);
+      const list = data as (VideoModel | ImageModel)[];
+      setModels(list.filter((model): model is VideoModel => model.type === "video"));
+      setImageModels(list.filter((model): model is ImageModel => model.type === "image"));
     }).catch((cause) => setError((cause as Error).message));
   };
 
@@ -112,9 +116,9 @@ export function SettingsForm() {
         <div className="settings-title">
           <span className="eyebrow">SETTINGS · v{appVersion}</span>
           <h1>设置</h1>
-          <p>视频由 <code>{host}</code> 中转站生成。API Key 只保存在当前浏览器。{savedBase
-            ? "使用自定义中转站时，对话和视频按「地址 + Key」单独存放，和默认中转站的记录互不相通。"
-            : "对话和视频按中转站账号存放，其他用户看不到；同一账号下换一个 Key，记录也都还在。"}</p>
+          <p>视频和图片由 <code>{host}</code> 中转站生成。API Key 只保存在当前浏览器。{savedBase
+            ? "使用自定义中转站时，对话、视频和图片按「地址 + Key」单独存放，和默认中转站的记录互不相通。"
+            : "对话、视频和图片按中转站账号存放，其他用户看不到；同一账号下换一个 Key，记录也都还在。"}</p>
         </div>
         {error && <div className="settings-error">{readableError(error)}<button onClick={() => setError("")}><X size={14} /></button></div>}
 
@@ -195,6 +199,22 @@ export function SettingsForm() {
                 </div>
               ))}
             </div>
+            {imageModels.length > 0 && <>
+              <div className="section-head catalog-subhead">
+                <h2>可用生图模型</h2>
+                <span className="theme-note">{imageModels.length} 个 · 文生图、图生图（最多 4 张参考图）</span>
+              </div>
+              <div className="catalog-table catalog-table-image" role="table" aria-label="可用生图模型">
+                <div className="catalog-row head" role="row"><span>模型</span><span>说明</span><span>价格</span></div>
+                {imageModels.map((model) => (
+                  <div className="catalog-row" role="row" key={model.id}>
+                    <span><b>{model.id}</b></span>
+                    <span>{model.description || "—"}</span>
+                    <span>{model.priceLabel}</span>
+                  </div>
+                ))}
+              </div>
+            </>}
           </div>
         </section>
 
