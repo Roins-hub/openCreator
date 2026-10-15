@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  fitImageOptions, imageDefaults, imageOptionsSummary, imageRequestError, imageSize, toImageModels, withComposition,
+  fitImageOptions, imageDefaults, imageOptionsSummary, imageRequestError, imageSize, tierPrice, toImageModels, withComposition,
   type ImageModel,
 } from "./image-models";
 
@@ -9,10 +9,12 @@ const model: ImageModel = {
 };
 
 describe("image sizes", () => {
-  it("requests the standard size of each ratio (the relay ignores larger tiers but charges for them)", () => {
+  it("uses the standard size for 1K and the long edge for 2K / 4K", () => {
     expect(imageSize("1:1")).toEqual({ width: 1024, height: 1024 });
-    expect(imageSize("16:9")).toEqual({ width: 1280, height: 720 });
-    expect(imageSize("3:4")).toEqual({ width: 720, height: 960 });
+    expect(imageSize("16:9", "1k")).toEqual({ width: 1280, height: 720 });
+    expect(imageSize("16:9", "2k")).toEqual({ width: 2048, height: 1152 });
+    expect(imageSize("9:16", "4k")).toEqual({ width: 2304, height: 4096 });
+    expect(imageSize("4:3", "4k")).toEqual({ width: 4096, height: 3072 });
   });
 
   it("states the canvas ratio in the prompt", () => {
@@ -25,8 +27,9 @@ describe("image sizes", () => {
 describe("image options", () => {
   it("fills in defaults and drops values from older formats", () => {
     expect(fitImageOptions(undefined)).toEqual(imageDefaults);
-    expect(fitImageOptions({ ratio: "21:9" as never, count: 9, ...{ resolution: "4K", quality: "high" } }))
+    expect(fitImageOptions({ ratio: "21:9", count: 9, resolution: "720p", quality: "high" } as never))
       .toEqual({ ...imageDefaults, count: 4 });
+    expect(fitImageOptions({ resolution: "4k" }).resolution).toBe("4k");
   });
 
   it("validates prompt, references and transparent JPEG", () => {
@@ -40,9 +43,9 @@ describe("image options", () => {
   });
 
   it("summarises only the non-default options", () => {
-    expect(imageOptionsSummary(imageDefaults)).toEqual(["1:1", "PNG"]);
-    expect(imageOptionsSummary({ ...imageDefaults, background: "transparent", count: 3 }))
-      .toEqual(["1:1", "透明背景", "PNG", "3 张"]);
+    expect(imageOptionsSummary(imageDefaults)).toEqual(["1:1", "1K", "PNG"]);
+    expect(imageOptionsSummary({ ...imageDefaults, resolution: "2k", background: "transparent", count: 3 }))
+      .toEqual(["1:1", "2K", "透明背景", "PNG", "3 张"]);
   });
 });
 
@@ -83,6 +86,13 @@ describe("toImageModels", () => {
     expect(byId()["gpt-image-2"].priceDetail).toBe("输入 ¥5.00 · 输出 ¥30.00 · 图片输入 ¥8.00（每百万 tokens）");
     expect(byId()["gpt-image-2"].priceLabel).toBe("按量 · 输出 ¥30.00/百万");
     expect(byId()["ratio-image"].price).toEqual({ kind: "tokens", rates: { input: 5, output: 20, imageInput: 0 } });
+  });
+
+  it("prices each resolution tier", () => {
+    const { price } = byId()["ch5-gpt-image-2"];
+    expect([tierPrice(price, "1k"), tierPrice(price, "2k"), tierPrice(price, "4k")]).toEqual([0.12, 0.24, 0.36]);
+    expect(tierPrice(byId()["flat-image"].price, "4k")).toBe(0.3);
+    expect(tierPrice(byId()["gpt-image-2"].price, "2k")).toBeUndefined();
   });
 
   it("uses flat per-image prices and applies the recharge rate", () => {

@@ -36,7 +36,7 @@ const user = "0123456789abcdef0123456789abcdef";
 const model: ImageModel = {
   type: "image", id: "gpt-image-2", tag: "", description: "", price: { kind: "unknown" }, priceLabel: "按量计费", priceDetail: "按量计费", maxReferences: 4, promptMax: 6000,
 };
-const options = { ratio: "16:9", background: "auto", format: "png", count: 2 } as const;
+const options = { ratio: "16:9", resolution: "2k", background: "auto", format: "png", count: 2 } as const;
 
 async function setup(conversationId: string, taskIds: string[], createdAt = new Date().toISOString()) {
   const store = await import("./conversation-store");
@@ -52,7 +52,8 @@ async function setup(conversationId: string, taskIds: string[], createdAt = new 
 
 async function settled(conversationId: string, done: (status: string) => boolean) {
   const { getConversation } = await import("./conversation-store");
-  for (let i = 0; i < 100; i++) {
+  // 全量测试并行跑时机器较忙,最多等 10 秒
+  for (let i = 0; i < 500; i++) {
     const message = (await getConversation(user, conversationId))?.messages[0];
     if (message && done(message.status)) return message;
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -60,7 +61,7 @@ async function settled(conversationId: string, done: (status: string) => boolean
   throw new Error("job did not finish");
 }
 
-describe("background image jobs", () => {
+describe("background image jobs", { timeout: 20_000 }, () => {
   it("generates each image, stores it and completes the record when all tasks finish", async () => {
     const { startImageJob, newImageTaskId } = await import("./image-jobs");
     const ids = [newImageTaskId(), newImageTaskId()];
@@ -74,11 +75,17 @@ describe("background image jobs", () => {
     expect(message.media?.every((item) => item.kind === "image" && item.path.startsWith(`users/${user}/images/`))).toBe(true);
     expect(message.completedTaskIds?.sort()).toEqual([...ids].sort());
     expect(message.elapsedMs).toBeGreaterThanOrEqual(0);
-    expect(relayCalls.generate[0]).toMatchObject({ model: "gpt-image-2", size: "1280x720", output_format: "png", n: 1 });
+    expect(relayCalls.generate[0]).toMatchObject({ model: "gpt-image-2", size: "2048x1152", output_format: "png", n: 1 });
     expect(relayCalls.generate[0]).not.toHaveProperty("quality");
     expect(String((relayCalls.generate[0] as { prompt: string }).prompt)).toContain("16:9，横版");
+    // 资产记录在写回对话之后才登记,等两条都写完
     const { listAssets } = await import("./asset-store");
-    expect((await listAssets(user, [], [])).filter((asset) => asset.kind === "image")).toHaveLength(2);
+    let images: unknown[] = [];
+    for (let i = 0; i < 50 && images.length < 2; i++) {
+      images = (await listAssets(user, [], [])).filter((asset) => asset.kind === "image");
+      if (images.length < 2) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(images).toHaveLength(2);
   });
 
   it("sends reference images to the edits endpoint", async () => {

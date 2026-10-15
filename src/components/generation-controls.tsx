@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
 import type { ImageOptions, VideoOptions } from "@/lib/types";
 import {
-  BACKGROUND_LABEL, IMAGE_BACKGROUNDS, IMAGE_FORMATS, IMAGE_RATIOS, imageSize, type ImageModel,
+  BACKGROUND_LABEL, IMAGE_BACKGROUNDS, IMAGE_FORMATS, IMAGE_RATIOS, IMAGE_RESOLUTIONS, imageSize, tierPrice, yuan,
+  type ImageModel,
 } from "@/lib/image-models";
 import {
   durationSummary, normalizeReferenceMode, type ReferenceMode, type VideoModel, type VideoRatio,
@@ -167,7 +168,7 @@ export function VideoControls({
   </div>;
 }
 
-/** 生图参数:比例、背景、格式、数量(画质和分辨率中转站不生效,不提供) */
+/** 生图参数:比例、分辨率(中转站阶梯计价的 1K / 2K / 4K)、背景、格式、数量 */
 export function ImageControls({
   value, model, onChange,
 }: {
@@ -177,13 +178,14 @@ export function ImageControls({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
-  const { width, height } = imageSize(value.ratio);
+  const { width, height } = imageSize(value.ratio, value.resolution);
+  const priced = model.price.kind === "per_image" && model.price.tiers.length > 1;
   return <div className="video-parameter-group" ref={ref}>
     <div className="parameter-control">
       <button type="button" className={`parameter-trigger ${open ? "active" : ""}`}
         aria-expanded={open} onClick={() => setOpen((current) => !current)}>
         <SlidersHorizontal size={14} />
-        <span>{value.ratio}</span><i />
+        <span>{value.ratio}</span><i /><span>{value.resolution.toUpperCase()}</span><i />
         <span>{value.format.toUpperCase()}</span><i /><span>{value.count}张</span>
       </button>
       {open && <div className="parameter-popover video-parameter-popover image-parameter-popover">
@@ -195,6 +197,14 @@ export function ImageControls({
               <span className={`ratio-shape ratio-${ratio.replace(":", "-")}`} /><b>{ratio}</b>
             </button>)}
           </div>
+        </section>
+        <section><h3>分辨率<small>{priced ? "价格与中转站阶梯计价同步" : "2K / 4K 耗时更长"}</small></h3>
+          <Segmented values={IMAGE_RESOLUTIONS} value={value.resolution}
+            format={(resolution) => {
+              const price = priced ? tierPrice(model.price, resolution) : undefined;
+              return price === undefined ? resolution.toUpperCase() : `${resolution.toUpperCase()} · ${yuan(price)}`;
+            }}
+            onChange={(resolution) => onChange({ ...value, resolution })} />
         </section>
         <section><h3>背景</h3>
           <Segmented values={IMAGE_BACKGROUNDS} value={value.background}

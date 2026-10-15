@@ -31,7 +31,7 @@ import {
 import { VideoTaskCard } from "@/components/video-task-card";
 import { ImageTaskCard } from "@/components/image-task-card";
 import {
-  fitImageOptions, IMAGE_RATIOS, imageDefaults, imageRequestError, type ImageModel, type ImageRatio,
+  fitImageOptions, IMAGE_RATIOS, imageDefaults, imageRequestError, tierPrice, yuan, type ImageModel, type ImageRatio,
 } from "@/lib/image-models";
 import { LogoMark } from "@/components/logo-mark";
 import { Dropdown } from "@/components/dropdown";
@@ -1159,9 +1159,13 @@ export function AppShell() {
                       group: `视频 · ${model.resolution.toUpperCase()}`,
                       hint: `${durationSummary(model.durations)} · ${formatPrice(model)}`,
                     })),
-                  ...imageModels.map((model) => ({
-                    value: model.id, label: model.id, group: "图片", hint: model.priceLabel,
-                  })),
+                  ...imageModels.map((model) => {
+                    const price = tierPrice(model.price, imageOptions.resolution);
+                    return {
+                      value: model.id, label: model.id, group: "图片",
+                      hint: price === undefined ? model.priceLabel : `${imageOptions.resolution.toUpperCase()} ${yuan(price)}/张`,
+                    };
+                  }),
                 ]}
                 renderValue={() => selected
                   ? <>{selected.type === "image" ? <ImageIcon size={14} /> : <Clapperboard size={14} />}<span className="composer-model-name">{selected.id}</span></>

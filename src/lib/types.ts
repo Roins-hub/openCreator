@@ -52,11 +52,12 @@ export interface Conversation {
 }
 
 /**
- * 生图参数。没有「画质」「分辨率」:2026-10-15 实测中转站的生图模型都会忽略这两个参数
- * (任何档位都出约 1672×941 / 1254×1254 的图),而选 2K / 4K 会被按大尺寸多扣 25~60 倍费用。
+ * 生图参数。分辨率档位与中转站的阶梯计价一致(1K / 2K / 4K);
+ * 没有「画质」:2026-10-15 实测中转站会忽略它,高低画质扣费和效果都一样。
  */
 export interface ImageOptions {
   ratio: "1:1" | "4:3" | "3:4" | "16:9" | "9:16";
+  resolution: "1k" | "2k" | "4k";
   background: "auto" | "opaque" | "transparent";
   format: "png" | "jpeg" | "webp";
   count: number;

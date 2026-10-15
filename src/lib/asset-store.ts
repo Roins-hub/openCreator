@@ -37,6 +37,16 @@ export function isExpired(record: Pick<AssetRecord, "createdAt">, days = retenti
   return Boolean(days && now - new Date(record.createdAt).getTime() > days * 86_400_000);
 }
 
+// 同一用户的索引读改写按顺序执行:多张图 / 多条视频同时完成时不会互相覆盖丢记录
+const queues = new Map<string, Promise<unknown>>();
+function serial<T>(userId: string, task: () => Promise<T>) {
+  const result = (queues.get(userId) || Promise.resolve()).then(task, task);
+  const tail = result.catch(() => undefined);
+  queues.set(userId, tail);
+  void tail.then(() => { if (queues.get(userId) === tail) queues.delete(userId); });
+  return result;
+}
+
 async function readIndex(userId: string) {
   const value = await readJson<AssetRecord[]>(indexFile(userId), []);
   return Array.isArray(value) ? value : [];
@@ -44,8 +54,10 @@ async function readIndex(userId: string) {
 
 export async function recordAsset(userId: string, record: AssetRecord) {
   assertKey(record.path);
-  const current = (await readIndex(userId)).filter((item) => item.path !== record.path && !isExpired(item));
-  await writeJsonAtomic(indexFile(userId), [record, ...current]);
+  await serial(userId, async () => {
+    const current = (await readIndex(userId)).filter((item) => item.path !== record.path && !isExpired(item));
+    await writeJsonAtomic(indexFile(userId), [record, ...current]);
+  });
 }
 
 export function enrichAssets(records: AssetRecord[], conversations: Conversation[], favorites: string[] = []) {
@@ -77,6 +89,10 @@ export async function listAssets(userId: string, conversations: Conversation[], 
 }
 
 export async function setAssetTrashed(userId: string, path: string, trashed: boolean) {
+  return serial(userId, () => updateTrashed(userId, path, trashed));
+}
+
+async function updateTrashed(userId: string, path: string, trashed: boolean) {
   const records = await readIndex(userId);
   const record = records.find((item) => item.path === path);
   if (!record) throw new Error("资产不存在");
@@ -87,8 +103,10 @@ export async function setAssetTrashed(userId: string, path: string, trashed: boo
 }
 
 export async function permanentlyDeleteAsset(userId: string, path: string) {
-  const records = await readIndex(userId);
-  if (!records.some((item) => item.path === path)) throw new Error("资产不存在");
-  await deleteObject(path);
-  await writeJsonAtomic(indexFile(userId), records.filter((item) => item.path !== path));
+  await serial(userId, async () => {
+    const records = await readIndex(userId);
+    if (!records.some((item) => item.path === path)) throw new Error("资产不存在");
+    await deleteObject(path);
+    await writeJsonAtomic(indexFile(userId), records.filter((item) => item.path !== path));
+  });
 }

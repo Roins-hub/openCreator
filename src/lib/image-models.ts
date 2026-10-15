@@ -28,8 +28,10 @@ export interface ImageModel {
 }
 
 export type ImageRatio = ImageOptions["ratio"];
+export type ImageResolution = ImageOptions["resolution"];
 
 export const IMAGE_RATIOS: ImageRatio[] = ["1:1", "4:3", "3:4", "16:9", "9:16"];
+export const IMAGE_RESOLUTIONS: ImageResolution[] = ["1k", "2k", "4k"];
 export const IMAGE_BACKGROUNDS: ImageOptions["background"][] = ["auto", "opaque", "transparent"];
 export const IMAGE_FORMATS: ImageOptions["format"][] = ["png", "jpeg", "webp"];
 export const MAX_IMAGE_REFERENCES = 4;
@@ -37,16 +39,28 @@ const PROMPT_MAX = 6000;
 
 export const BACKGROUND_LABEL: Record<ImageOptions["background"], string> = { auto: "自动", opaque: "不透明", transparent: "透明" };
 
-export const imageDefaults: ImageOptions = { ratio: "1:1", background: "auto", format: "png", count: 1 };
+export const imageDefaults: ImageOptions = { ratio: "1:1", resolution: "1k", background: "auto", format: "png", count: 1 };
 
-// 按比例请求标准尺寸(与生图站 720P 档一致);按尺寸分档计费的模型也只按最低一档收费
-const SIZES: Record<ImageRatio, [number, number]> = {
+// 1K:各比例的标准尺寸;2K / 4K:长边 2048 / 4096(与生图站一致,也正好对上中转站阶梯计价识别的尺寸)
+const SIZES_1K: Record<ImageRatio, [number, number]> = {
   "1:1": [1024, 1024], "4:3": [960, 720], "3:4": [720, 960], "16:9": [1280, 720], "9:16": [720, 1280],
 };
 
-export function imageSize(ratio: ImageRatio) {
-  const [width, height] = SIZES[ratio];
-  return { width, height };
+export function imageSize(ratio: ImageRatio, resolution: ImageResolution = "1k") {
+  if (resolution === "1k") {
+    const [width, height] = SIZES_1K[ratio];
+    return { width, height };
+  }
+  const [w, h] = ratio.split(":").map(Number);
+  const edge = resolution === "4k" ? 4096 : 2048;
+  const scale = edge / Math.max(w, h);
+  return { width: Math.round(w * scale), height: Math.round(h * scale) };
+}
+
+/** 某个分辨率档位的每张价格(按尺寸分档的模型);拿不到时返回 undefined */
+export function tierPrice(price: ImagePrice, resolution: ImageResolution) {
+  if (price.kind !== "per_image") return undefined;
+  return price.tiers.find((tier) => tier.name.toLowerCase() === resolution)?.price ?? price.current;
 }
 
 /** 在提示词后注明画布比例,上游按这个比例构图(与生图站一致) */
@@ -62,6 +76,7 @@ export function fitImageOptions(options?: Partial<ImageOptions> | null): ImageOp
     values.includes(value as T) ? value as T : fallback;
   return {
     ratio: pick(IMAGE_RATIOS, options?.ratio, imageDefaults.ratio),
+    resolution: pick(IMAGE_RESOLUTIONS, options?.resolution, imageDefaults.resolution),
     background: pick(IMAGE_BACKGROUNDS, options?.background, imageDefaults.background),
     format: pick(IMAGE_FORMATS, options?.format, imageDefaults.format),
     count: Math.min(4, Math.max(1, Math.round(Number(options?.count)) || 1)),
@@ -78,10 +93,11 @@ export function imageRequestError(model: ImageModel, prompt: string, options: Im
   return "";
 }
 
-/** 参数摘要,用于卡片:16:9 | 透明背景 | PNG | 2 张 */
+/** 参数摘要,用于卡片:16:9 | 2K | 透明背景 | PNG | 2 张 */
 export function imageOptionsSummary(options: ImageOptions) {
   return [
     options.ratio,
+    options.resolution.toUpperCase(),
     options.background === "transparent" && "透明背景",
     options.format.toUpperCase(),
     options.count > 1 && `${options.count} 张`,
@@ -150,7 +166,7 @@ export function imagePricing(entry: PricingEntry, context: PriceContext): ImageP
   return { kind: "unknown" };
 }
 
-const yuan = (value: number) => `¥${value < 0.1 ? value.toFixed(3).replace(/0$/, "") : value.toFixed(2)}`;
+export const yuan = (value: number) => `¥${value < 0.1 ? value.toFixed(3).replace(/0$/, "") : value.toFixed(2)}`;
 
 /** 简短价格:下拉框和顶栏用,标的是工作台实际请求的那一档 */
 export function priceLabel(price: ImagePrice) {
