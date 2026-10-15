@@ -76,7 +76,8 @@ async function ensureLifecycle() {
   // TOS 读回的规则会多带一个空的 <Filter></Filter>,原样写回会被当成「整个桶」和 users/ 重叠,去掉它
   const rules = [...xml.matchAll(/<Rule>[\s\S]*?<\/Rule>/g)]
     .map((match) => match[0].replace(/<Filter\s*\/>|<Filter>\s*<\/Filter>/g, ""));
-  rules.push(`<Rule><ID>${RULE_ID}</ID><Filter><Prefix>${PREFIX}</Prefix></Filter><Status>Enabled</Status><Expiration><Days>${RETENTION_DAYS}</Days></Expiration></Rule>`);
+  // 和已有规则一样用 <Prefix> 写法:两种写法混用时 TOS 会把 <Filter> 那条当成整个桶
+  rules.push(`<Rule><ID>${RULE_ID}</ID><Prefix>${PREFIX}</Prefix><Status>Enabled</Status><Expiration><Days>${RETENTION_DAYS}</Days></Expiration></Rule>`);
   const body = `<?xml version="1.0" encoding="UTF-8"?><LifecycleConfiguration>${rules.join("")}</LifecycleConfiguration>`;
   await request("/?lifecycle", {
     method: "PUT", body,
