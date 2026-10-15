@@ -38,8 +38,6 @@ export const messageSchema = z.object({
 
 export const imageOptionsSchema = z.object({
   ratio: z.enum(["1:1", "4:3", "3:4", "16:9", "9:16"]),
-  resolution: z.enum(["720p", "1080p", "2k", "4k"]),
-  quality: z.enum(["auto", "low", "medium", "high"]),
   background: z.enum(["auto", "opaque", "transparent"]),
   format: z.enum(["png", "jpeg", "webp"]),
   count: z.number().int().min(1).max(4),

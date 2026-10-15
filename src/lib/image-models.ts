@@ -18,40 +18,24 @@ export interface ImageModel {
 }
 
 export type ImageRatio = ImageOptions["ratio"];
-export type ImageResolution = ImageOptions["resolution"];
 
 export const IMAGE_RATIOS: ImageRatio[] = ["1:1", "4:3", "3:4", "16:9", "9:16"];
-export const IMAGE_RESOLUTIONS: ImageResolution[] = ["720p", "1080p", "2k", "4k"];
-export const IMAGE_QUALITIES: ImageOptions["quality"][] = ["auto", "low", "medium", "high"];
 export const IMAGE_BACKGROUNDS: ImageOptions["background"][] = ["auto", "opaque", "transparent"];
 export const IMAGE_FORMATS: ImageOptions["format"][] = ["png", "jpeg", "webp"];
 export const MAX_IMAGE_REFERENCES = 4;
 const PROMPT_MAX = 6000;
 
-export const QUALITY_LABEL: Record<ImageOptions["quality"], string> = { auto: "自动", low: "低", medium: "中", high: "高" };
 export const BACKGROUND_LABEL: Record<ImageOptions["background"], string> = { auto: "自动", opaque: "不透明", transparent: "透明" };
 
-export const imageDefaults: ImageOptions = {
-  ratio: "1:1", resolution: "720p", quality: "auto", background: "auto", format: "png", count: 1,
+export const imageDefaults: ImageOptions = { ratio: "1:1", background: "auto", format: "png", count: 1 };
+
+// 按比例请求标准尺寸(与生图站 720P 档一致);按尺寸分档计费的模型也只按最低一档收费
+const SIZES: Record<ImageRatio, [number, number]> = {
+  "1:1": [1024, 1024], "4:3": [960, 720], "3:4": [720, 960], "16:9": [1280, 720], "9:16": [720, 1280],
 };
 
-// 720P / 1080P 用 gpt-image 支持的尺寸;2K / 4K 由中转站原生生成,长边 2048 / 4096
-const PRESETS: Record<ImageRatio, Record<"720p" | "1080p", [number, number]>> = {
-  "1:1": { "720p": [1024, 1024], "1080p": [1536, 1536] },
-  "4:3": { "720p": [960, 720], "1080p": [1472, 1104] },
-  "3:4": { "720p": [720, 960], "1080p": [1104, 1472] },
-  "16:9": { "720p": [1280, 720], "1080p": [1920, 1080] },
-  "9:16": { "720p": [720, 1280], "1080p": [1080, 1920] },
-};
-
-export function imageSize(ratio: ImageRatio, resolution: ImageResolution) {
-  if (resolution === "2k" || resolution === "4k") {
-    const [w, h] = ratio.split(":").map(Number);
-    const edge = resolution === "4k" ? 4096 : 2048;
-    const scale = edge / Math.max(w, h);
-    return { width: Math.round(w * scale), height: Math.round(h * scale) };
-  }
-  const [width, height] = PRESETS[ratio][resolution];
+export function imageSize(ratio: ImageRatio) {
+  const [width, height] = SIZES[ratio];
   return { width, height };
 }
 
@@ -68,8 +52,6 @@ export function fitImageOptions(options?: Partial<ImageOptions> | null): ImageOp
     values.includes(value as T) ? value as T : fallback;
   return {
     ratio: pick(IMAGE_RATIOS, options?.ratio, imageDefaults.ratio),
-    resolution: pick(IMAGE_RESOLUTIONS, options?.resolution, imageDefaults.resolution),
-    quality: pick(IMAGE_QUALITIES, options?.quality, imageDefaults.quality),
     background: pick(IMAGE_BACKGROUNDS, options?.background, imageDefaults.background),
     format: pick(IMAGE_FORMATS, options?.format, imageDefaults.format),
     count: Math.min(4, Math.max(1, Math.round(Number(options?.count)) || 1)),
@@ -86,12 +68,10 @@ export function imageRequestError(model: ImageModel, prompt: string, options: Im
   return "";
 }
 
-/** 参数摘要,用于卡片和模型说明:16:9 | 2K | 高画质 | PNG */
+/** 参数摘要,用于卡片:16:9 | 透明背景 | PNG | 2 张 */
 export function imageOptionsSummary(options: ImageOptions) {
   return [
     options.ratio,
-    options.resolution.toUpperCase(),
-    options.quality !== "auto" && `${QUALITY_LABEL[options.quality]}画质`,
     options.background === "transparent" && "透明背景",
     options.format.toUpperCase(),
     options.count > 1 && `${options.count} 张`,

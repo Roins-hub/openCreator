@@ -51,7 +51,7 @@ describe("conversationSchema", () => {
       updatedAt: "2026-07-23T00:01:00.000Z",
       messages: [],
       imageOptions: {
-        ratio: "3:2", resolution: "4K", count: 4,
+        ratio: "16:9", background: "transparent", format: "webp", count: 4,
       },
       videoOptions: {
         referenceMode: "first_last", ratio: "adaptive", resolution: "720p",
@@ -93,7 +93,7 @@ describe("generateRequestSchema", () => {
   it("leaves the options to the model type: video options or image options", () => {
     const base = { conversationId: "conversation-1", modelId: "gpt-image-2", prompt: "测试", attachments: [] };
     expect(generateRequestSchema.safeParse(base).success).toBe(true);
-    const image = { ratio: "16:9", resolution: "2k", quality: "high", background: "auto", format: "png", count: 2 };
+    const image = { ratio: "16:9", background: "auto", format: "png", count: 2 };
     expect(generateRequestSchema.safeParse({ ...base, imageOptions: image }).success).toBe(true);
     expect(generateRequestSchema.safeParse({ ...base, imageOptions: { ...image, ratio: "21:9" } }).success).toBe(false);
   });

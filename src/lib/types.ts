@@ -51,11 +51,12 @@ export interface Conversation {
   messages: Message[];
 }
 
+/**
+ * 生图参数。没有「画质」「分辨率」:2026-10-15 实测中转站的生图模型都会忽略这两个参数
+ * (任何档位都出约 1672×941 / 1254×1254 的图),而选 2K / 4K 会被按大尺寸多扣 25~60 倍费用。
+ */
 export interface ImageOptions {
   ratio: "1:1" | "4:3" | "3:4" | "16:9" | "9:16";
-  /** 720P / 1080P 为常规尺寸,2K / 4K 由中转站原生生成 */
-  resolution: "720p" | "1080p" | "2k" | "4k";
-  quality: "auto" | "low" | "medium" | "high";
   background: "auto" | "opaque" | "transparent";
   format: "png" | "jpeg" | "webp";
   count: number;

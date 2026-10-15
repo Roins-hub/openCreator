@@ -36,12 +36,11 @@ const EXTENSION: Record<ImageOptions["format"], string> = { png: "png", jpeg: "j
 
 /** 生成请求参数(文生图 JSON / 图生图表单共用) */
 export function imageRequestFields(model: ImageModel, prompt: string, options: ImageOptions) {
-  const { width, height } = imageSize(options.ratio, options.resolution);
+  const { width, height } = imageSize(options.ratio);
   return {
     model: model.id,
     prompt: withComposition(prompt.trim(), options.ratio),
     size: `${width}x${height}`,
-    quality: options.quality,
     background: options.background,
     output_format: options.format,
     n: 1,

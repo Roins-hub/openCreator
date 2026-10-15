@@ -9,16 +9,10 @@ const model: ImageModel = {
 };
 
 describe("image sizes", () => {
-  it("uses the image workspace presets for 720P / 1080P", () => {
-    expect(imageSize("1:1", "720p")).toEqual({ width: 1024, height: 1024 });
-    expect(imageSize("16:9", "1080p")).toEqual({ width: 1920, height: 1080 });
-    expect(imageSize("3:4", "1080p")).toEqual({ width: 1104, height: 1472 });
-  });
-
-  it("asks the relay for native 2K / 4K by the long edge", () => {
-    expect(imageSize("16:9", "2k")).toEqual({ width: 2048, height: 1152 });
-    expect(imageSize("9:16", "4k")).toEqual({ width: 2304, height: 4096 });
-    expect(imageSize("4:3", "4k")).toEqual({ width: 4096, height: 3072 });
+  it("requests the standard size of each ratio (the relay ignores larger tiers but charges for them)", () => {
+    expect(imageSize("1:1")).toEqual({ width: 1024, height: 1024 });
+    expect(imageSize("16:9")).toEqual({ width: 1280, height: 720 });
+    expect(imageSize("3:4")).toEqual({ width: 720, height: 960 });
   });
 
   it("states the canvas ratio in the prompt", () => {
@@ -31,7 +25,7 @@ describe("image sizes", () => {
 describe("image options", () => {
   it("fills in defaults and drops values from older formats", () => {
     expect(fitImageOptions(undefined)).toEqual(imageDefaults);
-    expect(fitImageOptions({ ratio: "21:9" as never, resolution: "4K" as never, count: 9 }))
+    expect(fitImageOptions({ ratio: "21:9" as never, count: 9, ...{ resolution: "4K", quality: "high" } }))
       .toEqual({ ...imageDefaults, count: 4 });
   });
 
@@ -46,9 +40,9 @@ describe("image options", () => {
   });
 
   it("summarises only the non-default options", () => {
-    expect(imageOptionsSummary(imageDefaults)).toEqual(["1:1", "720P", "PNG"]);
-    expect(imageOptionsSummary({ ...imageDefaults, quality: "high", background: "transparent", count: 3 }))
-      .toEqual(["1:1", "720P", "高画质", "透明背景", "PNG", "3 张"]);
+    expect(imageOptionsSummary(imageDefaults)).toEqual(["1:1", "PNG"]);
+    expect(imageOptionsSummary({ ...imageDefaults, background: "transparent", count: 3 }))
+      .toEqual(["1:1", "透明背景", "PNG", "3 张"]);
   });
 });
 

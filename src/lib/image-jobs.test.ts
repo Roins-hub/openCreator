@@ -36,7 +36,7 @@ const user = "0123456789abcdef0123456789abcdef";
 const model: ImageModel = {
   type: "image", id: "gpt-image-2", tag: "", description: "", priceLabel: "按量计费", maxReferences: 4, promptMax: 6000,
 };
-const options = { ratio: "16:9", resolution: "2k", quality: "high", background: "auto", format: "png", count: 2 } as const;
+const options = { ratio: "16:9", background: "auto", format: "png", count: 2 } as const;
 
 async function setup(conversationId: string, taskIds: string[], createdAt = new Date().toISOString()) {
   const store = await import("./conversation-store");
@@ -74,7 +74,8 @@ describe("background image jobs", () => {
     expect(message.media?.every((item) => item.kind === "image" && item.path.startsWith(`users/${user}/images/`))).toBe(true);
     expect(message.completedTaskIds?.sort()).toEqual([...ids].sort());
     expect(message.elapsedMs).toBeGreaterThanOrEqual(0);
-    expect(relayCalls.generate[0]).toMatchObject({ model: "gpt-image-2", size: "2048x1152", quality: "high", output_format: "png", n: 1 });
+    expect(relayCalls.generate[0]).toMatchObject({ model: "gpt-image-2", size: "1280x720", output_format: "png", n: 1 });
+    expect(relayCalls.generate[0]).not.toHaveProperty("quality");
     expect(String((relayCalls.generate[0] as { prompt: string }).prompt)).toContain("16:9，横版");
     const { listAssets } = await import("./asset-store");
     expect((await listAssets(user, [], [])).filter((asset) => asset.kind === "image")).toHaveLength(2);
