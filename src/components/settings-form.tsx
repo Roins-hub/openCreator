@@ -210,7 +210,7 @@ export function SettingsForm() {
                   <div className="catalog-row" role="row" key={model.id}>
                     <span><b>{model.id}</b></span>
                     <span>{model.description || "—"}</span>
-                    <span>{model.priceLabel}</span>
+                    <span>{model.priceDetail}</span>
                   </div>
                 ))}
               </div>

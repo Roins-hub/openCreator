@@ -1,4 +1,10 @@
+import { evaluateExpr, parseExpr } from "./billing-expr";
 import type { ImageOptions, MediaRef } from "./types";
+
+export type ImagePrice =
+  | { kind: "per_image"; tiers: { name: string; price: number }[]; current: number }
+  | { kind: "tokens"; rates: { input: number; output: number; imageInput: number } }
+  | { kind: "unknown" };
 
 /**
  * 中转站的生图模型(new-api /api/pricing 里带 image-generation 端点的模型)。
@@ -10,8 +16,12 @@ export interface ImageModel {
   id: string;
   tag: string;
   description: string;
-  /** 价格说明:按次计费的显示单价,按 token 计费的显示「按量计费」 */
+  /** 中转站后台设置的价格(已换算成人民币) */
+  price: ImagePrice;
+  /** 简短价格,如「¥0.12/张」「按量 · 输出 ¥30/百万」 */
   priceLabel: string;
+  /** 完整价格,阶梯价逐档列出,如「1K ¥0.12 · 2K ¥0.24 · 4K ¥0.36（每张）」 */
+  priceDetail: string;
   /** 参考图上限(图生图) */
   maxReferences: number;
   promptMax: number;
@@ -85,27 +95,102 @@ interface PricingEntry {
   supported_endpoint_types?: string[];
   enable_groups?: string[];
   billing_mode?: string;
+  billing_expr?: string;
   model_price?: number;
+  model_ratio?: number;
+  completion_ratio?: number;
   quota_type?: number;
 }
 
+/** 价格一律换算成用户实际支付的人民币:美元价 × 分组倍率 × 充值汇率(中转站「充值价格」,元/美元) */
+export interface PriceContext {
+  groupRatio: number;
+  /** 1 美元额度卖多少元 */
+  rechargeRate: number;
+}
+
+// 用来探测阶梯的请求尺寸:工作台实际请求的标准尺寸(1K)、2K、4K
+const PROBE_SIZES: [string, string][] = [["1K", "1024x1024"], ["2K", "2048x2048"], ["4K", "4096x4096"]];
+const TOKEN_VARS = { input: "p", output: "c", imageInput: "img" } as const;
+
+/** 每张固定价(可能按尺寸分档),或按 token 计费的每百万单价;都是人民币 */
+export function imagePricing(entry: PricingEntry, context: PriceContext): ImagePrice {
+  const scale = (usd: number) => Math.round(usd * context.groupRatio * context.rechargeRate * 10_000) / 10_000;
+  if (entry.billing_mode === "tiered_expr" && entry.billing_expr) {
+    try {
+      const root = parseExpr(entry.billing_expr);
+      const tiers: { name: string; price: number }[] = [];
+      for (const [label, size] of PROBE_SIZES) {
+        const result = evaluateExpr(root, { vars: { image_count: 1, n: 1 }, params: { size } });
+        if (result.micros <= 0) continue;
+        const name = result.tier && result.tier !== "standard" ? result.tier : label;
+        const price = scale(result.micros / 1e6);
+        if (!tiers.some((tier) => tier.name === name && tier.price === price)) tiers.push({ name, price });
+      }
+      if (tiers.length) {
+        // 名字相同的档只保留一个;只有一档时不标尺寸
+        return { kind: "per_image", tiers: tiers.length > 1 ? tiers : [{ name: "", price: tiers[0].price }], current: tiers[0].price };
+      }
+      const rate = (variable: string) => scale(evaluateExpr(root, { vars: { [variable]: 1 } }).micros);
+      const rates = { input: rate(TOKEN_VARS.input), output: rate(TOKEN_VARS.output), imageInput: rate(TOKEN_VARS.imageInput) };
+      if (rates.input || rates.output || rates.imageInput) return { kind: "tokens", rates };
+    } catch {
+      // 表达式看不懂时退回下面的普通计价
+    }
+  }
+  if (entry.quota_type === 1 && Number(entry.model_price) > 0) {
+    const price = scale(Number(entry.model_price));
+    return { kind: "per_image", tiers: [{ name: "", price }], current: price };
+  }
+  if (Number(entry.model_ratio) > 0) {
+    // new-api 倍率:1 = 每百万 token 2 美元;输出再乘补全倍率
+    const input = scale(Number(entry.model_ratio) * 2);
+    return { kind: "tokens", rates: { input, output: scale(Number(entry.model_ratio) * 2 * Number(entry.completion_ratio || 1)), imageInput: 0 } };
+  }
+  return { kind: "unknown" };
+}
+
+const yuan = (value: number) => `¥${value < 0.1 ? value.toFixed(3).replace(/0$/, "") : value.toFixed(2)}`;
+
+/** 简短价格:下拉框和顶栏用,标的是工作台实际请求的那一档 */
+export function priceLabel(price: ImagePrice) {
+  if (price.kind === "per_image") return `${yuan(price.current)}/张`;
+  if (price.kind === "tokens") return `按量 · 输出 ${yuan(price.rates.output)}/百万`;
+  return "按量计费";
+}
+
+/** 完整价格:设置页用,阶梯价逐档列出 */
+export function priceDetail(price: ImagePrice) {
+  if (price.kind === "per_image") {
+    return price.tiers.length > 1
+      ? `${price.tiers.map((tier) => `${tier.name} ${yuan(tier.price)}`).join(" · ")}（每张）`
+      : `${yuan(price.current)}/张`;
+  }
+  if (price.kind === "tokens") {
+    const { input, output, imageInput } = price.rates;
+    return [input && `输入 ${yuan(input)}`, output && `输出 ${yuan(output)}`, imageInput && `图片输入 ${yuan(imageInput)}`]
+      .filter(Boolean).join(" · ") + "（每百万 tokens）";
+  }
+  return "按量计费";
+}
+
 /** 从 /api/pricing 里挑出生图模型 */
-export function toImageModels(payload: unknown, group = "default"): ImageModel[] {
+export function toImageModels(payload: unknown, group = "default", rechargeRate = 1): ImageModel[] {
   const data = (payload as { data?: PricingEntry[]; group_ratio?: Record<string, number> }) || {};
-  const groupRatio = Number(data.group_ratio?.[group] || 1);
+  const context: PriceContext = { groupRatio: Number(data.group_ratio?.[group] || 1), rechargeRate };
   const models: ImageModel[] = [];
   for (const entry of data.data || []) {
     if (!entry.model_name || !entry.supported_endpoint_types?.includes("image-generation")) continue;
     if (entry.enable_groups && !entry.enable_groups.includes(group)) continue;
-    const price = Number(entry.model_price || 0) * groupRatio;
-    const perCall = entry.quota_type === 1 && price > 0;
+    const price = imagePricing(entry, context);
     models.push({
       type: "image",
       id: entry.model_name,
       tag: (String(entry.tags || "").split(",")[0] || "").trim(),
       description: entry.description || "",
-      // 按尺寸分档计价(tiered_expr)时,标的是最低一档
-      priceLabel: perCall ? `¥${price.toFixed(2)}/张${entry.billing_mode === "tiered_expr" ? "起" : ""}` : "按量计费",
+      price,
+      priceLabel: priceLabel(price),
+      priceDetail: priceDetail(price),
       maxReferences: MAX_IMAGE_REFERENCES,
       promptMax: PROMPT_MAX,
     });

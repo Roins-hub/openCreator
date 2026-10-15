@@ -23,7 +23,7 @@ import {
 } from "@/lib/tangzhi";
 import { unfinishedTaskIds } from "@/lib/generation-stop";
 import { keepLocalMessages, patchMessage } from "@/lib/conversation-merge";
-import { buildTurns } from "@/lib/turns";
+import { buildTurns, isGenerationTurn, isImageRecord } from "@/lib/turns";
 import { ConversationSearch } from "@/components/conversation-search";
 import {
   REFERENCE_CARD_CLASS, createReferenceCard, findReference, referenceLabels, serializePrompt, splitPromptReferences,
@@ -949,7 +949,7 @@ export function AppShell() {
             <b>{imageModel.id}</b>
             <span>生图</span>
             <span>最多 {imageModel.maxReferences} 张参考图</span>
-            <span>{imageModel.priceLabel}</span>
+            <span title="价格与中转站后台同步">{imageModel.priceDetail}</span>
           </span>}
           {!apiKey && <Link className="key-missing" href="/settings"><KeyRound size={13} />填写 API Key</Link>}
         </header>
@@ -1212,22 +1212,6 @@ export function AppShell() {
 function stackTilt(index: number) {
   if (index === 0) return -3;
   return (index % 2 ? 1 : -1) * Math.min(6 + index * 3, 14);
-}
-
-/** 生图记录:有生图快照,或旧记录只产出了图片 */
-function isImageRecord(message: Message) {
-  if (message.generation) return message.generation.type === "image";
-  return Boolean(message.media?.length && message.media.every((item) => item.kind === "image"));
-}
-
-function isGenerationTurn(message: Message) {
-  if (message.role !== "assistant") return false;
-  if (message.generation) return message.generation.type === "video" || message.generation.type === "image";
-  if (isImageRecord(message)) return true;
-  if (message.media?.some((item) => item.kind === "video")) return true;
-  // 旧记录没有 generation 快照:有任务 ID 或正在生成时按视频任务展示。
-  const hasTask = message.taskIds?.length || message.taskId || message.id.startsWith("pending-");
-  return Boolean(hasTask || message.status === "processing");
 }
 
 function attachmentSummary(mode: string, attachments: readonly Pick<MediaRef, "kind">[]) {

@@ -21,6 +21,18 @@ describe("conversation navigation", () => {
     ]);
   });
 
+  it("points generation records at their card, with the prompt as preview", () => {
+    const nodes = navigationNodes([
+      message("u1", "user", "海边的灯塔"),
+      { ...message("v1", "assistant", ""), replyTo: "u1", taskId: "tz.task_1", status: "processing" },
+      message("u2", "user", "提交失败的提示词"),
+    ]);
+    expect(nodes).toEqual([
+      { id: "v1", preview: "海边的灯塔" },
+      { id: "u2", preview: "提交失败的提示词" },
+    ]);
+  });
+
   it("keeps a bounded window centered near the active turn", () => {
     const nodes = Array.from({ length: 12 }, (_, index) => ({
       id: `u${index}`, preview: `问题 ${index}`,

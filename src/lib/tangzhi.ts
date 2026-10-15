@@ -114,7 +114,8 @@ export function arkProtocol(tag: string, modelId: string) {
 }
 
 /** 把 /api/pricing 的返回整理成可选的视频模型(描述不完整的模型不开放选择)。 */
-export function toVideoModels(payload: unknown, group = "default"): VideoModel[] {
+/** rechargeRate:中转站充值汇率(元/美元),价格换算成用户实际支付的人民币 */
+export function toVideoModels(payload: unknown, group = "default", rechargeRate = 1): VideoModel[] {
   const data = (payload as { data?: PricingEntry[]; group_ratio?: Record<string, number> }) || {};
   const groupRatio = Number(data.group_ratio?.[group] || 1);
   const models: VideoModel[] = [];
@@ -139,7 +140,7 @@ export function toVideoModels(payload: unknown, group = "default"): VideoModel[]
       limits: { images: info.images, audios: info.audios, videos: info.videos, total: info.total },
       face: info.face,
       billing: perSecond ? "per_second" : "per_request",
-      price: Number(perSecond && perSecondPrice ? perSecondPrice : entry.model_price || 0) * groupRatio,
+      price: Number(perSecond && perSecondPrice ? perSecondPrice : entry.model_price || 0) * groupRatio * rechargeRate,
       promptMin: 10,
       promptMax: defaults.promptMax,
     });

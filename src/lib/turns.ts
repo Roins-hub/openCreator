@@ -57,3 +57,20 @@ export function buildTurns(messages: Message[], isGeneration: (message: Message)
     return [{ kind: "message", message }];
   });
 }
+
+/** 生图记录:有生图快照,或旧记录只产出了图片 */
+export function isImageRecord(message: Message) {
+  if (message.generation) return message.generation.type === "image";
+  return Boolean(message.media?.length && message.media.every((item) => item.kind === "image"));
+}
+
+/** 显示成任务卡片的生成记录(视频或图片) */
+export function isGenerationTurn(message: Message) {
+  if (message.role !== "assistant") return false;
+  if (message.generation) return message.generation.type === "video" || message.generation.type === "image";
+  if (isImageRecord(message)) return true;
+  if (message.media?.some((item) => item.kind === "video")) return true;
+  // 旧记录没有 generation 快照:有任务 ID 或正在生成时按视频任务展示。
+  const hasTask = message.taskIds?.length || message.taskId || message.id.startsWith("pending-");
+  return Boolean(hasTask || message.status === "processing");
+}

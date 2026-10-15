@@ -20,8 +20,10 @@ async function catalog(relay: Relay) {
     const payload = await response.json().catch(() => {
       throw new Error("模型列表格式不正确（需要 new-api 兼容的中转站）");
     });
+    const rate = await rechargeRate(relay);
     const entry = {
-      at: Date.now(), videos: toVideoModels(payload), images: toImageModels(payload), texts: toTextModels(payload),
+      at: Date.now(), videos: toVideoModels(payload, "default", rate), images: toImageModels(payload, "default", rate),
+      texts: toTextModels(payload),
     };
     if (!entry.videos.length && !entry.images.length) throw new Error("中转站暂无可用的视频或生图模型");
     if (catalogs.size >= MAX_CATALOGS && !catalogs.has(relay.base)) catalogs.delete(catalogs.keys().next().value as string);
@@ -30,6 +32,21 @@ async function catalog(relay: Relay) {
   } catch (error) {
     if (cached) return cached;
     throw new Error(`无法获取中转站模型：${(error as Error).message}`);
+  }
+}
+
+/**
+ * 中转站的充值汇率(new-api /api/status 的 price:1 美元额度卖多少元)。
+ * 计费表达式和模型价格都以美元计,乘上它就是用户实际支付的人民币;读不到时按 1。
+ */
+async function rechargeRate(relay: Relay) {
+  try {
+    const response = await relayFetch(relay, "/api/status", { signal: AbortSignal.timeout(10_000) });
+    const data = await response.json() as { data?: { price?: unknown } };
+    const price = Number(data.data?.price);
+    return Number.isFinite(price) && price > 0 ? price : 1;
+  } catch {
+    return 1;
   }
 }
 
