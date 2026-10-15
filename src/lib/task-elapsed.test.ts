@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { taskElapsedMs } from "./tangzhi-server";
-import { formatDuration } from "@/components/video-task-card";
+import { formatDate, formatDuration } from "@/components/video-task-card";
 
 describe("taskElapsedMs", () => {
   it("uses the relay's created_at / completed_at seconds", () => {
@@ -25,5 +25,16 @@ describe("formatDuration", () => {
     expect(formatDuration(120_000)).toBe("2分");
     expect(formatDuration(3_739_000)).toBe("1小时2分");
     expect(formatDuration(7_200_000)).toBe("2小时");
+  });
+});
+
+describe("formatDate", () => {
+  const now = new Date(2026, 9, 15, 12, 0);
+  it("omits the year for this year's dates", () => {
+    expect(formatDate(new Date(2026, 9, 14, 21, 5).toISOString(), now)).toBe("10月14日 21:05");
+  });
+  it("keeps the year for older dates and ignores invalid ones", () => {
+    expect(formatDate(new Date(2025, 0, 3, 8, 30).toISOString(), now)).toBe("2025年1月3日 08:30");
+    expect(formatDate("not a date", now)).toBe("");
   });
 });

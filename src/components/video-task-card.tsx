@@ -43,6 +43,15 @@ export function formatDuration(ms: number) {
   return `${minutes}分${total % 60 ? `${total % 60}秒` : ""}`;
 }
 
+/** 生成日期:今年的省略年份,如「10月14日 21:53」 */
+export function formatDate(iso: string, now = new Date()) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const day = `${date.getMonth() + 1}月${date.getDate()}日`;
+  return date.getFullYear() === now.getFullYear() ? `${day} ${time}` : `${date.getFullYear()}年${day} ${time}`;
+}
+
 function formatTime(iso: string) {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? "" :
@@ -182,6 +191,8 @@ export function VideoTaskCard({
           {message.status === "stopped" && <span className="task-note">
             {message.taskIds?.length || message.taskId ? "正在重新获取云端结果…" : message.error || "已停止"}</span>}
           {message.status === "processing" && <span className="task-note">已等待 <Elapsed since={message.createdAt} /></span>}
+          {formatDate(message.createdAt) && <time className="task-note task-date" dateTime={message.createdAt}
+            title={new Date(message.createdAt).toLocaleString("zh-CN", { hour12: false })}>{formatDate(message.createdAt)}</time>}
           {(message.status === "complete" || message.status === "failed") && message.elapsedMs !== undefined &&
             <span className="task-note task-elapsed" title="中转站从受理任务到出结果的用时">用时 {formatDuration(message.elapsedMs)}</span>}
           <span className="task-meta">
