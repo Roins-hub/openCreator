@@ -66,6 +66,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         message.failedTaskIds = [...(message.failedTaskIds || []), taskId];
         message.error = task.error || "部分生成任务失败";
       }
+      if (task.status !== "processing") {
+        // 优先用中转站记录的用时;拿不到时按提交到现在估算
+        const elapsed = task.elapsedMs ?? Date.now() - new Date(message.createdAt).getTime();
+        if (elapsed >= 0) message.elapsedMs = Math.max(message.elapsedMs || 0, Math.round(elapsed));
+      }
       const terminalCount = (message.completedTaskIds?.length || 0) + (message.failedTaskIds?.length || 0);
       const totalCount = message.taskIds?.length || 1;
       if (terminalCount >= totalCount) {
