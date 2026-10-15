@@ -98,14 +98,29 @@ export interface TaskResult {
   status: "processing" | "succeeded" | "failed";
   progress?: number;
   error?: string;
+  /** 中转站记录的受理 → 结束用时(毫秒),没有时间戳时为空 */
+  elapsedMs?: number;
+}
+
+/** 中转站返回的 created_at / completed_at 是 Unix 秒(个别实现给毫秒) */
+export function taskElapsedMs(data: Record<string, unknown>) {
+  const toMs = (value: unknown) => {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number <= 0) return undefined;
+    return number > 1e12 ? number : number * 1000;
+  };
+  const start = toMs(data.created_at);
+  const end = toMs(data.completed_at);
+  return start !== undefined && end !== undefined && end >= start ? end - start : undefined;
 }
 
 export async function queryVideoTask(apiKey: string, taskId: string, relay: Relay = DEFAULT_RELAY): Promise<TaskResult> {
   const data = await call(relay, apiKey, `/v1/videos/${encodeURIComponent(taskId)}`);
   const status = String(data.status || "").toLowerCase();
-  if (["completed", "succeeded", "success"].includes(status)) return { status: "succeeded" };
+  const elapsedMs = taskElapsedMs(data);
+  if (["completed", "succeeded", "success"].includes(status)) return { status: "succeeded", elapsedMs };
   if (["failed", "cancelled", "canceled", "expired"].includes(status)) {
-    return { status: "failed", error: upstreamMessage(data, 200).replace(/^中转站返回 200$/, "视频生成失败") };
+    return { status: "failed", error: upstreamMessage(data, 200).replace(/^中转站返回 200$/, "视频生成失败"), elapsedMs };
   }
   return { status: "processing", progress: Number(data.progress) || 0 };
 }

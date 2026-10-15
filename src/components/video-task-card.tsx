@@ -33,6 +33,16 @@ function formatElapsed(ms: number) {
   return `${minutes}:${String(total % 60).padStart(2, "0")}`;
 }
 
+/** 生成用时:45秒 / 12分34秒 / 1小时5分 */
+export function formatDuration(ms: number) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  if (total < 60) return `${total}秒`;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours) return `${hours}小时${minutes ? `${minutes}分` : ""}`;
+  return `${minutes}分${total % 60 ? `${total % 60}秒` : ""}`;
+}
+
 function formatTime(iso: string) {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? "" :
@@ -172,6 +182,8 @@ export function VideoTaskCard({
           {message.status === "stopped" && <span className="task-note">
             {message.taskIds?.length || message.taskId ? "正在重新获取云端结果…" : message.error || "已停止"}</span>}
           {message.status === "processing" && <span className="task-note">已等待 <Elapsed since={message.createdAt} /></span>}
+          {(message.status === "complete" || message.status === "failed") && message.elapsedMs !== undefined &&
+            <span className="task-note task-elapsed" title="中转站从受理任务到出结果的用时">用时 {formatDuration(message.elapsedMs)}</span>}
           <span className="task-meta">
             {meta.join(" | ")}
             <span className="task-info" tabIndex={0} aria-label="任务详情">
