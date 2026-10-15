@@ -1561,3 +1561,11 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 @media (max-width: 760px) {
   .catalog-table-image .catalog-row { grid-template-columns: 1fr 1fr; }
 }
+
+/* ---------- 提示词优化 ---------- */
+.prompt-optimize.active { color: var(--run); }
+.optimize-undo {
+  display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 9px; border-radius: 8px;
+  color: var(--muted); background: var(--warm); font-size: 11px; white-space: nowrap;
+}
+.optimize-undo:hover { color: var(--ink); background: var(--hover); }

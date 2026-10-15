@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, AtSign, BookOpen, Clapperboard, Image as ImageIcon, ImagePlus, Images, KeyRound, Menu, PanelLeftClose, Plus, Search as SearchIcon, Settings, X, BookMarked, Pencil, Trash2,
+  ArrowUp, AtSign, BookOpen, Clapperboard, Image as ImageIcon, ImagePlus, Images, KeyRound, Loader2, Menu, MessageSquare,
+  PanelLeftClose, Plus, Search as SearchIcon, Settings, Sparkles, Undo2, X, BookMarked, Pencil, Trash2,
 } from "lucide-react";
 import type { Conversation, GenerationMeta, ImageOptions, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
 import type { Asset } from "@/lib/asset-store";
@@ -127,6 +128,11 @@ export function AppShell() {
   // 自定义中转站的域名;空 = 内置中转站
   const [relayHost, setRelayHost] = useState("");
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  // 优化前的输入框内容,可以一键撤销
+  const [beforeOptimize, setBeforeOptimize] = useState<{ html: string; draft: string }>();
+  // 从「对话」页带过来的提示词(/?compose=...&kind=image),模型和 Key 就绪后填进输入框
+  const composeRef = useRef<{ prompt: string; kind: string } | null>(null);
   const [referenceQuery, setReferenceQuery] = useState("");
   const [referencePickerPosition, setReferencePickerPosition] = useState<{ left: number; top?: number; bottom?: number }>({ left: 10, top: 8 });
   const referenceRangeRef = useRef<Range | null>(null);
@@ -253,6 +259,17 @@ export function AppShell() {
     editor.style.height = "auto";
     editor.style.height = `${Math.min(Math.max(editor.scrollHeight, 84), 280)}px`;
   }, [draft]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prompt = params.get("compose");
+    if (!prompt) return;
+    composeRef.current = { prompt: prompt.slice(0, 6000), kind: params.get("kind") || "image" };
+    params.delete("compose");
+    params.delete("kind");
+    const query = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  }, []);
 
   const persist = async (conversation: Conversation) => {
     const saved = await request<Conversation>(`/api/conversations/${conversation.id}`, {
@@ -449,7 +466,10 @@ export function AppShell() {
       setActiveId(conversation.id);
       return;
     }
-    await persist({ ...withModel(active, model), updatedAt: new Date().toISOString() });
+    // 先切换界面,再在后台保存:不用等服务器返回
+    const updated = { ...withModel(active, model), updatedAt: new Date().toISOString() };
+    setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));
+    void persist(updated).catch((cause) => setError(cause.message));
   };
 
   const changeGenerationOptions = (options: { videoOptions?: VideoOptions; imageOptions?: ImageOptions }) => {
@@ -724,6 +744,71 @@ export function AppShell() {
     focusEditorEnd();
   };
 
+  /** 把提示词放进输入框;[图1] 这类标记还原成素材小卡片 */
+  const fillEditor = (prompt: string, references: readonly MediaRef[]) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.innerHTML = "";
+    const labels = referenceLabels(references);
+    for (const segment of splitPromptReferences(prompt)) {
+      if (segment.kind === "text") {
+        editor.append(document.createTextNode(segment.text));
+        continue;
+      }
+      const position = findReference(references, segment.mediaKind, segment.index);
+      const ref = references[position];
+      if (ref) editor.append(createReferenceCard(ref.path, ref.name, labels[position], ref.kind));
+    }
+    setDraft(editor.innerText);
+    focusEditorEnd();
+  };
+
+  const optimizePrompt = async () => {
+    const editor = editorRef.current;
+    if (!editor || !selected || optimizing) return;
+    const prompt = serializePrompt(editor, attachments).trim();
+    if (!prompt) { setError("先写一点想法，再让 AI 帮你扩写"); return; }
+    if (!apiKey) { setError("请先在「设置」中填写中转站 API Key"); return; }
+    setOptimizing(true);
+    setError("");
+    try {
+      const result = await request<{ prompt: string; model: string }>("/api/prompt-assist", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, kind: selected.type }),
+      });
+      setBeforeOptimize({ html: editor.innerHTML, draft });
+      fillEditor(result.prompt, attachments);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  const undoOptimize = () => {
+    const editor = editorRef.current;
+    if (!editor || !beforeOptimize) return;
+    editor.innerHTML = beforeOptimize.html;
+    setDraft(beforeOptimize.draft);
+    setBeforeOptimize(undefined);
+    focusEditorEnd();
+  };
+
+  // 从「对话」带来的生图提示词:新开一个对话,切到生图模型并填好(不会自动生成)
+  useEffect(() => {
+    const pending = composeRef.current;
+    if (!pending || !models.length || apiKey === undefined) return;
+    composeRef.current = null;
+    const model = pending.kind === "video" ? videoModels.find((item) => item.ratios.length > 1) || videoModels[0] : imageModels[0];
+    if (!model) { setError(pending.kind === "video" ? "中转站暂无可用的视频模型" : "中转站暂无可用的生图模型"); return; }
+    const conversation = { ...freshConversation(model), title: pending.prompt.slice(0, 28) || "新对话" };
+    setConversations((items) => [conversation, ...items]);
+    setActiveId(conversation.id);
+    if (apiKey) void persist(conversation).catch((cause) => setError(cause.message));
+    window.setTimeout(() => fillEditor(pending.prompt, []), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, apiKey]);
+
   const closeLibrary = useCallback(() => setLibraryOpen(false), []);
 
   const saveCustomPrompt = async (input: CustomPromptInput) => {
@@ -833,6 +918,8 @@ export function AppShell() {
         </div>
         <button className="new-chat" onClick={create}><Plus size={16} /> 新对话</button>
         <Link className="asset-link" href="/assets"><Images size={16} /> 资产</Link>
+        {/* 对话是同域名下的另一个程序,整页跳转 */}
+        <a className="asset-link" href="/chat"><MessageSquare size={16} /> 对话</a>
         <ConversationList conversations={conversations} groups={groups} activeId={activeId}
           onOpen={(id) => { setActiveId(id); closeSidebarOnMobile(); }}
           onRename={(conversation, title) => void rename(conversation, title)}
@@ -1017,6 +1104,7 @@ export function AppShell() {
                   // 删光文字后浏览器常留下一个 <br>,:empty 不再成立,占位提示就不显示了
                   if (!editor.textContent && !editor.querySelector(`.${REFERENCE_CARD_CLASS}`)) editor.innerHTML = "";
                   setDraft(editor.innerText);
+                  setBeforeOptimize(undefined);
                 }} />
               {draft.trim() && <button type="button" className="composer-clear" onClick={clearPrompt}
                 aria-label="清空提示词" title="清空提示词"><X size={15} /></button>}
@@ -1047,6 +1135,18 @@ export function AppShell() {
                   data-prompt-library-trigger onClick={() => setLibraryOpen((open) => !open)}
                   aria-label="提示词库" aria-expanded={libraryOpen} title="提示词库">
                   <BookMarked size={18} />
+                </button>
+              )}
+              {selected && (
+                <button type="button" className={`icon-button prompt-optimize ${optimizing ? "active" : ""}`}
+                  onClick={() => void optimizePrompt()} disabled={optimizing || !draft.trim()}
+                  aria-label="优化提示词" title={draft.trim() ? "用 AI 把提示词扩写得更完整" : "先写一点想法，再让 AI 扩写"}>
+                  {optimizing ? <Loader2 size={18} className="spin" /> : <Sparkles size={18} />}
+                </button>
+              )}
+              {beforeOptimize && !optimizing && (
+                <button type="button" className="optimize-undo" onClick={undoOptimize} title="恢复优化前的提示词">
+                  <Undo2 size={13} />撤销优化
                 </button>
               )}
               <Dropdown className="model-dropdown composer-model" ariaLabel="选择模型" placeholder="正在加载模型"

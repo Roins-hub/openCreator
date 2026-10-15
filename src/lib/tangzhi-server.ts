@@ -1,5 +1,6 @@
 import { toVideoModels, type VideoModel } from "./tangzhi";
 import { toImageModels, type ImageModel } from "./image-models";
+import { assistCandidates, assistSystemPrompt, cleanAssistOutput, toTextModels, type AssistKind } from "./prompt-assist";
 import { DEFAULT_RELAY, publicFetch, relayFetch, relayHost, type Relay } from "./relay";
 
 export type CatalogModel = VideoModel | ImageModel;
@@ -7,7 +8,7 @@ export type CatalogModel = VideoModel | ImageModel;
 const CATALOG_TTL = 60_000;
 const MAX_CATALOGS = 50;
 // 每个中转站地址各自缓存
-const catalogs = new Map<string, { at: number; videos: VideoModel[]; images: ImageModel[] }>();
+const catalogs = new Map<string, { at: number; videos: VideoModel[]; images: ImageModel[]; texts: string[] }>();
 
 /** 读取中转站公开定价接口(new-api 的 /api/pricing)里的视频、生图模型(1 分钟缓存,失败时沿用上次结果)。 */
 async function catalog(relay: Relay) {
@@ -19,7 +20,9 @@ async function catalog(relay: Relay) {
     const payload = await response.json().catch(() => {
       throw new Error("模型列表格式不正确（需要 new-api 兼容的中转站）");
     });
-    const entry = { at: Date.now(), videos: toVideoModels(payload), images: toImageModels(payload) };
+    const entry = {
+      at: Date.now(), videos: toVideoModels(payload), images: toImageModels(payload), texts: toTextModels(payload),
+    };
     if (!entry.videos.length && !entry.images.length) throw new Error("中转站暂无可用的视频或生图模型");
     if (catalogs.size >= MAX_CATALOGS && !catalogs.has(relay.base)) catalogs.delete(catalogs.keys().next().value as string);
     catalogs.set(relay.base, entry);
@@ -203,4 +206,41 @@ export async function editImage(apiKey: string, form: FormData, relay: Relay = D
     headers: { Authorization: `Bearer ${apiKey}` },
   });
   return imageResponse(response, relay);
+}
+
+// ---- 提示词优化:用中转站的对话模型扩写提示词
+
+// 每个中转站最近一次优化成功用的模型:中转站个别模型临时不可用时,下次直接用能用的
+const workingAssistModel = new Map<string, string>();
+const MAX_ASSIST_ATTEMPTS = 6;
+
+export async function assistPrompt(apiKey: string, prompt: string, kind: AssistKind, relay: Relay = DEFAULT_RELAY) {
+  const candidates = assistCandidates((await catalog(relay)).texts);
+  if (!candidates.length) throw new Error("中转站暂无可用的对话模型，无法优化提示词");
+  const remembered = workingAssistModel.get(relay.base);
+  const order = remembered && candidates.includes(remembered)
+    ? [remembered, ...candidates.filter((id) => id !== remembered)] : candidates;
+  let lastError: unknown;
+  for (const model of order.slice(0, MAX_ASSIST_ATTEMPTS)) {
+    try {
+      const data = await call(relay, apiKey, "/v1/chat/completions", {
+        method: "POST", signal: AbortSignal.timeout(90_000),
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "system", content: assistSystemPrompt(kind) }, { role: "user", content: prompt }],
+        }),
+      });
+      const choices = data.choices as Array<{ message?: { content?: unknown } }> | undefined;
+      const content = choices?.[0]?.message?.content;
+      const text = typeof content === "string" ? cleanAssistOutput(content) : "";
+      if (!text) throw new Error("对话模型没有返回内容");
+      workingAssistModel.set(relay.base, model);
+      return { prompt: text, model };
+    } catch (error) {
+      lastError = error;
+      // Key 无效、余额不足换模型也没用
+      if (error instanceof Error && /API Key 无效|余额不足/.test(error.message)) throw error;
+    }
+  }
+  throw new Error(`提示词优化暂时不可用：${lastError instanceof Error ? lastError.message : "中转站没有可用的对话模型"}`);
 }
