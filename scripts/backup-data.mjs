@@ -73,7 +73,9 @@ async function ensureLifecycle() {
     console.log(`生命周期规则 ${RULE_ID} 已存在`);
     return;
   }
-  const rules = [...xml.matchAll(/<Rule>[\s\S]*?<\/Rule>/g)].map((match) => match[0]);
+  // TOS 读回的规则会多带一个空的 <Filter></Filter>,原样写回会被当成「整个桶」和 users/ 重叠,去掉它
+  const rules = [...xml.matchAll(/<Rule>[\s\S]*?<\/Rule>/g)]
+    .map((match) => match[0].replace(/<Filter\s*\/>|<Filter>\s*<\/Filter>/g, ""));
   rules.push(`<Rule><ID>${RULE_ID}</ID><Filter><Prefix>${PREFIX}</Prefix></Filter><Status>Enabled</Status><Expiration><Days>${RETENTION_DAYS}</Days></Expiration></Rule>`);
   const body = `<?xml version="1.0" encoding="UTF-8"?><LifecycleConfiguration>${rules.join("")}</LifecycleConfiguration>`;
   await request("/?lifecycle", {
