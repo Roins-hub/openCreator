@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0c0c0b" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta
+      name="description"
+      content="Sub2 AI 工作台入口，选择图像生成或 AI 聊天。"
+    />
+    <title>Sub2 AI 工作台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="launcher">
+      <header class="topbar">
+        <a class="brand" href="https://first.sub2image.cc.cd" aria-label="Sub2 AI 工作台首页">
+          <span class="brand-mark" aria-hidden="true">S2</span>
+          <span class="brand-name">SUB2 AI</span>
+        </a>
+        <div class="system-state" aria-label="服务状态">
+          <span class="state-dot" aria-hidden="true"></span>
+          工作台服务正常
+        </div>
+      </header>
+
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">AI CREATIVE CONSOLE</p>
+        <h1 id="page-title">选择工作台</h1>
+        <p class="intro-copy">一个入口，连接图像创作与智能对话。</p>
+      </section>
+
+      <section class="workspace-grid" aria-label="工作台列表">
+        <a class="workspace image-workspace" href="https://sub2image.cc.cd">
+          <div class="workspace-preview image-preview">
+            <img src="/assets/zenith-real.png" alt="Zenith 生图工作台界面预览" />
+          </div>
+          <div class="workspace-body">
+            <div>
+              <span class="workspace-index">01</span>
+              <h2>生图工作台</h2>
+              <p>文字生图 · 图生图 · 多参考图</p>
+            </div>
+            <span class="launch-action">
+              进入工作台
+              <span class="arrow" aria-hidden="true">↗</span>
+            </span>
+          </div>
+          <span class="workspace-status online">在线</span>
+        </a>
+
+        <a class="workspace chat-workspace" href="https://chat.sub2image.cc.cd">
+          <div class="workspace-preview chat-preview">
+            <img src="/assets/chat-real.png" alt="SUB2 聊天工作台界面预览" />
+          </div>
+          <div class="workspace-body">
+            <div>
+              <span class="workspace-index">02</span>
+              <h2>聊天工作台</h2>
+              <p>模型切换 · 流式对话 · 本地历史</p>
+            </div>
+            <span class="launch-action">
+              进入工作台
+              <span class="arrow" aria-hidden="true">↗</span>
+            </span>
+          </div>
+          <span class="workspace-status online">在线</span>
+        </a>
+      </section>
+
+      <footer class="footer">
+        <span>SUB2 WORKSPACE</span>
+        <span>图像与对话服务相互独立</span>
+      </footer>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

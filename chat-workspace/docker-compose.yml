@@ -1,0 +1,32 @@
+services:
+  # 旧站 chat.tangzhi.org:记录存在浏览器里,页面顶部提示搬到工作台
+  chat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_MIGRATE_URL: https://vip.tangzhi.org/chat
+    container_name: sub2image-chat
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:13002:3000"
+    init: true
+    security_opt:
+      - no-new-privileges:true
+
+  # 工作台里的对话 vip.tangzhi.org/chat:共用工作台的 Key 和主题,记录存工作台服务器
+  chat-mote:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_CHAT_MODE: mote
+        NEXT_PUBLIC_BASE_PATH: /chat
+    image: chat-workspace-chat-mote
+    container_name: mote-chat
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:13003:3000"
+    init: true
+    security_opt:
+      - no-new-privileges:true

@@ -11,6 +11,8 @@ export default defineConfig([
     "dist/**",
     "out/**",
     "data/**",
+    // 聊天程序是独立项目,用自己的 lint(oxlint)
+    "chat-workspace/**",
     "next-env.d.ts",
   ]),
 ]);
