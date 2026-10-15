@@ -6,7 +6,7 @@ sudo bash -c 'set -a; . /etc/mote/storage.env; set +a; MOTE_STORAGE_ROOT=/opt/mo
 sudo cp deploy/mote-backup.service deploy/mote-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl start mote-backup.service
-sudo systemctl --no-pager --lines=5 status mote-backup.service | tail -5
+sudo journalctl -u mote-backup.service --no-pager -n 3 || true
 sudo systemctl enable --now mote-backup.timer
 systemctl list-timers --no-pager mote-backup.timer | head -3
 sudo bash -c 'set -a; . /etc/mote/storage.env; set +a; node scripts/backup-data.mjs --list'
