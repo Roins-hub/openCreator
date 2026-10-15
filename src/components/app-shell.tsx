@@ -16,7 +16,7 @@ import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
 import { acceptAttribute, MEDIA_KIND_LABEL, MEDIA_RULES, pickMediaFiles } from "@/lib/media-files";
 import { NETWORK_ERROR, readableError } from "@/lib/network-error";
-import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey, readRelayBase } from "@/lib/api-key";
+import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey, readAssistModel, readRelayBase } from "@/lib/api-key";
 import {
   countMedia, durationSummary, effectiveReferenceMode, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
   TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError, type MediaKind, type VideoModel,
@@ -774,7 +774,7 @@ export function AppShell() {
     try {
       const result = await request<{ prompt: string; model: string }>("/api/prompt-assist", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, kind: selected.type }),
+        body: JSON.stringify({ prompt, kind: selected.type, model: readAssistModel() || undefined }),
       });
       setBeforeOptimize({ html: editor.innerHTML, draft });
       fillEditor(result.prompt, attachments);

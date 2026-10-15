@@ -3,12 +3,13 @@
  * 文字数据(对话、聊天记录、资产索引、收藏、分组、提示词)每日备份到对象存储。
  *
  *   node scripts/backup-data.mjs                 打包 $MOTE_STORAGE_ROOT/data,上传到 backups/,并校验大小
- *   node scripts/backup-data.mjs --lifecycle     确认存储桶有「backups/ 30 天后删除」的规则(保留已有规则)
+ *   node scripts/backup-data.mjs --lifecycle [天数]   设置存储桶的过期规则:媒体 users/ 和备份 backups/ 都在
+ *                                                    [天数](默认 60)后删除;桶里其他规则原样保留
  *   node scripts/backup-data.mjs --list          列出已有备份
  *   node scripts/backup-data.mjs --download <key> <file>   下载一份备份(恢复时解压到新目录核对后再替换)
  *
  * 读取与工作台相同的存储配置:S3_ENDPOINT / S3_BUCKET / S3_REGION / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY
- * (可选 S3_PATH_STYLE=true)。备份放在 backups/ 下,不受 users/ 的 30 天媒体过期规则影响。
+ * (可选 S3_PATH_STYLE=true)。备份放在 backups/ 下,和 users/ 下的媒体各用一条过期规则。
  */
 import { createHash } from "node:crypto";
 import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -18,8 +19,9 @@ import { spawnSync } from "node:child_process";
 import { AwsClient } from "aws4fetch";
 
 const PREFIX = "backups/";
-const RETENTION_DAYS = 30;
-const RULE_ID = "expire-backups";
+const DEFAULT_RETENTION_DAYS = 60;
+// 工作台管理的两条过期规则:规则 ID → 前缀
+const MANAGED_RULES = { "expire-media": "users/", "expire-backups": PREFIX };
 
 const env = process.env;
 for (const name of ["S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]) {
@@ -65,27 +67,35 @@ async function backup() {
   }
 }
 
-/** 在已有生命周期规则里补上 backups/ 的过期规则;已有就不动 */
-async function ensureLifecycle() {
+/** 把媒体(users/)和备份(backups/)的过期天数设成 days;桶里其他规则原样保留 */
+async function setLifecycle(days) {
+  if (!Number.isInteger(days) || days < 1 || days > 3650) throw new Error("天数应为 1~3650 的整数");
   const current = await request("/?lifecycle");
   const xml = current.status === 404 ? "" : await current.text();
-  if (xml.includes(`<ID>${RULE_ID}</ID>`)) {
-    console.log(`生命周期规则 ${RULE_ID} 已存在`);
-    return;
-  }
+  const managed = new Set(Object.keys(MANAGED_RULES));
   // TOS 读回的规则会多带一个空的 <Filter></Filter>,原样写回会被当成「整个桶」和 users/ 重叠,去掉它
-  const rules = [...xml.matchAll(/<Rule>[\s\S]*?<\/Rule>/g)]
-    .map((match) => match[0].replace(/<Filter\s*\/>|<Filter>\s*<\/Filter>/g, ""));
+  const others = [...xml.matchAll(/<Rule>[\s\S]*?<\/Rule>/g)]
+    .map((match) => match[0].replace(/<Filter\s*\/>|<Filter>\s*<\/Filter>/g, ""))
+    .filter((rule) => !managed.has(/<ID>(.*?)<\/ID>/.exec(rule)?.[1] || ""));
   // 和已有规则一样用 <Prefix> 写法:两种写法混用时 TOS 会把 <Filter> 那条当成整个桶
-  rules.push(`<Rule><ID>${RULE_ID}</ID><Prefix>${PREFIX}</Prefix><Status>Enabled</Status><Expiration><Days>${RETENTION_DAYS}</Days></Expiration></Rule>`);
+  const rules = [
+    ...others,
+    ...Object.entries(MANAGED_RULES).map(([id, prefix]) =>
+      `<Rule><ID>${id}</ID><Prefix>${prefix}</Prefix><Status>Enabled</Status><Expiration><Days>${days}</Days></Expiration>`
+      + "<AbortIncompleteMultipartUpload><DaysAfterInitiation>7</DaysAfterInitiation></AbortIncompleteMultipartUpload></Rule>"),
+  ];
   const body = `<?xml version="1.0" encoding="UTF-8"?><LifecycleConfiguration>${rules.join("")}</LifecycleConfiguration>`;
   await request("/?lifecycle", {
     method: "PUT", body,
     headers: { "Content-Type": "application/xml", "Content-MD5": createHash("md5").update(body).digest("base64") },
   });
   const check = await (await request("/?lifecycle")).text();
-  if (!check.includes(`<ID>${RULE_ID}</ID>`)) throw new Error("写入生命周期规则后没有读到");
-  console.log(`已添加规则 ${RULE_ID}:${PREFIX} 下的文件 ${RETENTION_DAYS} 天后删除;原有 ${rules.length - 1} 条规则保留`);
+  for (const [id, prefix] of Object.entries(MANAGED_RULES)) {
+    const rule = [...check.matchAll(/<Rule>[\s\S]*?<\/Rule>/g)].map((m) => m[0]).find((item) => item.includes(`<ID>${id}</ID>`));
+    if (!rule?.includes(`<Days>${days}</Days>`)) throw new Error(`写入后没有读到规则 ${id}`);
+    console.log(`规则 ${id}:${prefix} 下的文件 ${days} 天后删除`);
+  }
+  if (others.length) console.log(`另有 ${others.length} 条规则原样保留`);
 }
 
 async function list() {
@@ -105,7 +115,11 @@ async function download(key, file) {
 }
 
 const [command, ...args] = process.argv.slice(2);
-const tasks = { "--lifecycle": ensureLifecycle, "--list": list, "--download": () => download(args[0], args[1]) };
+const tasks = {
+  "--lifecycle": () => setLifecycle(args[0] ? Number(args[0]) : DEFAULT_RETENTION_DAYS),
+  "--list": list,
+  "--download": () => download(args[0], args[1]),
+};
 (tasks[command] || backup)().catch((error) => {
   console.error(`备份失败:${error.message}`);
   process.exit(1);

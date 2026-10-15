@@ -231,8 +231,52 @@ export async function editImage(apiKey: string, form: FormData, relay: Relay = D
 const workingAssistModel = new Map<string, string>();
 const MAX_ASSIST_ATTEMPTS = 6;
 
-export async function assistPrompt(apiKey: string, prompt: string, kind: AssistKind, relay: Relay = DEFAULT_RELAY) {
-  const candidates = assistCandidates((await catalog(relay)).texts);
+/** 设置页「提示词优化模型」的选项:全部对话模型,以及「自动」现在会先用哪个 */
+export async function assistModelOptions(relay: Relay = DEFAULT_RELAY) {
+  const texts = (await catalog(relay)).texts;
+  const remembered = workingAssistModel.get(relay.base);
+  return {
+    models: texts,
+    // 最近一次成功的模型优先
+    auto: remembered && texts.includes(remembered) ? remembered : assistCandidates(texts)[0],
+  };
+}
+
+async function completeOnce(apiKey: string, relay: Relay, model: string, prompt: string, kind: AssistKind) {
+  const data = await call(relay, apiKey, "/v1/chat/completions", {
+    method: "POST", signal: AbortSignal.timeout(90_000),
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: assistSystemPrompt(kind) }, { role: "user", content: prompt }],
+    }),
+  });
+  const choices = data.choices as Array<{ message?: { content?: unknown } }> | undefined;
+  const content = choices?.[0]?.message?.content;
+  const text = typeof content === "string" ? cleanAssistOutput(content) : "";
+  if (!text) throw new Error("对话模型没有返回内容");
+  return text;
+}
+
+const fatal = (error: unknown) => error instanceof Error && /API Key 无效|余额不足/.test(error.message);
+
+/**
+ * chosen:用户在设置里指定的模型,只用它,失败就报错(不悄悄换别的);
+ * 不指定(自动):轻量模型优先,一个不可用就换下一个。
+ */
+export async function assistPrompt(
+  apiKey: string, prompt: string, kind: AssistKind, relay: Relay = DEFAULT_RELAY, chosen?: string,
+) {
+  const texts = (await catalog(relay)).texts;
+  if (chosen) {
+    if (!texts.includes(chosen)) throw new Error(`设置里选的优化模型 ${chosen} 已下线，请到「设置」换一个或改回「自动」`);
+    try {
+      return { prompt: await completeOnce(apiKey, relay, chosen, prompt, kind), model: chosen };
+    } catch (error) {
+      if (fatal(error)) throw error;
+      throw new Error(`设置里选的优化模型 ${chosen} 暂时不可用：${(error as Error).message}。可以到「设置」换一个，或改回「自动」`);
+    }
+  }
+  const candidates = assistCandidates(texts);
   if (!candidates.length) throw new Error("中转站暂无可用的对话模型，无法优化提示词");
   const remembered = workingAssistModel.get(relay.base);
   const order = remembered && candidates.includes(remembered)
@@ -240,23 +284,13 @@ export async function assistPrompt(apiKey: string, prompt: string, kind: AssistK
   let lastError: unknown;
   for (const model of order.slice(0, MAX_ASSIST_ATTEMPTS)) {
     try {
-      const data = await call(relay, apiKey, "/v1/chat/completions", {
-        method: "POST", signal: AbortSignal.timeout(90_000),
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "system", content: assistSystemPrompt(kind) }, { role: "user", content: prompt }],
-        }),
-      });
-      const choices = data.choices as Array<{ message?: { content?: unknown } }> | undefined;
-      const content = choices?.[0]?.message?.content;
-      const text = typeof content === "string" ? cleanAssistOutput(content) : "";
-      if (!text) throw new Error("对话模型没有返回内容");
+      const text = await completeOnce(apiKey, relay, model, prompt, kind);
       workingAssistModel.set(relay.base, model);
       return { prompt: text, model };
     } catch (error) {
       lastError = error;
       // Key 无效、余额不足换模型也没用
-      if (error instanceof Error && /API Key 无效|余额不足/.test(error.message)) throw error;
+      if (fatal(error)) throw error;
     }
   }
   throw new Error(`提示词优化暂时不可用：${lastError instanceof Error ? lastError.message : "中转站没有可用的对话模型"}`);

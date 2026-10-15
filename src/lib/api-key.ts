@@ -59,3 +59,17 @@ export async function openSession(key = readApiKey(), base = readRelayBase()) {
     throw new Error(data.error || "API Key 验证失败");
   }
 }
+
+// 提示词优化用的对话模型:空 = 自动(只存在当前浏览器)
+const ASSIST_MODEL_KEY = "mote.assistModel";
+
+export function readAssistModel() {
+  try { return window.localStorage.getItem(ASSIST_MODEL_KEY)?.trim() || ""; } catch { return ""; }
+}
+
+export function writeAssistModel(model: string) {
+  try {
+    if (model) window.localStorage.setItem(ASSIST_MODEL_KEY, model);
+    else window.localStorage.removeItem(ASSIST_MODEL_KEY);
+  } catch { /* 隐私模式等无法写入时忽略 */ }
+}

@@ -1,18 +1,27 @@
 import { z } from "zod";
 import { failure, ok } from "@/lib/http";
 import { requireUser } from "@/lib/identity";
-import { assistPrompt } from "@/lib/tangzhi-server";
+import { relayOf } from "@/lib/relay";
+import { assistModelOptions, assistPrompt } from "@/lib/tangzhi-server";
 
 const inputSchema = z.object({
   prompt: z.string().trim().min(1, "请先写一点想法").max(6000, "提示词太长了"),
   kind: z.enum(["video", "image"]),
+  /** 设置里指定的优化模型;不传 = 自动 */
+  model: z.string().trim().max(200).optional(),
 });
+
+/** 设置页用:可选的对话模型,以及「自动」现在会先用哪个 */
+export async function GET(request: Request) {
+  try { return ok(await assistModelOptions(relayOf(request))); }
+  catch (error) { return failure(error, 502); }
+}
 
 /** 输入框的「优化提示词」:返回扩写后的提示词,由用户决定是否使用 */
 export async function POST(request: Request) {
   try {
     const { apiKey, relay } = await requireUser(request);
     const input = inputSchema.parse(await request.json());
-    return ok(await assistPrompt(apiKey, input.prompt, input.kind, relay));
+    return ok(await assistPrompt(apiKey, input.prompt, input.kind, relay, input.model || undefined));
   } catch (error) { return failure(error); }
 }

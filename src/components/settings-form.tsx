@@ -6,8 +6,9 @@ import {
   ArrowLeft, Check, CircleCheck, CircleX, ExternalLink, Eye, EyeOff, LoaderCircle, Save, TestTube2, X,
 } from "lucide-react";
 import {
-  apiKeyHeaders, openSession, readApiKey, readRelayBase, writeApiKey, writeRelayBase,
+  apiKeyHeaders, openSession, readApiKey, readAssistModel, readRelayBase, writeApiKey, writeAssistModel, writeRelayBase,
 } from "@/lib/api-key";
+import { Dropdown } from "@/components/dropdown";
 import {
   durationSummary, formatPrice, mediaSummary, TANGZHI_BASE_URL, TANGZHI_KEY_PAGE, type VideoModel,
 } from "@/lib/tangzhi";
@@ -27,6 +28,10 @@ export function SettingsForm() {
   const [check, setCheck] = useState<{ state: "loading" | "success" | "error"; message: string }>();
   const [models, setModels] = useState<VideoModel[]>();
   const [imageModels, setImageModels] = useState<ImageModel[]>([]);
+  // 提示词优化模型:"" = 自动
+  const [assistModel, setAssistModel] = useState("");
+  const [assistOptions, setAssistOptions] = useState<{ models: string[]; auto?: string }>();
+  const [assistSaved, setAssistSaved] = useState(false);
   // 中转站地址:空字符串 = 内置的默认中转站
   const [customMode, setCustomMode] = useState(false);
   const [baseInput, setBaseInput] = useState("");
@@ -44,6 +49,9 @@ export function SettingsForm() {
       setModels(list.filter((model): model is VideoModel => model.type === "video"));
       setImageModels(list.filter((model): model is ImageModel => model.type === "image"));
     }).catch((cause) => setError((cause as Error).message));
+    fetch("/api/prompt-assist", { headers: apiKeyHeaders("", relayBase) })
+      .then(async (response) => setAssistOptions(response.ok ? await response.json() : { models: [] }))
+      .catch(() => setAssistOptions({ models: [] }));
   };
 
   useEffect(() => {
@@ -55,6 +63,7 @@ export function SettingsForm() {
       setSavedBase(relayBase);
       setBaseInput(relayBase);
       setCustomMode(Boolean(relayBase));
+      setAssistModel(readAssistModel());
       loadModels(relayBase);
     }, 0);
     return () => clearTimeout(timer);
@@ -215,6 +224,37 @@ export function SettingsForm() {
                 ))}
               </div>
             </>}
+          </div>
+        </section>
+
+        <section className="settings-block" aria-labelledby="assist-heading">
+          <div className="provider-number">优化</div>
+          <div>
+            <div className="section-head">
+              <h2 id="assist-heading">提示词优化模型</h2>
+              <span className="theme-note">{assistSaved ? "已保存在当前浏览器" : "输入框 ✨ 按钮用它扩写提示词"}</span>
+            </div>
+            <div className="assist-setting">
+              <Dropdown className="assist-dropdown" ariaLabel="提示词优化模型"
+                placeholder={assistOptions ? "自动" : "正在加载模型"}
+                value={assistModel || "auto"}
+                options={[
+                  { value: "auto", label: "自动", hint: assistOptions?.auto ? `现在会先用 ${assistOptions.auto}` : undefined },
+                  ...(assistModel && assistOptions && !assistOptions.models.includes(assistModel)
+                    ? [{ value: assistModel, label: assistModel, hint: "已下线" }] : []),
+                  ...(assistOptions?.models || []).map((id) => ({ value: id, label: id, group: "对话模型" })),
+                ]}
+                onChange={(value) => {
+                  const next = value === "auto" ? "" : value;
+                  setAssistModel(next);
+                  writeAssistModel(next);
+                  setAssistSaved(true);
+                }} />
+              <p className="key-help">
+                「自动」会先用轻量便宜的模型（名字带 luna、mini、flash 等），某个模型暂时不可用时自动换下一个。
+                选了具体模型后只用它，它不可用时会直接提示，不会悄悄换成别的模型。费用按中转站的对话模型价格从你的 Key 扣除。
+              </p>
+            </div>
           </div>
         </section>
 
