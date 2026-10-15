@@ -1,0 +1,13 @@
+# 工作台文字数据每日备份到对象存储 backups/(见 scripts/backup-data.mjs)
+[Unit]
+Description=Mote data backup to object storage
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/mote
+EnvironmentFile=/etc/mote/storage.env
+Environment=MOTE_STORAGE_ROOT=/opt/mote-data
+ExecStart=/usr/bin/node /opt/mote/scripts/backup-data.mjs

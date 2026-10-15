@@ -1,0 +1,11 @@
+# 每天北京时间 03:07(UTC 19:07)备份一次;关机错过的开机后补跑
+[Unit]
+Description=Daily Mote data backup
+
+[Timer]
+OnCalendar=*-*-* 19:07:00 UTC
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
