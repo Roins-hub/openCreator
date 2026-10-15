@@ -1,0 +1,26 @@
+From d2a09e25b33e78456a490a48d34134334e07c7a3 Mon Sep 17 00:00:00 2001
+From: Roins-hub <2676353587@qq.com>
+Date: Thu, 15 Oct 2026 21:59:08 +0800
+Subject: [PATCH 4/4] docs(chat): media retention is now 60 days
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ chat-workspace/lib/mote-attachments.ts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/chat-workspace/lib/mote-attachments.ts b/chat-workspace/lib/mote-attachments.ts
+index 0bcfd74..0dd3c13 100644
+--- a/chat-workspace/lib/mote-attachments.ts
++++ b/chat-workspace/lib/mote-attachments.ts
+@@ -7,7 +7,7 @@ import { moteHeaders } from "@/lib/mote";
+  * 工作台模式下的图片附件:上传到工作台的对象存储(和视频、图片素材同一个地方),
+  * 聊天记录里只存图片地址,不再把整张图的 base64 存进记录,服务器上的记录不会越来越大。
+  * 发给模型前再由浏览器取回图片转成 data URL(见 inlineMoteImages)。
+- * 存储桶对 users/ 下的文件有 30 天过期规则,和工作台的其他素材一致。
++ * 存储桶对 users/ 下的文件有过期规则(目前 60 天),和工作台的其他素材一致。
+  */
+ const UPLOADABLE = new Set(["image/jpeg", "image/png", "image/webp"]);
+ const MEDIA_PATH = "/api/media/";
+-- 
+2.54.0.windows.1
+

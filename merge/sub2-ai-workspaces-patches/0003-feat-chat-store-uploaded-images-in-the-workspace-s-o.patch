@@ -1,0 +1,163 @@
+From c06a7a29af47c02bba59efd8fc3053834f7f4be7 Mon Sep 17 00:00:00 2001
+From: Roins-hub <2676353587@qq.com>
+Date: Thu, 15 Oct 2026 21:49:09 +0800
+Subject: [PATCH 3/4] feat(chat): store uploaded images in the workspace's
+ object storage
+
+In workspace mode, JPG / PNG / WebP attachments are uploaded through the
+workspace (/api/uploads, the same bucket as video and image references)
+and the chat history keeps only the image URL instead of the whole
+base64 image, so the history on the server stays small. Before a request
+goes to the model, the browser fetches those images again and inlines
+them as data URLs; an image that has expired is replaced by a short note
+instead of failing the request. Other image types are still inlined as
+before. Opening /chat directly also opens the media session.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ chat-workspace/app/assistant.tsx       | 11 ++-
+ chat-workspace/lib/mote-attachments.ts | 92 ++++++++++++++++++++++++++
+ 2 files changed, 101 insertions(+), 2 deletions(-)
+ create mode 100644 chat-workspace/lib/mote-attachments.ts
+
+diff --git a/chat-workspace/app/assistant.tsx b/chat-workspace/app/assistant.tsx
+index 278f7ff..96e5722 100644
+--- a/chat-workspace/app/assistant.tsx
++++ b/chat-workspace/app/assistant.tsx
+@@ -24,11 +24,13 @@ import { indexedDbThreadAdapter } from "@/lib/thread-adapter";
+ import { imageWorkspaceToolkit } from "@/components/image-workspace-tool";
+ import { IMAGE_WORKSPACE_TOOL_NAME } from "@/lib/image-workspace";
+ import { BASE_PATH, MIGRATE_URL, MOTE_MODE, withBasePath } from "@/lib/mote";
++import { inlineMoteImages, MoteImageAttachmentAdapter, openMoteSession } from "@/lib/mote-attachments";
+ 
+ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+ 
++// 工作台模式:图片存到工作台的对象存储,聊天记录里只存地址
+ const baseAttachmentAdapter = new CompositeAttachmentAdapter([
+-  new SimpleImageAttachmentAdapter(),
++  MOTE_MODE ? new MoteImageAttachmentAdapter() : new SimpleImageAttachmentAdapter(),
+   new SimpleTextAttachmentAdapter(),
+ ]);
+ 
+@@ -75,6 +77,11 @@ function ChatRuntime({ children }: { children: React.ReactNode }) {
+     undefined,
+   );
+ 
++  // 直接打开 /chat 时补上看图用的登录 Cookie
++  useEffect(() => {
++    if (MOTE_MODE) void openMoteSession();
++  }, [apiKey]);
++
+   useEffect(() => {
+     if (WebSpeechDictationAdapter.isSupported()) {
+       setDictationAdapter(
+@@ -95,7 +102,7 @@ function ChatRuntime({ children }: { children: React.ReactNode }) {
+           body: {
+             ...(options.body as Record<string, unknown> | undefined),
+             id: options.id,
+-            messages: options.messages,
++            messages: MOTE_MODE ? await inlineMoteImages(options.messages) : options.messages,
+             trigger: options.trigger,
+             messageId: options.messageId,
+             metadata: options.requestMetadata,
+diff --git a/chat-workspace/lib/mote-attachments.ts b/chat-workspace/lib/mote-attachments.ts
+new file mode 100644
+index 0000000..0bcfd74
+--- /dev/null
++++ b/chat-workspace/lib/mote-attachments.ts
+@@ -0,0 +1,92 @@
++import { SimpleImageAttachmentAdapter } from "@assistant-ui/react";
++import type { AttachmentAdapter, CompleteAttachment, PendingAttachment } from "@assistant-ui/react";
++import type { UIMessage } from "ai";
++import { moteHeaders } from "@/lib/mote";
++
++/**
++ * 工作台模式下的图片附件:上传到工作台的对象存储(和视频、图片素材同一个地方),
++ * 聊天记录里只存图片地址,不再把整张图的 base64 存进记录,服务器上的记录不会越来越大。
++ * 发给模型前再由浏览器取回图片转成 data URL(见 inlineMoteImages)。
++ * 存储桶对 users/ 下的文件有 30 天过期规则,和工作台的其他素材一致。
++ */
++const UPLOADABLE = new Set(["image/jpeg", "image/png", "image/webp"]);
++const MEDIA_PATH = "/api/media/";
++
++const mediaUrl = (path: string) =>
++  `${window.location.origin}${MEDIA_PATH}${path.split("/").map(encodeURIComponent).join("/")}`;
++
++export class MoteImageAttachmentAdapter implements AttachmentAdapter {
++  accept = "image/*";
++  private inline = new SimpleImageAttachmentAdapter();
++
++  add(state: { file: File }) {
++    return this.inline.add(state);
++  }
++
++  async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
++    // GIF 等工作台存储不收的格式,仍按原来的方式内嵌
++    if (!UPLOADABLE.has(attachment.file.type)) return this.inline.send(attachment);
++    const form = new FormData();
++    form.append("files", attachment.file, attachment.file.name || "image.png");
++    const response = await fetch("/api/uploads", { method: "POST", body: form, headers: moteHeaders() });
++    const data = (await response.json().catch(() => null)) as Array<{ path?: string }> | { error?: string } | null;
++    const path = Array.isArray(data) ? data[0]?.path : undefined;
++    if (!response.ok || !path) {
++      throw new Error((data && !Array.isArray(data) && data.error) || "图片上传失败，请稍后重试");
++    }
++    return {
++      ...attachment,
++      status: { type: "complete" },
++      content: [{ type: "image", image: mediaUrl(path) }],
++    };
++  }
++
++  remove() {
++    return this.inline.remove();
++  }
++}
++
++/** 已登录工作台(看图用的 Cookie);直接打开 /chat 时补一次 */
++export async function openMoteSession() {
++  const headers = moteHeaders();
++  if (!headers["x-tangzhi-key"]) return;
++  await fetch("/api/session", { method: "POST", headers }).catch(() => undefined);
++}
++
++const toDataUrl = (blob: Blob) =>
++  new Promise<string>((resolve, reject) => {
++    const reader = new FileReader();
++    reader.onload = () => resolve(String(reader.result));
++    reader.onerror = () => reject(reader.error);
++    reader.readAsDataURL(blob);
++  });
++
++/**
++ * 发给模型前:把指向工作台存储的图片换成 data URL(模型拿不到需要登录的地址)。
++ * 图片已过期或取不到时换成一句文字说明,不让整条请求失败。
++ */
++export async function inlineMoteImages(messages: UIMessage[]): Promise<UIMessage[]> {
++  const prefix = `${window.location.origin}${MEDIA_PATH}`;
++  const cache = new Map<string, Promise<string | null>>();
++  const load = (url: string) => {
++    let pending = cache.get(url);
++    if (!pending) {
++      pending = fetch(url, { credentials: "same-origin" })
++        .then(async (response) => (response.ok ? toDataUrl(await response.blob()) : null))
++        .catch(() => null);
++      cache.set(url, pending);
++    }
++    return pending;
++  };
++  return Promise.all(messages.map(async (message) => {
++    if (!message.parts.some((part) => part.type === "file" && part.url.startsWith(prefix))) return message;
++    const parts = await Promise.all(message.parts.map(async (part) => {
++      if (part.type !== "file" || !part.url.startsWith(prefix)) return part;
++      const dataUrl = await load(part.url);
++      return dataUrl
++        ? { ...part, url: dataUrl }
++        : { type: "text" as const, text: `[图片${part.filename ? ` ${part.filename}` : ""} 已过期或无法读取]` };
++    }));
++    return { ...message, parts } as UIMessage;
++  }));
++}
+-- 
+2.54.0.windows.1
+

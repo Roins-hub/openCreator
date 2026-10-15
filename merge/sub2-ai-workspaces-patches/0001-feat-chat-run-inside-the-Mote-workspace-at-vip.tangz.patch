@@ -1,0 +1,952 @@
+From a945ae776b6b92d8fda9d450e7ee1c846f6da69c Mon Sep 17 00:00:00 2001
+From: Roins-hub <2676353587@qq.com>
+Date: Thu, 15 Oct 2026 20:45:40 +0800
+Subject: [PATCH 1/4] feat(chat): run inside the Mote workspace at
+ vip.tangzhi.org/chat
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Build-time mode (NEXT_PUBLIC_CHAT_MODE=mote, NEXT_PUBLIC_BASE_PATH=/chat):
+- uses the workspace's API key and relay URL from the same origin, no
+  separate key entry;
+- chat history is stored on the workspace server (/api/chat-store, per
+  relay account) instead of IndexedDB; export / import / clear work on
+  the account, and old backups import as-is;
+- colours follow the workspace theme (paper / celadon / mist / graphite /
+  midnight); header and sidebar link back to the video / image workspace;
+- the /生图 tool opens the workspace with an image model and the prompt
+  filled in.
+
+The standalone build (chat.tangzhi.org) keeps local storage and shows a
+notice pointing to the new address (NEXT_PUBLIC_MIGRATE_URL).
+docker-compose builds both: sub2image-chat (13002) and mote-chat (13003).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ chat-workspace/Dockerfile                     | 15 +++-
+ chat-workspace/app/assistant.tsx              | 23 ++++-
+ chat-workspace/app/globals.css                | 51 +++++++++++
+ chat-workspace/app/layout.tsx                 | 10 +--
+ chat-workspace/components/chat-settings.tsx   | 45 +++++++++-
+ .../components/connection-settings-dialog.tsx | 21 ++++-
+ .../components/image-workspace-tool.tsx       |  9 +-
+ chat-workspace/components/theme-provider.tsx  | 16 ++++
+ .../components/workspace-header.tsx           | 58 +++++++------
+ .../components/workspace-sidebar.tsx          | 32 +++++--
+ chat-workspace/docker-compose.yml             | 20 +++++
+ chat-workspace/lib/chat-storage.ts            | 77 +++++++++++++++++
+ chat-workspace/lib/mote.ts                    | 84 +++++++++++++++++++
+ chat-workspace/lib/thread-adapter.tsx         | 18 ++--
+ chat-workspace/next.config.ts                 |  4 +
+ 15 files changed, 426 insertions(+), 57 deletions(-)
+ create mode 100644 chat-workspace/lib/chat-storage.ts
+ create mode 100644 chat-workspace/lib/mote.ts
+
+diff --git a/chat-workspace/Dockerfile b/chat-workspace/Dockerfile
+index 742b0cb..090d8ec 100644
+--- a/chat-workspace/Dockerfile
++++ b/chat-workspace/Dockerfile
+@@ -5,17 +5,26 @@ RUN npm ci
+ 
+ FROM node:24-alpine AS builder
+ WORKDIR /app
+-ENV NEXT_TELEMETRY_DISABLED=1
++# 构建期配置(会内联进前端代码):工作台模式、子路径、旧站搬家提示
++ARG NEXT_PUBLIC_CHAT_MODE=""
++ARG NEXT_PUBLIC_BASE_PATH=""
++ARG NEXT_PUBLIC_MIGRATE_URL=""
++ENV NEXT_TELEMETRY_DISABLED=1 \
++    NEXT_PUBLIC_CHAT_MODE=$NEXT_PUBLIC_CHAT_MODE \
++    NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH \
++    NEXT_PUBLIC_MIGRATE_URL=$NEXT_PUBLIC_MIGRATE_URL
+ COPY --from=deps /app/node_modules ./node_modules
+ COPY . .
+ RUN npm run build
+ 
+ FROM node:24-alpine AS runner
+ WORKDIR /app
++ARG NEXT_PUBLIC_BASE_PATH=""
+ ENV NODE_ENV=production \
+     NEXT_TELEMETRY_DISABLED=1 \
+     HOSTNAME=0.0.0.0 \
+-    PORT=3000
++    PORT=3000 \
++    BASE_PATH=$NEXT_PUBLIC_BASE_PATH
+ 
+ RUN addgroup --system --gid 1001 nodejs \
+     && adduser --system --uid 1001 nextjs
+@@ -27,6 +36,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+ USER nextjs
+ EXPOSE 3000
+ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+-  CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
++  CMD wget -qO- "http://127.0.0.1:3000${BASE_PATH}/api/health" || exit 1
+ 
+ CMD ["node", "server.js"]
+diff --git a/chat-workspace/app/assistant.tsx b/chat-workspace/app/assistant.tsx
+index adc8590..278f7ff 100644
+--- a/chat-workspace/app/assistant.tsx
++++ b/chat-workspace/app/assistant.tsx
+@@ -23,6 +23,7 @@ import { PluginSettingsProvider, usePluginSettings } from "@/components/plugin-s
+ import { indexedDbThreadAdapter } from "@/lib/thread-adapter";
+ import { imageWorkspaceToolkit } from "@/components/image-workspace-tool";
+ import { IMAGE_WORKSPACE_TOOL_NAME } from "@/lib/image-workspace";
++import { BASE_PATH, MIGRATE_URL, MOTE_MODE, withBasePath } from "@/lib/mote";
+ 
+ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+ 
+@@ -48,6 +49,10 @@ const assistantConfig = AuiConfig({
+   mcp: McpManagerResource({
+     connectors: [],
+     storage: McpLocalStorage({ keyPrefix: "sub2-chat-mcp" }),
++    // 挂在子路径下时授权回调也要带上前缀
++    ...(BASE_PATH && typeof window !== "undefined"
++      ? { oauthRedirectUri: `${window.location.origin}${BASE_PATH}/mcp/callback` }
++      : {}),
+     connectionTimeout: 15_000,
+   }),
+ });
+@@ -85,7 +90,7 @@ function ChatRuntime({ children }: { children: React.ReactNode }) {
+   const transport = useMemo(
+     () =>
+       new AssistantChatTransport({
+-        api: "/api/chat",
++        api: withBasePath("/api/chat"),
+         prepareSendMessagesRequest: async (options) => ({
+           body: {
+             ...(options.body as Record<string, unknown> | undefined),
+@@ -140,6 +145,7 @@ function Workspace() {
+           collapsed={sidebarCollapsed}
+         />
+         <div className="chat-panel-shell flex min-w-0 flex-1 flex-col overflow-hidden p-2 md:ps-0">
++          {!MOTE_MODE && MIGRATE_URL && <MigrationNotice />}
+           <main className="chat-panel relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-background">
+             <WorkspaceHeader
+               onOpenSidebar={() => setSidebarOpen(true)}
+@@ -156,6 +162,21 @@ function Workspace() {
+   );
+ }
+ 
++/** 旧站提示:聊天已经搬到工作台,导出记录后到新地址导入 */
++function MigrationNotice() {
++  return (
++    <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border bg-card px-3.5 py-2.5 text-sm">
++      <strong className="font-medium">聊天已搬到工作台</strong>
++      <span className="text-muted-foreground">
++        和视频、图片在同一个网站，记录保存在服务器上、换设备也在。旧记录请先点左下角「导出」，再到新地址「导入」。
++      </span>
++      <a className="ms-auto font-medium underline underline-offset-4" href={MIGRATE_URL}>
++        前往 {MIGRATE_URL.replace(/^https?:\/\//, "")}
++      </a>
++    </div>
++  );
++}
++
+ export function Assistant() {
+   return (
+     <ChatSettingsProvider>
+diff --git a/chat-workspace/app/globals.css b/chat-workspace/app/globals.css
+index bd06252..a31e0cc 100644
+--- a/chat-workspace/app/globals.css
++++ b/chat-workspace/app/globals.css
+@@ -760,3 +760,54 @@
+     transition-duration: 0.01ms !important;
+   }
+ }
++
++/* ---------- 工作台模式:配色跟随 Mote 工作台的主题(米白 / 青瓷 / 雾蓝 / 石墨 / 夜幕) ----------
++ * 色值与工作台 globals.css 的主题色板一致;html[data-mote-theme] 的优先级高于 :root 和 .dark。 */
++html[data-mote-theme="paper"] {
++  --m-ink: oklch(20% 0.012 80); --m-muted: oklch(51% 0.012 80); --m-paper: oklch(98.2% 0.006 82);
++  --m-warm: oklch(95.8% 0.008 82); --m-line: oklch(89% 0.008 82); --m-focus: oklch(66% 0.01 82);
++  --m-hover: oklch(91.5% 0.008 82); --m-dark: oklch(23% 0.012 80); --m-danger: oklch(48% 0.15 28);
++}
++html[data-mote-theme="celadon"] {
++  --m-ink: oklch(22% 0.02 185); --m-muted: oklch(47% 0.025 180); --m-paper: oklch(97.6% 0.012 165);
++  --m-warm: oklch(94.6% 0.02 165); --m-line: oklch(87.5% 0.022 168); --m-focus: oklch(60% 0.04 172);
++  --m-hover: oklch(90.5% 0.025 166); --m-dark: oklch(28% 0.04 185); --m-danger: oklch(48% 0.15 28);
++}
++html[data-mote-theme="mist"] {
++  --m-ink: oklch(22% 0.025 260); --m-muted: oklch(48% 0.03 255); --m-paper: oklch(97.8% 0.008 250);
++  --m-warm: oklch(94.9% 0.015 250); --m-line: oklch(88% 0.02 252); --m-focus: oklch(60% 0.06 255);
++  --m-hover: oklch(91% 0.02 250); --m-dark: oklch(26% 0.045 262); --m-danger: oklch(48% 0.15 25);
++}
++html[data-mote-theme="graphite"] {
++  --m-ink: oklch(92% 0.006 80); --m-muted: oklch(71% 0.008 80); --m-paper: oklch(17.5% 0.005 80);
++  --m-warm: oklch(21.5% 0.006 80); --m-line: oklch(29% 0.007 80); --m-focus: oklch(56% 0.01 80);
++  --m-hover: oklch(27% 0.007 80); --m-dark: oklch(90% 0.006 80); --m-danger: oklch(70% 0.15 28);
++}
++html[data-mote-theme="midnight"] {
++  --m-ink: oklch(92% 0.015 260); --m-muted: oklch(72% 0.03 260); --m-paper: oklch(16.5% 0.028 268);
++  --m-warm: oklch(21% 0.035 268); --m-line: oklch(29% 0.04 268); --m-focus: oklch(60% 0.08 262);
++  --m-hover: oklch(26% 0.04 268); --m-dark: oklch(88% 0.025 260); --m-danger: oklch(70% 0.15 22);
++}
++html[data-mote-theme] {
++  --background: var(--m-paper);
++  --foreground: var(--m-ink);
++  --card: var(--m-warm);
++  --card-foreground: var(--m-ink);
++  --popover: var(--m-paper);
++  --popover-foreground: var(--m-ink);
++  --primary: var(--m-dark);
++  --primary-foreground: var(--m-paper);
++  --secondary: var(--m-warm);
++  --secondary-foreground: var(--m-ink);
++  --muted: var(--m-warm);
++  --muted-foreground: var(--m-muted);
++  --accent: var(--m-hover);
++  --accent-foreground: var(--m-ink);
++  --destructive: var(--m-danger);
++  --border: var(--m-line);
++  --input: var(--m-line);
++  --ring: var(--m-focus);
++  --sidebar: var(--m-warm);
++  --chat-panel: var(--m-paper);
++  --composer-surface: var(--m-warm);
++}
+diff --git a/chat-workspace/app/layout.tsx b/chat-workspace/app/layout.tsx
+index 5233e08..35bc58e 100644
+--- a/chat-workspace/app/layout.tsx
++++ b/chat-workspace/app/layout.tsx
+@@ -1,12 +1,12 @@
+ import type { Metadata } from "next";
+ import { TooltipProvider } from "@/components/ui/tooltip";
+ import { ThemeProvider } from "@/components/theme-provider";
++import { MOTE_MODE, moteThemeScript } from "@/lib/mote";
+ import "./globals.css";
+ 
+-export const metadata: Metadata = {
+-  title: "SUB2 Chat - 聊天工作台",
+-  description: "使用自有 API Key 的本地优先 AI 聊天工作台",
+-};
++export const metadata: Metadata = MOTE_MODE
++  ? { title: "Mote · 对话", description: "与视频、图片工作台共用账号的 AI 对话" }
++  : { title: "SUB2 Chat - 聊天工作台", description: "使用自有 API Key 的本地优先 AI 聊天工作台" };
+ 
+ const themeScript = `
+   try {
+@@ -24,7 +24,7 @@ export default function RootLayout({
+   return (
+     <html lang="zh-CN" suppressHydrationWarning>
+       <head>
+-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
++        <script dangerouslySetInnerHTML={{ __html: MOTE_MODE ? moteThemeScript : themeScript }} />
+       </head>
+       <body>
+         <ThemeProvider>
+diff --git a/chat-workspace/components/chat-settings.tsx b/chat-workspace/components/chat-settings.tsx
+index 6c18fdf..469bf07 100644
+--- a/chat-workspace/components/chat-settings.tsx
++++ b/chat-workspace/components/chat-settings.tsx
+@@ -15,6 +15,7 @@ import {
+   reasoningEffortsForModel,
+   type ReasoningEffort,
+ } from "@/lib/reasoning";
++import { MOTE_MODE, moteApiKey, moteRelayBase, onMoteSettingsChange, withBasePath } from "@/lib/mote";
+ 
+ type LoadState = "idle" | "loading" | "success" | "error";
+ 
+@@ -73,7 +74,28 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
+     setLoadError("");
+   }, []);
+ 
++  // 工作台模式:Key 和中转站地址都来自工作台设置(同一域名下的 localStorage)
++  const hydrateFromMote = useCallback(() => {
++    const base = moteRelayBase();
++    const next: ProviderChoice = base ? CUSTOM_PROVIDER_ID : DEFAULT_PROVIDER_ID;
++    setProviderState(next);
++    setCustomUrlState(base);
++    setApiKeyState(moteApiKey());
++    setRememberKeyState(true);
++    setModelState(localStorage.getItem(modelName(next)) ?? "");
++    setModelsByProvider({});
++    setLoadState("idle");
++    setLoadError("");
++  }, []);
++
++  useEffect(() => {
++    if (!MOTE_MODE) return;
++    hydrateFromMote();
++    return onMoteSettingsChange(hydrateFromMote);
++  }, [hydrateFromMote]);
++
+   useEffect(() => {
++    if (MOTE_MODE) return;
+     const storedProvider = localStorage.getItem("sub2chat:provider");
+     const next = isProviderChoice(storedProvider) ? storedProvider : DEFAULT_PROVIDER_ID;
+     setProviderState(next);
+@@ -86,6 +108,15 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
+     );
+   }, [hydrateProvider]);
+ 
++  useEffect(() => {
++    if (!MOTE_MODE) return;
++    setWebSearchState(localStorage.getItem("sub2chat:web-search") === "true");
++    setReasoningEffortState(
++      normalizeReasoningEffort(localStorage.getItem("sub2chat:reasoning-effort")) ??
++        DEFAULT_REASONING_EFFORT,
++    );
++  }, []);
++
+   useEffect(() => {
+     const available = reasoningEffortsForModel(model);
+     if (available.length === 0 || available.includes(reasoningEffort)) return;
+@@ -96,12 +127,14 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
+   }, [model, reasoningEffort]);
+ 
+   const setProvider = (next: ProviderChoice) => {
++    if (MOTE_MODE) return;
+     setProviderState(next);
+     localStorage.setItem("sub2chat:provider", next);
+     hydrateProvider(next);
+   };
+ 
+   const setCustomUrl = (url: string) => {
++    if (MOTE_MODE) return;
+     setCustomUrlState(url);
+     localStorage.setItem(CUSTOM_URL_NAME, url);
+     // 换了地址,之前拉到的模型列表不再可信
+@@ -111,12 +144,14 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
+   };
+ 
+   const setApiKey = (key: string) => {
++    if (MOTE_MODE) return;
+     setApiKeyState(key);
+     if (rememberKey) localStorage.setItem(keyName(provider), key);
+     else sessionStorage.setItem(keyName(provider), key);
+   };
+ 
+   const setRememberKey = (remember: boolean) => {
++    if (MOTE_MODE) return;
+     setRememberKeyState(remember);
+     localStorage.setItem(rememberName(provider), String(remember));
+     if (remember) {
+@@ -152,13 +187,13 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
+     }
+     if (!apiKey.trim()) {
+       setLoadState("error");
+-      setLoadError("请先填写 API Key");
++      setLoadError(MOTE_MODE ? "请先在工作台「设置」里填写 API Key" : "请先填写 API Key");
+       return;
+     }
+     setLoadState("loading");
+     setLoadError("");
+     try {
+-      const response = await fetch("/api/models", {
++      const response = await fetch(withBasePath("/api/models"), {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({ provider, customUrl, key: apiKey }),
+@@ -177,6 +212,12 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
+     }
+   };
+ 
++  // 工作台模式下 Key 已经有了,打开就拉模型列表,不用手动点「获取模型」
++  useEffect(() => {
++    if (MOTE_MODE && apiKey && loadState === "idle" && !modelsByProvider[provider]) void loadModels();
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [apiKey, provider, loadState]);
++
+   const value = useMemo<ChatSettingsValue>(
+     () => ({
+       provider,
+diff --git a/chat-workspace/components/connection-settings-dialog.tsx b/chat-workspace/components/connection-settings-dialog.tsx
+index 4920835..9d35041 100644
+--- a/chat-workspace/components/connection-settings-dialog.tsx
++++ b/chat-workspace/components/connection-settings-dialog.tsx
+@@ -21,6 +21,7 @@ import {
+   type ProviderId,
+ } from "@/lib/providers";
+ import { cn } from "@/lib/utils";
++import { MOTE_MODE, MOTE_SETTINGS } from "@/lib/mote";
+ 
+ export function ConnectionSettingsDialog({ trigger }: { trigger: ReactElement }) {
+   const settings = useChatSettings();
+@@ -45,11 +46,28 @@ export function ConnectionSettingsDialog({ trigger }: { trigger: ReactElement })
+         <DialogHeader className="border-b px-6 py-5">
+           <DialogTitle className="text-lg font-semibold">连接设置</DialogTitle>
+           <DialogDescription>
+-            Key 只用于转发请求，可选择仅在本次浏览器会话中保存。
++            {MOTE_MODE
++              ? "与视频、图片工作台共用同一个 API Key 和中转站。"
++              : "Key 只用于转发请求，可选择仅在本次浏览器会话中保存。"}
+           </DialogDescription>
+         </DialogHeader>
+ 
+         <div className="space-y-6 px-6 py-5">
++          {MOTE_MODE && (
++            <section className="space-y-1.5 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
++              <div className="flex items-center gap-2 font-medium">
++                <KeyRound className="size-4" />
++                {settings.apiKey ? "已使用工作台的 API Key" : "还没有填写 API Key"}
++              </div>
++              <p className="text-xs leading-relaxed text-muted-foreground">
++                中转站：{activeShortUrl || "new.tangzhi.org"}。Key 和中转站地址在工作台设置里修改，聊天会自动同步。
++              </p>
++              <a className="inline-block text-xs font-medium underline underline-offset-4" href={MOTE_SETTINGS}>
++                打开工作台设置
++              </a>
++            </section>
++          )}
++          {!MOTE_MODE && <>
+           <section className="space-y-2.5">
+             <div className="text-sm font-medium">中转站</div>
+             <div className="grid grid-cols-2 gap-2">
+@@ -143,6 +161,7 @@ export function ConnectionSettingsDialog({ trigger }: { trigger: ReactElement })
+               />
+             </label>
+           </section>
++          </>}
+ 
+           <section className="space-y-2.5">
+             <div className="flex items-center justify-between">
+diff --git a/chat-workspace/components/image-workspace-tool.tsx b/chat-workspace/components/image-workspace-tool.tsx
+index 222e485..48f4f20 100644
+--- a/chat-workspace/components/image-workspace-tool.tsx
++++ b/chat-workspace/components/image-workspace-tool.tsx
+@@ -9,6 +9,7 @@ import {
+   buildImageWorkspaceUrl,
+   getImageWorkspaceOrigin,
+ } from "@/lib/image-workspace";
++import { MOTE_MODE, moteComposeUrl } from "@/lib/mote";
+ 
+ type ImageWorkspaceArgs = {
+   prompt: string;
+@@ -28,7 +29,9 @@ function ImageWorkspaceToolCard({
+ 
+   useEffect(() => setOrigin(getImageWorkspaceOrigin()), []);
+ 
+-  const href = prompt ? buildImageWorkspaceUrl(prompt, origin) : origin;
++  const href = MOTE_MODE
++    ? moteComposeUrl(prompt)
++    : prompt ? buildImageWorkspaceUrl(prompt, origin) : origin;
+ 
+   return (
+     <section className="my-3 w-full max-w-2xl overflow-hidden rounded-xl border bg-card text-card-foreground">
+@@ -57,7 +60,7 @@ function ImageWorkspaceToolCard({
+           }}
+           className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+         >
+-          前往生图工作台 <ArrowRight className="size-4" />
++          {MOTE_MODE ? "去工作台生图" : "前往生图工作台"} <ArrowRight className="size-4" />
+         </a>
+       </div>
+     </section>
+@@ -84,7 +87,7 @@ export const imageWorkspaceToolkit = defineToolkit({
+       required: ["prompt"],
+     },
+     execute: async ({ prompt }: ImageWorkspaceArgs): Promise<ImageWorkspaceResult> => ({
+-      url: buildImageWorkspaceUrl(prompt.trim()),
++      url: MOTE_MODE ? moteComposeUrl(prompt.trim()) : buildImageWorkspaceUrl(prompt.trim()),
+     }),
+     render: ImageWorkspaceToolCard,
+   },
+diff --git a/chat-workspace/components/theme-provider.tsx b/chat-workspace/components/theme-provider.tsx
+index 3ec3342..2bd9c63 100644
+--- a/chat-workspace/components/theme-provider.tsx
++++ b/chat-workspace/components/theme-provider.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { createContext, useContext, useEffect, useState } from "react";
++import { applyMoteTheme, MOTE_MODE, MOTE_THEME_KEY } from "@/lib/mote";
+ 
+ type Theme = "light" | "dark";
+ 
+@@ -15,6 +16,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
+   useEffect(() => {
+     const active = document.documentElement.classList.contains("dark") ? "dark" : "light";
+     setTheme(active);
++    if (!MOTE_MODE) return;
++    const sync = () => {
++      applyMoteTheme();
++      setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
++    };
++    const onStorage = (event: StorageEvent) => {
++      if (event.key === MOTE_THEME_KEY) sync();
++    };
++    const media = window.matchMedia("(prefers-color-scheme: dark)");
++    window.addEventListener("storage", onStorage);
++    media.addEventListener("change", sync);
++    return () => {
++      window.removeEventListener("storage", onStorage);
++      media.removeEventListener("change", sync);
++    };
+   }, []);
+ 
+   const toggleTheme = () => {
+diff --git a/chat-workspace/components/workspace-header.tsx b/chat-workspace/components/workspace-header.tsx
+index 5e6282c..752ff0d 100644
+--- a/chat-workspace/components/workspace-header.tsx
++++ b/chat-workspace/components/workspace-header.tsx
+@@ -10,6 +10,7 @@ import { useTheme } from "@/components/theme-provider";
+ import { getImageWorkspaceOrigin } from "@/lib/image-workspace";
+ import { HOME_URL } from "@/lib/home";
+ import { VIDEO_WORKSPACE_URL } from "@/lib/video-workspace";
++import { MOTE_HOME, MOTE_MODE } from "@/lib/mote";
+ 
+ type WorkspaceHeaderProps = {
+   onOpenSidebar: () => void;
+@@ -50,30 +51,39 @@ export function WorkspaceHeader({
+       </div>
+ 
+       <nav className="ms-auto flex items-center gap-0.5" aria-label="工作台导航">
+-        <TooltipIconButton
+-          tooltip="返回首页"
+-          onClick={() => window.location.assign(HOME_URL)}
+-        >
+-          <Home />
+-        </TooltipIconButton>
+-        <TooltipIconButton
+-          tooltip="生图工作台"
+-          onClick={() => window.location.assign(getImageWorkspaceOrigin())}
+-        >
+-          <ImageIcon />
+-        </TooltipIconButton>
+-        <TooltipIconButton
+-          tooltip="视频工作台"
+-          onClick={() => window.location.assign(VIDEO_WORKSPACE_URL)}
+-        >
+-          <Clapperboard />
+-        </TooltipIconButton>
+-        <TooltipIconButton
+-          tooltip={theme === "dark" ? "切换到浅色" : "切换到深色"}
+-          onClick={toggleTheme}
+-        >
+-          {theme === "dark" ? <Sun /> : <Moon />}
+-        </TooltipIconButton>
++        {MOTE_MODE ? (
++          // 和视频、图片同一个网站:一个入口回工作台;主题在工作台设置里统一切换
++          <TooltipIconButton tooltip="视频 · 图片工作台" onClick={() => window.location.assign(MOTE_HOME)}>
++            <Clapperboard />
++          </TooltipIconButton>
++        ) : (
++          <>
++            <TooltipIconButton
++              tooltip="返回首页"
++              onClick={() => window.location.assign(HOME_URL)}
++            >
++              <Home />
++            </TooltipIconButton>
++            <TooltipIconButton
++              tooltip="生图工作台"
++              onClick={() => window.location.assign(getImageWorkspaceOrigin())}
++            >
++              <ImageIcon />
++            </TooltipIconButton>
++            <TooltipIconButton
++              tooltip="视频工作台"
++              onClick={() => window.location.assign(VIDEO_WORKSPACE_URL)}
++            >
++              <Clapperboard />
++            </TooltipIconButton>
++            <TooltipIconButton
++              tooltip={theme === "dark" ? "切换到浅色" : "切换到深色"}
++              onClick={toggleTheme}
++            >
++              {theme === "dark" ? <Sun /> : <Moon />}
++            </TooltipIconButton>
++          </>
++        )}
+         <PluginConfigDialog />
+         <McpConfigDialog />
+         <ConnectionSettingsDialog
+diff --git a/chat-workspace/components/workspace-sidebar.tsx b/chat-workspace/components/workspace-sidebar.tsx
+index 5dc07a0..8e2b493 100644
+--- a/chat-workspace/components/workspace-sidebar.tsx
++++ b/chat-workspace/components/workspace-sidebar.tsx
+@@ -1,13 +1,14 @@
+ "use client";
+ 
+ import { useRef, useState, type MouseEvent } from "react";
+-import { Download, FileUp, MessageSquare, Trash2, X } from "lucide-react";
++import { Clapperboard, Download, FileUp, MessageSquare, Trash2, X } from "lucide-react";
+ import {
+   ThreadListItems,
+   ThreadListNew,
+   ThreadListRoot,
+ } from "@/components/assistant-ui/thread-list";
+-import { clearChatHistory, exportChatBackup, importChatBackup } from "@/lib/indexed-db-storage";
++import { clearAllChatHistory, exportChatHistory, importChatHistory } from "@/lib/chat-storage";
++import { MOTE_HOME, MOTE_MODE } from "@/lib/mote";
+ import { cn } from "@/lib/utils";
+ import { HOME_URL } from "@/lib/home";
+ 
+@@ -18,7 +19,7 @@ function HistoryTools() {
+   const exportHistory = async () => {
+     setBusy(true);
+     try {
+-      const json = await exportChatBackup();
++      const json = await exportChatHistory();
+       const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+       const anchor = document.createElement("a");
+       anchor.href = url;
+@@ -33,7 +34,8 @@ function HistoryTools() {
+   const importHistory = async (file: File) => {
+     setBusy(true);
+     try {
+-      await importChatBackup(await file.text());
++      if (MOTE_MODE && !window.confirm("导入会替换当前账号里的全部聊天记录，确定继续吗？")) return;
++      await importChatHistory(await file.text());
+       location.reload();
+     } catch (error) {
+       window.alert(error instanceof Error ? error.message : "导入失败");
+@@ -43,10 +45,16 @@ function HistoryTools() {
+   };
+ 
+   const clearHistory = async () => {
+-    if (!window.confirm("确定清空此浏览器中的全部聊天记录吗？此操作无法撤销。")) return;
++    const scope = MOTE_MODE ? "当前账号" : "此浏览器";
++    if (!window.confirm(`确定清空${scope}中的全部聊天记录吗？此操作无法撤销。`)) return;
+     setBusy(true);
+-    await clearChatHistory();
+-    location.reload();
++    try {
++      await clearAllChatHistory();
++      location.reload();
++    } catch (error) {
++      window.alert(error instanceof Error ? error.message : "清空失败");
++      setBusy(false);
++    }
+   };
+ 
+   return (
+@@ -110,11 +118,12 @@ export function WorkspaceSidebar({ open, onClose, collapsed }: WorkspaceSidebarP
+       >
+         <div className="flex h-12 shrink-0 items-center justify-between px-2">
+           <a
+-            href={HOME_URL}
++            href={MOTE_MODE ? MOTE_HOME : HOME_URL}
+             className="flex min-w-0 items-center gap-2 overflow-hidden px-2 text-sm font-medium"
++            title={MOTE_MODE ? "回到视频 · 图片工作台" : undefined}
+           >
+             <MessageSquare className="size-5 shrink-0" strokeWidth={2.15} />
+-            <span className="whitespace-nowrap text-foreground/90">SUB2 聊天</span>
++            <span className="whitespace-nowrap text-foreground/90">{MOTE_MODE ? "Mote 对话" : "SUB2 聊天"}</span>
+           </a>
+           <button
+             className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted md:hidden"
+@@ -163,6 +172,11 @@ export function WorkspaceSidebar({ open, onClose, collapsed }: WorkspaceSidebarP
+             collapsed && "md:pointer-events-none md:opacity-0",
+           )}
+         >
++          {MOTE_MODE && (
++            <a href={MOTE_HOME} className="history-tool mx-2 mt-1 flex justify-start gap-2 px-2.5">
++              <Clapperboard /> 视频 · 图片工作台
++            </a>
++          )}
+           <HistoryTools />
+         </div>
+       </aside>
+diff --git a/chat-workspace/docker-compose.yml b/chat-workspace/docker-compose.yml
+index 5462618..fc31219 100644
+--- a/chat-workspace/docker-compose.yml
++++ b/chat-workspace/docker-compose.yml
+@@ -1,8 +1,11 @@
+ services:
++  # 旧站 chat.tangzhi.org:记录存在浏览器里,页面顶部提示搬到工作台
+   chat:
+     build:
+       context: .
+       dockerfile: Dockerfile
++      args:
++        NEXT_PUBLIC_MIGRATE_URL: https://vip.tangzhi.org/chat
+     container_name: sub2image-chat
+     restart: unless-stopped
+     ports:
+@@ -10,3 +13,20 @@ services:
+     init: true
+     security_opt:
+       - no-new-privileges:true
++
++  # 工作台里的对话 vip.tangzhi.org/chat:共用工作台的 Key 和主题,记录存工作台服务器
++  chat-mote:
++    build:
++      context: .
++      dockerfile: Dockerfile
++      args:
++        NEXT_PUBLIC_CHAT_MODE: mote
++        NEXT_PUBLIC_BASE_PATH: /chat
++    image: chat-workspace-chat-mote
++    container_name: mote-chat
++    restart: unless-stopped
++    ports:
++      - "127.0.0.1:13003:3000"
++    init: true
++    security_opt:
++      - no-new-privileges:true
+diff --git a/chat-workspace/lib/chat-storage.ts b/chat-workspace/lib/chat-storage.ts
+new file mode 100644
+index 0000000..06bab4c
+--- /dev/null
++++ b/chat-workspace/lib/chat-storage.ts
+@@ -0,0 +1,77 @@
++import type { AsyncStorageLike } from "@assistant-ui/core/react";
++import {
++  clearChatHistory,
++  exportChatBackup,
++  importChatBackup,
++  indexedDbStorage,
++} from "@/lib/indexed-db-storage";
++import { MOTE_MODE, moteHeaders } from "@/lib/mote";
++
++/**
++ * 聊天记录存哪里:
++ * - 独立部署:浏览器 IndexedDB(原有行为);
++ * - 工作台模式:工作台服务器的 /api/chat-store(按中转站账号隔离,换设备也在)。
++ * 两种存储的导出文件格式相同,旧站导出的备份可以直接导入工作台。
++ */
++const STORE_API = "/api/chat-store";
++const BACKUP_FORMAT = "sub2image-chat-backup";
++
++type BackupEntry = { key: string; value: string };
++
++async function call<T>(input: string, init: RequestInit = {}): Promise<T> {
++  const response = await fetch(input, {
++    ...init,
++    headers: { ...moteHeaders(), ...(init.body ? { "Content-Type": "application/json" } : {}), ...init.headers },
++  });
++  const data = await response.json().catch(() => ({}));
++  if (!response.ok) {
++    const message = (data as { error?: string }).error;
++    throw new Error(response.status === 401 ? "请先在工作台「设置」里填写 API Key" : message || "聊天记录读写失败");
++  }
++  return data as T;
++}
++
++const moteStorage: AsyncStorageLike = {
++  async getItem(key) {
++    const data = await call<{ value: string | null }>(`${STORE_API}?key=${encodeURIComponent(key)}`);
++    return typeof data.value === "string" ? data.value : null;
++  },
++  async setItem(key, value) {
++    await call(STORE_API, { method: "PUT", body: JSON.stringify({ key, value }) });
++  },
++  async removeItem(key) {
++    await call(`${STORE_API}?key=${encodeURIComponent(key)}`, { method: "DELETE" });
++  },
++};
++
++export const chatStorage: AsyncStorageLike = MOTE_MODE ? moteStorage : indexedDbStorage;
++
++export async function exportChatHistory(): Promise<string> {
++  if (!MOTE_MODE) return exportChatBackup();
++  const { entries } = await call<{ entries: BackupEntry[] }>(`${STORE_API}?all=1`);
++  return JSON.stringify(
++    { format: BACKUP_FORMAT, version: 1, exportedAt: new Date().toISOString(), entries },
++    null,
++    2,
++  );
++}
++
++/** 导入备份:替换当前全部聊天记录(与原来的行为一致) */
++export async function importChatHistory(raw: string): Promise<void> {
++  if (!MOTE_MODE) return importChatBackup(raw);
++  let parsed: { format?: unknown; version?: unknown; entries?: unknown };
++  try {
++    parsed = JSON.parse(raw);
++  } catch {
++    throw new Error("备份文件格式不正确");
++  }
++  if (parsed.format !== BACKUP_FORMAT || parsed.version !== 1 || !Array.isArray(parsed.entries)) {
++    throw new Error("备份文件格式不正确");
++  }
++  await call(STORE_API, { method: "POST", body: JSON.stringify({ entries: parsed.entries }) });
++}
++
++export async function clearAllChatHistory(): Promise<void> {
++  if (!MOTE_MODE) return clearChatHistory();
++  await call(`${STORE_API}?all=1`, { method: "DELETE" });
++}
+diff --git a/chat-workspace/lib/mote.ts b/chat-workspace/lib/mote.ts
+new file mode 100644
+index 0000000..28d1e62
+--- /dev/null
++++ b/chat-workspace/lib/mote.ts
+@@ -0,0 +1,84 @@
++/**
++ * 「工作台模式」:聊天挂在 Mote 视频 / 图片工作台的同一域名下(vip.tangzhi.org/chat)。
++ * - API Key、自定义中转站地址、主题都沿用工作台在本域名下保存的设置,不用再填一次;
++ * - 聊天记录存到工作台服务器(按中转站账号隔离),换设备也在;
++ * - 「生图」直接跳回工作台,用工作台的生图模型出图。
++ * 构建期由 NEXT_PUBLIC_CHAT_MODE=mote、NEXT_PUBLIC_BASE_PATH=/chat 打开。
++ */
++export const MOTE_MODE = process.env.NEXT_PUBLIC_CHAT_MODE === "mote";
++
++/** Next.js basePath:页面路由会自动加,手写的 fetch 地址要自己加 */
++export const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
++export const withBasePath = (path: string) => `${BASE_PATH}${path}`;
++
++/** 旧站(独立域名)上提示用户搬家的新地址;为空则不提示 */
++export const MIGRATE_URL = process.env.NEXT_PUBLIC_MIGRATE_URL?.trim() || "";
++
++const MOTE_KEY = "mote.tangzhi.apiKey";
++const MOTE_BASE = "mote.tangzhi.baseUrl";
++export const MOTE_THEME_KEY = "mote-theme";
++/** 工作台改了 Key 时在同一标签页内广播的事件 */
++const MOTE_KEY_EVENT = "mote-api-key-change";
++
++const read = (name: string) => {
++  try {
++    return window.localStorage.getItem(name)?.trim() || "";
++  } catch {
++    return "";
++  }
++};
++
++export const moteApiKey = () => read(MOTE_KEY);
++/** 工作台里的自定义中转站地址;空 = 默认中转站 */
++export const moteRelayBase = () => read(MOTE_BASE);
++
++/** 请求工作台接口时带上的身份头(和工作台自己的请求一致) */
++export function moteHeaders(): Record<string, string> {
++  const key = moteApiKey();
++  const base = moteRelayBase();
++  return {
++    ...(key ? { "x-tangzhi-key": key } : {}),
++    ...(base ? { "x-tangzhi-base": base } : {}),
++  };
++}
++
++/** 工作台的 Key / 地址变化(其他标签页改了设置)时回调 */
++export function onMoteSettingsChange(callback: () => void) {
++  const onStorage = (event: StorageEvent) => {
++    if (event.key === MOTE_KEY || event.key === MOTE_BASE) callback();
++  };
++  window.addEventListener("storage", onStorage);
++  window.addEventListener(MOTE_KEY_EVENT, callback);
++  return () => {
++    window.removeEventListener("storage", onStorage);
++    window.removeEventListener(MOTE_KEY_EVENT, callback);
++  };
++}
++
++/** 工作台首页;带上提示词时打开生图模型并填好输入框(不会自动生成) */
++export const MOTE_HOME = "/";
++export const MOTE_SETTINGS = "/settings";
++export const moteComposeUrl = (prompt: string, kind: "image" | "video" = "image") =>
++  `/?compose=${encodeURIComponent(prompt)}&kind=${kind}`;
++
++/** 与工作台 lib/themes.ts 保持一致 */
++const MOTE_THEMES = ["paper", "celadon", "mist", "graphite", "midnight"];
++const DARK_THEMES = new Set(["graphite", "midnight"]);
++
++/** 首帧前执行:读取工作台主题,设置 data-mote-theme 和 .dark */
++export const moteThemeScript = `(function(){try{var ids=${JSON.stringify(MOTE_THEMES)};var dark=${JSON.stringify([...DARK_THEMES])};var m=localStorage.getItem("${MOTE_THEME_KEY}");if(m!=="system"&&ids.indexOf(m)<0)m="system";var t=m==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"graphite":"paper"):m;var r=document.documentElement;r.dataset.moteTheme=t;r.classList.toggle("dark",dark.indexOf(t)>=0);}catch(e){}})();`;
++
++export function applyMoteTheme() {
++  try {
++    let mode = window.localStorage.getItem(MOTE_THEME_KEY) || "system";
++    if (mode !== "system" && !MOTE_THEMES.includes(mode)) mode = "system";
++    const theme = mode === "system"
++      ? window.matchMedia("(prefers-color-scheme: dark)").matches ? "graphite" : "paper"
++      : mode;
++    const root = document.documentElement;
++    root.dataset.moteTheme = theme;
++    root.classList.toggle("dark", DARK_THEMES.has(theme));
++  } catch {
++    /* 隐私模式等读不到设置时沿用默认 */
++  }
++}
+diff --git a/chat-workspace/lib/thread-adapter.tsx b/chat-workspace/lib/thread-adapter.tsx
+index b01df1d..f814272 100644
+--- a/chat-workspace/lib/thread-adapter.tsx
++++ b/chat-workspace/lib/thread-adapter.tsx
+@@ -14,7 +14,7 @@ import type {
+   MessageFormatRepository,
+   ThreadHistoryAdapter,
+ } from "@assistant-ui/core";
+-import { indexedDbStorage } from "@/lib/indexed-db-storage";
++import { chatStorage } from "@/lib/chat-storage";
+ 
+ const PREFIX = "sub2chat:";
+ const mutationTails = new Map<string, Promise<void>>();
+@@ -73,14 +73,14 @@ function IndexedDbHistoryProvider({ children }: { children?: React.ReactNode })
+           async load() {
+             const remoteId = await getRemoteId(false);
+             if (!remoteId) return { messages: [] };
+-            return parseRepository<TMessage>(await indexedDbStorage.getItem(keyFor(remoteId)));
++            return parseRepository<TMessage>(await chatStorage.getItem(keyFor(remoteId)));
+           },
+           async append(item) {
+             const remoteId = await getRemoteId(true);
+             if (!remoteId) return;
+             const key = keyFor(remoteId);
+             await queued(key, async () => {
+-              const repository = parseRepository<TMessage>(await indexedDbStorage.getItem(key));
++              const repository = parseRepository<TMessage>(await chatStorage.getItem(key));
+               const id = formatAdapter.getId(item.message);
+               const index = repository.messages.findIndex(
+                 (stored) => formatAdapter.getId(stored.message) === id,
+@@ -88,7 +88,7 @@ function IndexedDbHistoryProvider({ children }: { children?: React.ReactNode })
+               if (index >= 0) repository.messages[index] = item;
+               else repository.messages.push(item);
+               repository.headId = id;
+-              await indexedDbStorage.setItem(key, JSON.stringify(repository));
++              await chatStorage.setItem(key, JSON.stringify(repository));
+             });
+           },
+           async update(item, localMessageId) {
+@@ -96,14 +96,14 @@ function IndexedDbHistoryProvider({ children }: { children?: React.ReactNode })
+             if (!remoteId) return;
+             const key = keyFor(remoteId);
+             await queued(key, async () => {
+-              const repository = parseRepository<TMessage>(await indexedDbStorage.getItem(key));
++              const repository = parseRepository<TMessage>(await chatStorage.getItem(key));
+               const index = repository.messages.findIndex(
+                 (stored) => formatAdapter.getId(stored.message) === localMessageId,
+               );
+               if (index >= 0) repository.messages[index] = item;
+               else repository.messages.push(item);
+               repository.headId = formatAdapter.getId(item.message);
+-              await indexedDbStorage.setItem(key, JSON.stringify(repository));
++              await chatStorage.setItem(key, JSON.stringify(repository));
+             });
+           },
+           async delete(items: MessageFormatItem<TMessage>[]) {
+@@ -112,14 +112,14 @@ function IndexedDbHistoryProvider({ children }: { children?: React.ReactNode })
+             const key = keyFor(remoteId);
+             const deletedIds = new Set(items.map((item) => formatAdapter.getId(item.message)));
+             await queued(key, async () => {
+-              const repository = parseRepository<TMessage>(await indexedDbStorage.getItem(key));
++              const repository = parseRepository<TMessage>(await chatStorage.getItem(key));
+               repository.messages = repository.messages.filter(
+                 (stored) => !deletedIds.has(formatAdapter.getId(stored.message)),
+               );
+               repository.headId = repository.messages.at(-1)
+                 ? formatAdapter.getId(repository.messages.at(-1)!.message)
+                 : null;
+-              await indexedDbStorage.setItem(key, JSON.stringify(repository));
++              await chatStorage.setItem(key, JSON.stringify(repository));
+             });
+           },
+         };
+@@ -132,7 +132,7 @@ function IndexedDbHistoryProvider({ children }: { children?: React.ReactNode })
+ }
+ 
+ const baseAdapter = createLocalStorageAdapter({
+-  storage: indexedDbStorage,
++  storage: chatStorage,
+   prefix: PREFIX,
+   titleGenerator: createSimpleTitleAdapter(),
+ });
+diff --git a/chat-workspace/next.config.ts b/chat-workspace/next.config.ts
+index 15ef33f..f1dd5d2 100644
+--- a/chat-workspace/next.config.ts
++++ b/chat-workspace/next.config.ts
+@@ -1,7 +1,11 @@
+ import { withAui } from "@assistant-ui/next";
+ import type { NextConfig } from "next";
+ 
++// 挂在工作台域名的子路径下时(如 /chat),构建期传入 NEXT_PUBLIC_BASE_PATH
++const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
++
+ const nextConfig: NextConfig = {
++  ...(basePath ? { basePath } : {}),
+   allowedDevOrigins: ["127.0.0.1"],
+   output: "standalone",
+   poweredByHeader: false,
+-- 
+2.54.0.windows.1
+
