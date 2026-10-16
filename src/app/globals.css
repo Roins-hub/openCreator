@@ -861,7 +861,7 @@ a { color: inherit; text-decoration: none; }
 .docs-section { scroll-margin-top: 88px; padding: 0 0 64px; margin-bottom: 64px; border-bottom: 1px solid var(--line); }
 .docs-last { margin-bottom: 0; border-bottom: 0; }
 .docs-hero { padding-bottom: 58px; }
-.docs-hero h1 { max-width: 680px; margin: 16px 0 18px; font: 500 clamp(42px, 6vw, 68px)/1.04 "Iowan Old Style", "Songti SC", serif; letter-spacing: -.045em; }
+.docs-hero h1 { margin: 16px 0 18px; font: 500 clamp(34px, 4.2vw, 56px)/1.08 "Iowan Old Style", "Songti SC", serif; letter-spacing: -.04em; white-space: nowrap; }
 .docs-hero > p { max-width: 620px; color: var(--muted); font-size: 14px; line-height: 1.85; }
 .docs-quick-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
 .docs-quick-links a { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); font-size: 11px; font-weight: 600; }
@@ -899,7 +899,7 @@ a { color: inherit; text-decoration: none; }
   .docs-content { padding-top: 48px; }
   .docs-section > p, .docs-steps, .docs-note, .docs-code, .docs-parameter-list, .docs-media-grid, .docs-section details { margin-left: 0; }
   .docs-parameter-list, .docs-media-grid { grid-template-columns: 1fr; }
-  .docs-hero h1 { font-size: 43px; }
+  .docs-hero h1 { font-size: 34px; white-space: normal; }
   .docs-brand { display: none; }
 }
 
@@ -1676,7 +1676,7 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
   display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; margin-top: 12px;
 }
 .image-result {
-  position: relative; margin: 0; overflow: hidden; aspect-ratio: var(--shape, 1 / 1);
+  position: relative; margin: 0; overflow: hidden; aspect-ratio: var(--shape, 1 / 1); container-type: inline-size;
   border-radius: 11px; background: var(--hover);
 }
 .image-result-open { display: block; width: 100%; height: 100%; padding: 0; background: transparent; cursor: zoom-in; }
@@ -1688,10 +1688,16 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 }
 .image-result:hover .image-result-actions, .image-result:focus-within .image-result-actions { opacity: 1; transform: none; }
 .image-result-actions button, .image-result-actions a {
-  display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border-radius: 7px;
+  display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border-radius: 7px;
+  white-space: nowrap;
   color: oklch(98% 0 0); background: oklch(15% .01 80 / .72); font-size: 11px; backdrop-filter: blur(6px);
 }
 .image-result-actions a { width: 26px; padding: 0; justify-content: center; }
+/* 图片太窄时按钮只留图标,文字不换行也不挤出去(鼠标移上去有提示) */
+@container (max-width: 230px) {
+  .image-result-actions button { width: 26px; padding: 0; justify-content: center; }
+  .image-result-actions button span { display: none; }
+}
 .image-result-actions button:hover, .image-result-actions a:hover { background: oklch(15% .01 80 / .9); }
 .image-result.is-pending { color: var(--run); background: var(--run-soft); }
 .image-result.is-pending .shimmer {
@@ -1769,3 +1775,16 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 /* 文档:列表、代码块后面接着的说明段落留出间距 */
 .docs-parameter-list + p, .docs-code + p { margin-top: 22px; }
 .docs-parameter-list strong { display: flex; align-items: center; gap: 5px; }
+
+/* 浅色主题下文档页底色再提亮一档,读长文更清爽;深色主题保持原样 */
+:root:not([data-theme="graphite"]):not([data-theme="midnight"]) .docs-page { background: color-mix(in oklch, var(--paper) 35%, white); }
+
+/* 桌面端工具栏保持一行:空间不够时模型名先缩短(省略号),发送按钮不会被挤到下一行 */
+@media (min-width: 701px) {
+  .composer-tools { flex-wrap: nowrap; }
+  .composer-tools > * { flex-shrink: 0; }
+  .composer-tools > .composer-model { flex: 0 1 auto; min-width: 96px; }
+  .composer-model .dropdown-trigger { max-width: 100%; }
+  .composer-tools > .composer-spacer { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .kind-switch button { padding: 0 9px; }
+}

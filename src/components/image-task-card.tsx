@@ -150,8 +150,8 @@ export function ImageTaskCard({
                   <img src={`/api/media/${image.path}`} alt={image.name} loading="lazy" />
                 </button>
                 <figcaption className="image-result-actions">
-                  <button type="button" onClick={() => onMakeVideo(image)} title="用这张图生成视频"><Clapperboard size={13} />做成视频</button>
-                  <button type="button" onClick={() => onUseAsReference(image)} title="作为参考图继续修改"><ImagePlus size={13} />作参考图</button>
+                  <button type="button" onClick={() => onMakeVideo(image)} title="用这张图生成视频"><Clapperboard size={13} /><span>做成视频</span></button>
+                  <button type="button" onClick={() => onUseAsReference(image)} title="作为参考图继续修改"><ImagePlus size={13} /><span>作参考图</span></button>
                   <a href={downloadUrl(image)} download={image.name} title="下载" aria-label="下载"><Download size={13} /></a>
                 </figcaption>
               </figure>

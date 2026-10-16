@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type MouseEvent } from "react";
-import { Clapperboard, Download, FileUp, MessageSquare, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Clapperboard, Download, FileUp, MessageSquare, Trash2, X } from "lucide-react";
 import {
   ThreadListItems,
   ThreadListNew,
@@ -173,8 +173,19 @@ export function WorkspaceSidebar({ open, onClose, collapsed }: WorkspaceSidebarP
           )}
         >
           {MOTE_MODE && (
-            <a href={MOTE_HOME} className="history-tool mx-2 mt-1 flex justify-start gap-2 px-2.5">
-              <Clapperboard /> 视频 · 图片工作台
+            // 回工作台的入口:做成一张带边框的卡片,比底部的小工具按钮醒目
+            <a
+              href={MOTE_HOME}
+              className="group mx-2 mb-1 mt-2 flex items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5 shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-foreground/25 hover:shadow-md"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-foreground text-background">
+                <Clapperboard className="size-[18px]" />
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-[15px] font-semibold text-foreground">视频 · 图片工作台</span>
+                <span className="truncate text-xs text-muted-foreground">去生成图片和视频</span>
+              </span>
+              <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
             </a>
           )}
           <HistoryTools />

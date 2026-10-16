@@ -27,6 +27,8 @@ export const reasoningEffortsForModel = (model: string): readonly ReasoningEffor
   const normalized = model.trim().toLowerCase().split("/").at(-1) ?? "";
 
   if (/^gpt-6-astra(?:-|$)/.test(normalized)) return LOW_TO_MAX;
+  // gpt-6 / gpt-6.1 的 sol、luna:2026-10-16 实测中转站接受 none ~ max 全部六档
+  if (/^gpt-6(?:\.\d+)?-(?:sol|luna)(?:-|$)/.test(normalized)) return REASONING_EFFORTS;
 
   // Only text reasoning models: image/audio and explicitly non-reasoning variants
   // must not acquire unsupported parameters just because their family matches.
