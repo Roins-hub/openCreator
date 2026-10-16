@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { useSlidingIndicator } from "@/components/sliding-indicator";
 import type { ImageOptions, VideoOptions } from "@/lib/types";
 import {
   BACKGROUND_LABEL, IMAGE_BACKGROUNDS, IMAGE_FORMATS, IMAGE_RATIOS, IMAGE_RESOLUTIONS, imageSize, isPresetRatio,
@@ -46,7 +47,9 @@ function Segmented<T extends string | number | boolean>({
   format?: (value: T) => string;
   isDisabled?: (value: T) => boolean;
 }) {
-  return <div className="parameter-segments">
+  const { containerRef, indicator } = useSlidingIndicator<HTMLDivElement>();
+  return <div className="parameter-segments has-slider" ref={containerRef}>
+    {indicator}
     {values.map((item) => {
       const disabled = isDisabled?.(item) ?? false;
       return <button type="button" key={String(item)} disabled={disabled}
@@ -74,6 +77,7 @@ export function VideoControls({
   const [modeOpen, setModeOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [customDuration, setCustomDuration] = useState(false);
+  const { containerRef: ratioSliderRef, indicator: ratioIndicator } = useSlidingIndicator<HTMLDivElement>();
   const close = () => { setModeOpen(false); setOptionsOpen(false); };
   const ref = useDismiss(modeOpen || optionsOpen, close);
   const mode = normalizeReferenceMode(value.referenceMode);
@@ -119,7 +123,8 @@ export function VideoControls({
       </button>
       {optionsOpen && <div className="parameter-popover video-parameter-popover">
         <section><h3>视频比例{value.ratio === "adaptive" && <small>按第一张参考图的比例；没有参考图时按提示词（如「竖屏」「宽银幕」），默认 16:9</small>}</h3>
-          <div className="ratio-grid video-ratios">
+          <div className="ratio-grid video-ratios has-slider" ref={ratioSliderRef}>
+            {ratioIndicator}
             {videoRatios.map((ratio) => {
               const disabled = ratio === "adaptive" ? model.ratios.length < 2 : !model.ratios.includes(ratio);
               return <button type="button" key={ratio} disabled={disabled}
@@ -182,6 +187,7 @@ export function ImageControls({
   const { width, height } = imageSize(value.ratio, value.resolution);
   // 自定义比例:输入框里的草稿,合法时才写回参数
   const [customOpen, setCustomOpen] = useState(false);
+  const { containerRef: ratioSliderRef, indicator: ratioIndicator } = useSlidingIndicator<HTMLDivElement>();
   const current = parseRatio(value.ratio) || [1, 1];
   const [draft, setDraft] = useState<[string, string]>([String(current[0]), String(current[1])]);
   const custom = customOpen || !isPresetRatio(value.ratio);
@@ -203,7 +209,8 @@ export function ImageControls({
       </button>
       {open && <div className="parameter-popover video-parameter-popover image-parameter-popover">
         <section><h3>图片比例<small>按 {width} × {height} 请求，实际尺寸以中转站返回为准</small></h3>
-          <div className="ratio-grid image-ratios">
+          <div className="ratio-grid image-ratios has-slider" ref={ratioSliderRef}>
+            {ratioIndicator}
             {IMAGE_RATIOS.map((ratio) => <button type="button" key={ratio}
               className={value.ratio === ratio && !custom ? "selected" : ""}
               onClick={() => { setCustomOpen(false); onChange({ ...value, ratio }); }}>

@@ -35,6 +35,7 @@ import {
 } from "@/lib/image-models";
 import { LogoMark } from "@/components/logo-mark";
 import { Dropdown } from "@/components/dropdown";
+import { useSlidingIndicator } from "@/components/sliding-indicator";
 import { PromptLibrary, type CustomPromptInput, type PromptUseMode } from "@/components/prompt-library";
 import { fitDuration, type PromptTemplate } from "@/lib/prompt-library";
 import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-layout";
@@ -144,6 +145,7 @@ export function AppShell() {
   // 自定义中转站的域名;空 = 内置中转站
   const [relayHost, setRelayHost] = useState("");
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const { containerRef: kindSliderRef, indicator: kindIndicator } = useSlidingIndicator<HTMLDivElement>();
   const [optimizing, setOptimizing] = useState(false);
   // 优化前的输入框内容,可以一键撤销
   const [beforeOptimize, setBeforeOptimize] = useState<{ html: string; draft: string }>();
@@ -1014,7 +1016,7 @@ export function AppShell() {
 
         <div className="conversation" ref={conversationRef}>
           {!active?.messages.length ? (
-            <div className="empty-state">
+            <div className="empty-state" key={active?.id || "new"}>
               <LogoMark size={44} className="empty-mark" />
               <h1>今天，想创造什么？</h1>
               {apiKey
@@ -1027,7 +1029,8 @@ export function AppShell() {
               )}
             </div>
           ) : (
-            <div className="message-list">
+            // 换对话时整列重新挂载,带一次淡入
+            <div className="message-list" key={active.id}>
               {(() => {
                 let lastDate = "";
                 return buildTurns(active.messages, isGenerationTurn).map((turn) => {
@@ -1143,6 +1146,15 @@ export function AppShell() {
                   {attachments.length > 1 && <span className="stack-count">{attachments.length}</span>}
                 </div>
               )}
+              {attachments.length === 0 && modeKinds.length > 0 && (
+                <button type="button" className="reference-tile" onClick={() => fileRef.current?.click()}
+                  title={`上传${modeKinds.map((kind) => MEDIA_KIND_LABEL[kind]).join(" / ")}，也可以直接拖进来或粘贴`}
+                  aria-label={`添加${referenceTileLabel(mode, modeKinds)}`}>
+                  <Plus size={18} strokeWidth={1.8} />
+                  <span>{referenceTileLabel(mode, modeKinds)}</span>
+                  <small>{modeKinds.map((kind) => MEDIA_KIND_SHORT[kind]).join("/")}</small>
+                </button>
+              )}
               <div ref={editorRef} className="composer-editor" contentEditable suppressContentEditableWarning role="textbox" aria-label="提示词"
                 data-placeholder={imageModel
                   ? attachments.length ? "描述想怎样修改或组合这些图片，输入 @ 引用参考图…" : "描述你想要的画面、风格和构图；添加参考图可按图修改"
@@ -1174,14 +1186,6 @@ export function AppShell() {
                   void upload(event.target.files ? [...event.target.files] : []);
                   event.target.value = "";
                 }} />
-              <button className="icon-button" onClick={() => fileRef.current?.click()}
-                disabled={uploadLimit === 0}
-                title={uploadLimit === 0
-                  ? (mode === "first_last" ? "首尾帧最多两张图片" : "已达到当前模型的素材上限")
-                  : `添加${allowedKinds.map((kind) => MEDIA_KIND_LABEL[kind]).join(" / ")}`}
-                aria-label="添加素材">
-                <ImagePlus size={18} />
-              </button>
               <button className={`icon-button reference-trigger ${referencePickerOpen ? "active" : ""}`} onClick={() => {
                 captureReferenceAnchor();
                 void openReferencePicker();
@@ -1208,7 +1212,9 @@ export function AppShell() {
                   <Undo2 size={13} />撤销优化
                 </button>
               )}
-              {models.length > 0 && <div className="kind-switch" role="radiogroup" aria-label="生成类型">
+              {models.length > 0 && <div className="kind-switch has-slider" role="radiogroup" aria-label="生成类型"
+                ref={kindSliderRef}>
+                {kindIndicator}
                 {([["image", "图片", ImageIcon], ["video", "视频", Clapperboard]] as const).map(([kind, label, Icon]) => (
                   <button type="button" key={kind} role="radio" aria-checked={selected?.type === kind}
                     className={selected?.type === kind ? "selected" : ""}
@@ -1283,6 +1289,14 @@ export function AppShell() {
 function stackTilt(index: number) {
   if (index === 0) return -3;
   return (index % 2 ? 1 : -1) * Math.min(6 + index * 3, 14);
+}
+
+const MEDIA_KIND_SHORT: Record<MediaKind, string> = { image: "图片", video: "视频", audio: "音频" };
+
+/** 输入框左边上传卡片的名字:首尾帧、参考图(只收图片)或参考内容(还收视频 / 音频) */
+function referenceTileLabel(mode: string, kinds: readonly MediaKind[]) {
+  if (mode === "first_last") return "首尾帧";
+  return kinds.some((kind) => kind !== "image") ? "参考内容" : "参考图";
 }
 
 function attachmentSummary(mode: string, attachments: readonly Pick<MediaRef, "kind">[]) {

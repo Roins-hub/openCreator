@@ -77,6 +77,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 button, input, textarea, select { font: inherit; color: inherit; }
+/* 全站默认过渡:悬停、选中、禁用这些状态变化都渐变,不再生硬跳变(组件自己写了 transition 的以组件为准) */
+button, a, input, textarea, select, [role="option"], [role="tab"] {
+  transition: color .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .2s ease, opacity .18s ease;
+}
 button, select { cursor: pointer; }
 button { border: 0; }
 a { color: inherit; text-decoration: none; }
@@ -590,7 +594,7 @@ a { color: inherit; text-decoration: none; }
   color: var(--ink); border-color: var(--line); background: var(--paper);
   box-shadow: 0 1px 3px oklch(20% .02 80 / .05);
 }
-.ratio-grid b { font-size: 10px; font-weight: 600; }
+.ratio-grid b { font-size: 11px; font-weight: 700; }
 .ratio-shape {
   display: block; width: 16px; height: 12px; border: 1.5px solid currentColor; border-radius: 3px;
 }
@@ -613,7 +617,7 @@ a { color: inherit; text-decoration: none; }
 .parameter-segments { display: flex; gap: 3px; padding: 4px; border-radius: 10px; background: var(--warm); }
 .parameter-segments button {
   min-width: 0; flex: 1; height: 34px; padding: 0 5px; border: 1px solid transparent;
-  border-radius: 7px; color: var(--muted); background: transparent; font-size: 11px;
+  border-radius: 7px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 600;
 }
 .parameter-segments button.selected {
   color: var(--ink); border-color: var(--line); background: var(--paper);
@@ -1214,6 +1218,19 @@ body { transition: background-color .2s ease, color .2s ease; }
 .stack-add:hover { color: var(--ink); border-color: var(--focus); }
 .stack-clear { border-style: solid; border-color: var(--line); }
 .stack-clear:hover { color: var(--danger); border-color: currentColor; }
+/* 还没有素材时输入框左边的上传卡片(微微倾斜,悬停摆正) */
+.reference-tile {
+  flex: 0 0 auto; width: 78px; height: 80px; margin: 2px 2px 8px 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0 4px;
+  border: 1px dashed var(--line-strong); border-radius: 11px; color: var(--muted); background: var(--warm);
+  transform: rotate(-5deg); transition: transform .22s cubic-bezier(.16, 1, .3, 1), color .16s, border-color .16s, background .16s, box-shadow .2s;
+}
+.reference-tile span { font-size: 11px; font-weight: 700; line-height: 1.2; }
+.reference-tile small { max-width: 100%; color: var(--faint); font-size: 9px; line-height: 1.3; text-align: center; }
+.reference-tile:hover, .reference-tile:focus-visible {
+  color: var(--ink); border-color: var(--focus); background: var(--paper);
+  transform: rotate(0) translateY(-2px); box-shadow: 0 8px 20px oklch(20% .02 80 / .12);
+}
 /* 清空提示词:输入框右上角的小 × */
 .composer-clear {
   flex: 0 0 auto; width: 28px; height: 28px; display: grid; place-items: center; margin: 2px -4px 0 -8px;
@@ -1719,3 +1736,36 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .kind-switch button:hover:not(:disabled) { color: var(--ink); }
 .kind-switch button.selected { color: var(--ink); background: var(--paper); box-shadow: 0 1px 3px oklch(20% .02 80 / .08); }
 .kind-switch button:disabled { opacity: .4; }
+
+/* ---------- 过渡动画 ---------- */
+/* 分段按钮的选中块:一块底色滑到选中的按钮下面(见 sliding-indicator.tsx) */
+.has-slider { position: relative; isolation: isolate; }
+.has-slider > :not(.slide-indicator) { position: relative; z-index: 1; }
+.has-slider > .selected { border-color: transparent !important; background: transparent !important; box-shadow: none !important; }
+.slide-indicator {
+  position: absolute; z-index: 0; left: 0; top: 0; width: 0; height: 0; opacity: 0; pointer-events: none;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--paper);
+  box-shadow: 0 1px 3px oklch(20% .02 80 / .08);
+}
+.slide-indicator[data-ready] {
+  transition: transform .3s cubic-bezier(.16, 1, .3, 1), width .3s cubic-bezier(.16, 1, .3, 1),
+    height .3s cubic-bezier(.16, 1, .3, 1), opacity .18s ease;
+}
+.parameter-segments .slide-indicator { border-radius: 7px; }
+.kind-switch .slide-indicator { border-color: transparent; }
+/* 文字加粗、加深,在浅色底上看得清 */
+.kind-switch button { font-weight: 700; color: var(--muted); }
+.kind-switch button.selected { color: var(--ink); }
+.ratio-grid button { color: var(--muted); }
+.ratio-grid button.selected, .parameter-segments button.selected { color: var(--ink); }
+.parameter-popover h3 { color: var(--ink); font-weight: 700; }
+.parameter-trigger span { font-weight: 700; }
+/* 换对话、空白页出现时淡入;任务卡片、提示词卡片出现时轻微上浮 */
+.message-list, .empty-state { animation: fade-in .28s ease backwards; }
+.task-card, .prompt-card { animation: rise-in .32s cubic-bezier(.16, 1, .3, 1) backwards; }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(6px); } }
+.prompt-card.is-placeholder, .prompt-card.is-lifted { animation: none; }
+/* 文档:列表、代码块后面接着的说明段落留出间距 */
+.docs-parameter-list + p, .docs-code + p { margin-top: 22px; }
+.docs-parameter-list strong { display: flex; align-items: center; gap: 5px; }
