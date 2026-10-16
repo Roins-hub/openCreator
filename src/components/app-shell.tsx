@@ -19,7 +19,7 @@ import { NETWORK_ERROR, readableError } from "@/lib/network-error";
 import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey, readAssistModel, readRelayBase } from "@/lib/api-key";
 import {
   countMedia, durationSummary, effectiveReferenceMode, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
-  TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError, type MediaKind, type VideoModel,
+  smartVideoRatio, TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError, type MediaKind, type VideoModel,
 } from "@/lib/tangzhi";
 import { unfinishedTaskIds } from "@/lib/generation-stop";
 import { keepLocalMessages, patchMessage } from "@/lib/conversation-merge";
@@ -31,12 +31,13 @@ import {
 import { VideoTaskCard } from "@/components/video-task-card";
 import { ImageTaskCard } from "@/components/image-task-card";
 import {
-  fitImageOptions, IMAGE_RATIOS, imageDefaults, imageRequestError, tierPrice, yuan, type ImageModel, type ImageRatio,
+  fitImageOptions, imageDefaults, imageRequestError, parseRatio, tierPrice, yuan, type ImageModel,
 } from "@/lib/image-models";
 import { LogoMark } from "@/components/logo-mark";
 import { Dropdown } from "@/components/dropdown";
 import { PromptLibrary, type CustomPromptInput, type PromptUseMode } from "@/components/prompt-library";
 import { fitDuration, type PromptTemplate } from "@/lib/prompt-library";
+import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-layout";
 import { MediaThumb } from "@/components/media-thumb";
 
 type PickerAsset = { id: string; kind: MediaKind; path: string; name: string; mimeType: string };
@@ -50,7 +51,20 @@ const toMediaRef = (item: ComposerAttachment): MediaRef => ({
   ...(item.mimeType ? { mimeType: item.mimeType } : {}),
   ...(item.dataUrl ? { dataUrl: item.dataUrl } : {}),
 });
+/** 每一类(图片 / 视频)上次选的模型,切换类型时回到它 */
+const LAST_MODEL_KEY = "mote.lastModel";
 const attachmentSrc = (item: ComposerAttachment) => item.previewUrl || `/api/media/${item.path}`;
+
+/** 读一张图片的宽高(「智能」视频比例用);读不到或超过 5 秒就不用它 */
+function imageDimensions(src: string) {
+  return new Promise<{ width: number; height: number } | undefined>((resolve) => {
+    const image = new Image();
+    const timer = window.setTimeout(() => resolve(undefined), 5000);
+    image.onload = () => { clearTimeout(timer); resolve({ width: image.naturalWidth, height: image.naturalHeight }); };
+    image.onerror = () => { clearTimeout(timer); resolve(undefined); };
+    image.src = src;
+  });
+}
 const revokePreview = (item: ComposerAttachment) => {
   if (item.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
 };
@@ -124,6 +138,8 @@ export function AppShell() {
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [customPrompts, setCustomPrompts] = useState<PromptTemplate[]>([]);
+  const [promptLayout, setPromptLayout] = useState<PromptLayout>(emptyPromptLayout);
+  const promptLayoutTimer = useRef<number | undefined>(undefined);
   const [groups, setGroups] = useState<ConversationGroup[]>([]);
   // 自定义中转站的域名;空 = 内置中转站
   const [relayHost, setRelayHost] = useState("");
@@ -182,20 +198,23 @@ export function AppShell() {
       setConversations([]);
       setFavorites(new Set());
       setCustomPrompts([]);
+      setPromptLayout(emptyPromptLayout());
       setGroups([]);
       setActiveId(undefined);
       await openSession("");
       return;
     }
     await openSession(key);
-    const [nextConversations, nextFavorites, nextPrompts, nextGroups] = await Promise.all([
+    const [nextConversations, nextFavorites, nextPrompts, nextGroups, nextLayout] = await Promise.all([
       request<Conversation[]>("/api/conversations"),
       request<string[]>("/api/favorites").catch(() => []),
       request<PromptTemplate[]>("/api/prompts").catch(() => []),
       request<ConversationGroup[]>("/api/groups").catch(() => []),
+      request<PromptLayout>("/api/prompt-library").catch(() => emptyPromptLayout()),
     ]);
     setFavorites(new Set(nextFavorites));
     setCustomPrompts(nextPrompts);
+    setPromptLayout(nextLayout);
     setGroups(nextGroups);
     setConversations(nextConversations);
     if (nextConversations.length) {
@@ -460,6 +479,7 @@ export function AppShell() {
   const chooseModel = async (modelId: string) => {
     const model = models.find((item) => item.id === modelId);
     if (!model) return;
+    try { window.localStorage.setItem(`${LAST_MODEL_KEY}.${model.type}`, model.id); } catch { /* 只影响下次默认选哪个 */ }
     if (!active) {
       const conversation = freshConversation(model);
       await persist(conversation);
@@ -470,6 +490,19 @@ export function AppShell() {
     const updated = { ...withModel(active, model), updatedAt: new Date().toISOString() };
     setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));
     void persist(updated).catch((cause) => setError(cause.message));
+  };
+
+  /** 切换「图片 / 视频」:回到这一类上次用的模型,没有就用这个对话里最近用过的,再没有就用默认的 */
+  const switchKind = (kind: "image" | "video") => {
+    if (selected?.type === kind) return;
+    const pool: CatalogModel[] = kind === "image" ? imageModels : videoModels;
+    let saved: string | null = null;
+    try { saved = window.localStorage.getItem(`${LAST_MODEL_KEY}.${kind}`); } catch { /* 用默认 */ }
+    const recent = active && [...active.messages].reverse().find((message) => message.generation?.type === kind)?.generation?.modelId;
+    const model = pool.find((item) => item.id === saved) || pool.find((item) => item.id === recent)
+      || (kind === "video" ? videoModels.find((item) => item.ratios.length > 1) : undefined) || pool[0];
+    if (!model) { setError(kind === "image" ? "中转站暂无可用的生图模型" : "中转站暂无可用的视频模型"); return; }
+    void chooseModel(model.id);
   };
 
   const changeGenerationOptions = (options: { videoOptions?: VideoOptions; imageOptions?: ImageOptions }) => {
@@ -560,6 +593,11 @@ export function AppShell() {
       const options: VideoOptions = {
         ...fitted, referenceMode: effectiveReferenceMode(fitted.referenceMode, usedAttachments.length),
       };
+      // 「智能」比例:按第一张参考图或提示词换成具体比例,记录和请求里都是换算后的比例
+      if (options.ratio === "adaptive") {
+        const image = usedAttachments.find((item) => item.kind === "image");
+        options.ratio = smartVideoRatio(model.ratios, prompt, image ? await imageDimensions(`/api/media/${image.path}`) : undefined);
+      }
       invalid = videoRequestError(model, prompt, options, usedAttachments);
       generation = { type: "video", providerName: TANGZHI_PROVIDER_NAME, modelName: model.id, modelId: model.id, videoOptions: options };
     }
@@ -816,16 +854,36 @@ export function AppShell() {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
     });
     setCustomPrompts((items) => [saved, ...items.filter((item) => item.id !== saved.id)]);
+    return saved;
   };
 
-  const deleteCustomPrompt = async (id: string) => {
+  const deleteCustomPrompts = async (ids: string[]) => {
+    if (!ids.length) return;
     try {
-      await request(`/api/prompts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-      setCustomPrompts((items) => items.filter((item) => item.id !== id));
+      await request(`/api/prompts?${ids.map((id) => `id=${encodeURIComponent(id)}`).join("&")}`, { method: "DELETE" });
+      setCustomPrompts((items) => items.filter((item) => !ids.includes(item.id)));
     } catch (cause) { setError((cause as Error).message); }
   };
 
+  /** 分组、排序、隐藏等布局改动立即生效,停手 400ms 后再保存 */
+  const changePromptLayout = (next: PromptLayout) => {
+    setPromptLayout(next);
+    window.clearTimeout(promptLayoutTimer.current);
+    if (!apiKey) return;
+    promptLayoutTimer.current = window.setTimeout(() => {
+      void request("/api/prompt-library", {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next),
+      }).catch((cause) => setError(`提示词库布局保存失败：${(cause as Error).message}`));
+    }, 400);
+  };
+
   const applyPromptTemplate = (template: PromptTemplate, mode: PromptUseMode, applyParams: boolean) => {
+    setPromptLayout((layout) => recordUsage(layout, template.id));
+    if (apiKey) {
+      void request("/api/prompt-library", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ use: template.id }),
+      }).catch(() => undefined);
+    }
     const editor = editorRef.current;
     if (editor) {
       const hasContent = Boolean(editor.textContent?.trim() || editor.querySelector(`.${REFERENCE_CARD_CLASS}`));
@@ -841,8 +899,8 @@ export function AppShell() {
       selection?.removeAllRanges();
       selection?.addRange(range);
     }
-    if (applyParams && imageModel && template.ratio && IMAGE_RATIOS.includes(template.ratio as ImageRatio)) {
-      changeGenerationOptions({ imageOptions: { ...imageOptions, ratio: template.ratio as ImageRatio } });
+    if (applyParams && imageModel && template.ratio && parseRatio(template.ratio)) {
+      changeGenerationOptions({ imageOptions: { ...imageOptions, ratio: template.ratio } });
     }
     if (applyParams && videoModel) {
       const selected = videoModel;
@@ -1054,7 +1112,8 @@ export function AppShell() {
           )}
           <PromptLibrary open={libraryOpen} onClose={closeLibrary} onUse={applyPromptTemplate}
             customPrompts={customPrompts} currentPrompt={draft}
-            onSaveCustom={saveCustomPrompt} onDeleteCustom={deleteCustomPrompt} />
+            onSaveCustom={saveCustomPrompt} onDeleteCustom={deleteCustomPrompts}
+            layout={promptLayout} onLayoutChange={changePromptLayout} />
           {error && <div className="inline-error">{readableError(error)}<button onClick={() => setError("")}><X size={13} /></button></div>}
           <div className="composer" ref={composerRef}>
             <div className="composer-body">
@@ -1087,8 +1146,8 @@ export function AppShell() {
               <div ref={editorRef} className="composer-editor" contentEditable suppressContentEditableWarning role="textbox" aria-label="提示词"
                 data-placeholder={imageModel
                   ? attachments.length ? "描述想怎样修改或组合这些图片，输入 @ 引用参考图…" : "描述你想要的画面、风格和构图；添加参考图可按图修改"
-                  : attachments.length ? "描述画面、运动和镜头，输入 @ 引用素材（至少 10 个字）…" :
-                    "描述画面、运动、镜头和氛围（至少 10 个字）；添加素材可按参考图或首尾帧生成"}
+                  : attachments.length ? "描述画面、运动和镜头，输入 @ 引用素材…" :
+                    "描述画面、运动、镜头和氛围；添加素材可按参考图或首尾帧生成"}
                 onPaste={pastedImages}
                 onKeyDown={(event) => {
                   if (event.key === "@" && !event.ctrlKey && !event.metaKey) {
@@ -1149,17 +1208,25 @@ export function AppShell() {
                   <Undo2 size={13} />撤销优化
                 </button>
               )}
+              {models.length > 0 && <div className="kind-switch" role="radiogroup" aria-label="生成类型">
+                {([["image", "图片", ImageIcon], ["video", "视频", Clapperboard]] as const).map(([kind, label, Icon]) => (
+                  <button type="button" key={kind} role="radio" aria-checked={selected?.type === kind}
+                    className={selected?.type === kind ? "selected" : ""}
+                    disabled={!(kind === "image" ? imageModels : videoModels).length}
+                    onClick={() => switchKind(kind)}><Icon size={13} />{label}</button>
+                ))}
+              </div>}
               <Dropdown className="model-dropdown composer-model" ariaLabel="选择模型" placeholder="正在加载模型"
                 value={selected?.id || ""}
                 options={[
-                  ...[...videoModels].sort((a, b) => RESOLUTION_ORDER.indexOf(a.resolution) - RESOLUTION_ORDER.indexOf(b.resolution))
+                  ...[...(selected?.type === "image" ? [] : videoModels)].sort((a, b) => RESOLUTION_ORDER.indexOf(a.resolution) - RESOLUTION_ORDER.indexOf(b.resolution))
                     .map((model) => ({
                       value: model.id,
                       label: model.id,
                       group: `视频 · ${model.resolution.toUpperCase()}`,
                       hint: `${durationSummary(model.durations)} · ${formatPrice(model)}`,
                     })),
-                  ...imageModels.map((model) => {
+                  ...(selected?.type === "video" ? [] : imageModels).map((model) => {
                     const price = tierPrice(model.price, imageOptions.resolution);
                     return {
                       value: model.id, label: model.id, group: "图片",

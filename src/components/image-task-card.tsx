@@ -11,7 +11,7 @@ import { fitImageOptions, imageOptionsSummary } from "@/lib/image-models";
 import { findReference, referenceLabels, splitPromptReferences } from "@/lib/prompt-references";
 import { unfinishedTaskIds } from "@/lib/generation-stop";
 import { MediaThumb } from "@/components/media-thumb";
-import { Elapsed, formatDate, formatDuration, formatTime, StatusBadge } from "@/components/video-task-card";
+import { formatTime, StatusBadge, TaskTimes } from "@/components/video-task-card";
 
 type Props = {
   prompt: string;
@@ -167,11 +167,7 @@ export function ImageTaskCard({
         <footer className="task-foot">
           {message.status === "failed" && <span className="task-error">{message.error || "图片生成失败"}</span>}
           {message.status === "complete" && message.error && <span className="task-error">部分失败：{message.error}</span>}
-          {message.status === "processing" && <span className="task-note">已等待 <Elapsed since={message.createdAt} /></span>}
-          {formatDate(message.createdAt) && <time className="task-note task-date" dateTime={message.createdAt}
-            title={new Date(message.createdAt).toLocaleString("zh-CN", { hour12: false })}>{formatDate(message.createdAt)}</time>}
-          {(message.status === "complete" || message.status === "failed") && message.elapsedMs !== undefined &&
-            <span className="task-note task-elapsed" title="从提交到出图的用时">用时 {formatDuration(message.elapsedMs)}</span>}
+          <TaskTimes message={message} durationTitle="从提交到出图的用时" />
           <span className="task-meta">
             {meta.join(" | ")}
             <span className="task-info" tabIndex={0} aria-label="任务详情">

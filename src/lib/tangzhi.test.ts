@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildVideoRequest, expandDurations, fitVideoOptions, parseVideoDescription, remainingMedia,
+  buildVideoRequest, expandDurations, fitVideoOptions, parseVideoDescription, remainingMedia, smartVideoRatio,
   toVideoModels, videoRequestError, type VideoModel,
 } from "./tangzhi";
 import type { MediaRef, VideoOptions } from "./types";
@@ -74,7 +74,9 @@ describe("model constraints", () => {
 
   it("pulls unsupported options back to what the model accepts", () => {
     expect(fitVideoOptions(ch01, options({ resolution: "1080p", duration: 3, ratio: "adaptive", referenceMode: "first" })))
-      .toMatchObject({ resolution: "720p", duration: 5, ratio: "16:9", referenceMode: "references" });
+      .toMatchObject({ resolution: "720p", duration: 5, ratio: "adaptive", referenceMode: "references" });
+    // 只有一种比例的模型没有「智能」可选
+    expect(fitVideoOptions(ch08, options({ ratio: "adaptive" })).ratio).toBe("9:16");
     expect(fitVideoOptions(ch1310, options({ duration: 15 })).duration).toBe(10);
     expect(fitVideoOptions(ch08, options()).ratio).toBe("9:16");
   });
@@ -100,7 +102,9 @@ describe("model constraints", () => {
 
   it("rejects requests outside the model's limits", () => {
     const prompt = "一只猫在窗台上打哈欠，阳光洒进来";
-    expect(videoRequestError(ch01, "太短了", options(), [])).toMatch(/至少/);
+    // 不限最少字数,只要不是空的
+    expect(videoRequestError(ch01, "跳跃", options(), [])).toBe("");
+    expect(videoRequestError(ch01, "  ", options(), [])).toMatch(/填写提示词/);
     expect(videoRequestError(ch01, prompt, options({ resolution: "1080p" }), [])).toMatch(/720P/);
     expect(videoRequestError(ch01, prompt, options({ duration: 4 }), [])).toMatch(/5–15秒/);
     expect(videoRequestError(ch08, prompt, options(), [])).toMatch(/9:16/);
@@ -203,5 +207,23 @@ describe("Dola (Ark) models", () => {
       model: "doubao-seedance-2-5-260628", prompt: "提示词内容足够长了吧", seconds: "5",
       metadata: { ratio: "16:9", resolution: "720p" },
     });
+  });
+});
+
+describe("smartVideoRatio", () => {
+  const all = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"] as const;
+  it("follows the first reference image", () => {
+    expect(smartVideoRatio(all, "随便", { width: 1080, height: 1920 })).toBe("9:16");
+    expect(smartVideoRatio(all, "竖屏", { width: 1024, height: 1000 })).toBe("1:1");
+    expect(smartVideoRatio(["16:9", "9:16"], "x", { width: 1000, height: 1000 })).toBe("16:9");
+  });
+  it("reads ratio hints from the prompt", () => {
+    expect(smartVideoRatio(all, "抖音竖屏，一个女孩在跳舞")).toBe("9:16");
+    expect(smartVideoRatio(all, "宽银幕史诗大片")).toBe("21:9");
+    expect(smartVideoRatio(all, "正方形构图的产品展示")).toBe("1:1");
+    expect(smartVideoRatio(all, "比例 4:3 的复古画面")).toBe("4:3");
+    expect(smartVideoRatio(all, "一只猫")).toBe("16:9");
+    // 模型没有 21:9 时就近取 16:9
+    expect(smartVideoRatio(["16:9", "9:16"], "超宽画幅")).toBe("16:9");
   });
 });

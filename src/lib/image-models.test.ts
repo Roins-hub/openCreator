@@ -15,6 +15,10 @@ describe("image sizes", () => {
     expect(imageSize("16:9", "2k")).toEqual({ width: 2048, height: 1152 });
     expect(imageSize("9:16", "4k")).toEqual({ width: 2304, height: 4096 });
     expect(imageSize("4:3", "4k")).toEqual({ width: 4096, height: 3072 });
+    // 其他比例:长边 1280 / 2048 / 4096,边长取 16 的倍数
+    expect(imageSize("21:9", "1k")).toEqual({ width: 1280, height: 544 });
+    expect(imageSize("21:9", "4k")).toEqual({ width: 4096, height: 1760 });
+    expect(imageSize("5:4", "2k")).toEqual({ width: 2048, height: 1632 });
   });
 
   it("states the canvas ratio in the prompt", () => {
@@ -27,8 +31,12 @@ describe("image sizes", () => {
 describe("image options", () => {
   it("fills in defaults and drops values from older formats", () => {
     expect(fitImageOptions(undefined)).toEqual(imageDefaults);
-    expect(fitImageOptions({ ratio: "21:9", count: 9, resolution: "720p", quality: "high" } as never))
+    expect(fitImageOptions({ ratio: "1:9", count: 9, resolution: "720p", quality: "high" } as never))
       .toEqual({ ...imageDefaults, count: 4 });
+    // 21:9 和自定义比例都保留;长短边之比超过 4 的不要
+    expect(fitImageOptions({ ratio: "21:9" }).ratio).toBe("21:9");
+    expect(fitImageOptions({ ratio: " 5:4 " }).ratio).toBe("5:4");
+    expect(fitImageOptions({ ratio: "0:4" }).ratio).toBe("1:1");
     expect(fitImageOptions({ resolution: "4k" }).resolution).toBe("4k");
   });
 
@@ -78,7 +86,7 @@ describe("toImageModels", () => {
     ] });
     expect(model.priceLabel).toBe("¥0.12/张");
     expect(model.priceDetail).toBe("1K ¥0.12 · 2K ¥0.24 · 4K ¥0.36（每张）");
-    expect(model).toMatchObject({ type: "image", description: "GPT-Image-2 生图", maxReferences: 4 });
+    expect(model).toMatchObject({ type: "image", description: "GPT-Image-2 生图", maxReferences: 20 });
   });
 
   it("reads per-million token rates from token expressions and model ratios", () => {

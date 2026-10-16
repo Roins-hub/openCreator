@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseRatio } from "./image-models";
 
 export const mediaRefSchema = z.object({
   kind: z.enum(["image", "video", "audio"]),
@@ -37,7 +38,7 @@ export const messageSchema = z.object({
 });
 
 export const imageOptionsSchema = z.object({
-  ratio: z.enum(["1:1", "4:3", "3:4", "16:9", "9:16"]),
+  ratio: z.string().refine((value) => Boolean(parseRatio(value)), "图片比例不正确"),
   // 旧记录没有或是 720p 这类旧档位时按 1K
   resolution: z.enum(["1k", "2k", "4k"]).catch("1k"),
   background: z.enum(["auto", "opaque", "transparent"]),

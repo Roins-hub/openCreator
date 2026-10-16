@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { taskElapsedMs } from "./tangzhi-server";
-import { formatDate, formatDuration } from "@/components/video-task-card";
+import { formatDate, formatDuration, taskTimes } from "@/components/video-task-card";
 
 describe("taskElapsedMs", () => {
   it("uses the relay's created_at / completed_at seconds", () => {
@@ -36,5 +36,19 @@ describe("formatDate", () => {
   it("keeps the year for older dates and ignores invalid ones", () => {
     expect(formatDate(new Date(2025, 0, 3, 8, 30).toISOString(), now)).toBe("2025年1月3日 08:30");
     expect(formatDate("not a date", now)).toBe("");
+  });
+});
+
+describe("taskTimes", () => {
+  const now = new Date(2026, 9, 15, 12, 0);
+  const start = new Date(2026, 9, 14, 21, 5, 7).toISOString();
+  it("shows only the clock for an end on the same day", () => {
+    expect(taskTimes(start, 154_000, now)).toEqual({ start: "10月14日 21:05:07", end: "21:07:41" });
+  });
+  it("adds the date when the task ends on another day", () => {
+    expect(taskTimes(start, 3 * 3_600_000, now)).toEqual({ start: "10月14日 21:05:07", end: "10月15日 00:05:07" });
+  });
+  it("has no end without an elapsed time", () => {
+    expect(taskTimes(start, undefined, now)).toEqual({ start: "10月14日 21:05:07" });
   });
 });

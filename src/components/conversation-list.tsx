@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import {
+  DndContext, DragOverlay, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors,
+  type CollisionDetection, type DragEndEvent, type DragOverEvent,
+} from "@dnd-kit/core";
+import { droppablesUnderPointer, startDragPointer, stopDragPointer } from "@/lib/drag-pointer";
 import {
   Check, ChevronDown, ChevronRight, Folder, FolderPlus, ListChecks, MoreHorizontal, Pencil, Search, Trash2, X,
 } from "lucide-react";
@@ -15,7 +21,30 @@ export interface ConversationGroup {
   collapsed?: boolean;
 }
 
-const DRAG_TYPE = "application/x-mote-conversation";
+/** 放置区的 ID:分组用「group:分组ID」,未分组用「group:」 */
+const DROP = "group:";
+/** 鼠标在哪个分组区域里就放到哪个分组 */
+const collision: CollisionDetection = (args) => droppablesUnderPointer(args, DROP).slice(0, 1).map((item) => ({ id: item.id }));
+
+/** 侧边栏的一行对话,按住拖动(原位置留下虚影,拿起的那一行浮在鼠标下) */
+function DraggableRow({ id, disabled, className, children }: {
+  id: string; disabled: boolean; className: string; children: ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id, disabled });
+  return (
+    <div ref={setNodeRef} {...attributes} {...listeners} tabIndex={-1} role={undefined}
+      aria-roledescription="可拖动的对话" className={`${className} ${isDragging ? "is-placeholder" : ""}`}>
+      {children}
+    </div>
+  );
+}
+
+function DropSection({ groupId, disabled, className, children }: {
+  groupId: string | undefined; disabled: boolean; className: string; children: ReactNode;
+}) {
+  const { setNodeRef } = useDroppable({ id: DROP + (groupId ?? ""), disabled });
+  return <section ref={setNodeRef} className={className}>{children}</section>;
+}
 
 /**
  * 侧边栏对话列表:搜索过滤、分组(可折叠、重命名、解散,拖动对话放进分组)和「管理」模式
@@ -42,6 +71,11 @@ export function ConversationList({
   const [renamingGroup, setRenamingGroup] = useState<string>();
   const [groupMenu, setGroupMenu] = useState<string>();
   const [dropTarget, setDropTarget] = useState<string>();
+  const [draggingId, setDraggingId] = useState<string>();
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
+  );
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -112,35 +146,27 @@ export function ConversationList({
     if (members.length) void onMove(members, undefined);
   };
 
-  const dropProps = (groupId: string | undefined) => managing ? {} : {
-    onDragOver: (event: React.DragEvent) => {
-      if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      setDropTarget(groupId ?? "");
-    },
-    onDragLeave: (event: React.DragEvent) => {
-      if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node)) setDropTarget(undefined);
-    },
-    onDrop: (event: React.DragEvent) => {
-      const id = event.dataTransfer.getData(DRAG_TYPE);
-      setDropTarget(undefined);
-      if (!id) return;
-      event.preventDefault();
-      const conversation = conversations.find((item) => item.id === id);
-      if (conversation && inGroup(conversation) !== groupId) void onMove([id], groupId);
-    },
+  // 拖到别的分组(或「未分组」)上松手就移过去;拖回原分组不做任何事
+  const dragOver = ({ active, over }: DragOverEvent) => {
+    const target = over ? String(over.id).slice(DROP.length) : undefined;
+    const conversation = conversations.find((item) => item.id === active.id);
+    setDropTarget(conversation && target !== undefined && (inGroup(conversation) ?? "") !== target ? target : undefined);
   };
+  const dragEnd = ({ active, over }: DragEndEvent) => {
+    stopDragPointer();
+    setDraggingId(undefined);
+    setDropTarget(undefined);
+    if (!over) return;
+    const target = String(over.id).slice(DROP.length) || undefined;
+    const conversation = conversations.find((item) => item.id === active.id);
+    if (conversation && inGroup(conversation) !== target) void onMove([conversation.id], target);
+  };
+  const dragging = draggingId ? conversations.find((item) => item.id === draggingId) : undefined;
 
   const row = (conversation: Conversation) => {
     const checked = selected.has(conversation.id);
-    return <div key={conversation.id}
-      className={`history-row ${conversation.id === activeId && !managing ? "active" : ""} ${managing && checked ? "selected" : ""}`}
-      draggable={!managing}
-      onDragStart={(event) => {
-        event.dataTransfer.setData(DRAG_TYPE, conversation.id);
-        event.dataTransfer.effectAllowed = "move";
-      }}>
+    return <DraggableRow key={conversation.id} id={conversation.id} disabled={managing}
+      className={`history-row ${conversation.id === activeId && !managing ? "active" : ""} ${managing && checked ? "selected" : ""}`}>
       {managing ? <label className="history-title history-check">
         <input type="checkbox" checked={checked} onChange={(event) => toggle([conversation.id], event.target.checked)} />
         <span>{conversation.title}</span>
@@ -152,7 +178,7 @@ export function ConversationList({
           groups={groups} groupId={inGroup(conversation)}
           onMove={(groupId) => void onMove([conversation.id], groupId)} />
       </>}
-    </div>;
+    </DraggableRow>;
   };
 
   return <div className="conversation-list">
@@ -185,7 +211,11 @@ export function ConversationList({
       <button type="button" onClick={stopManaging} aria-label="退出管理">完成</button>
     </div>}
 
-    <nav className="history">
+    <DndContext sensors={sensors} collisionDetection={collision}
+      onDragStart={(event) => { startDragPointer(event); setDraggingId(String(event.active.id)); }}
+      onDragOver={dragOver} onDragEnd={dragEnd}
+      onDragCancel={() => { stopDragPointer(); setDraggingId(undefined); setDropTarget(undefined); }}>
+    <nav className={`history ${draggingId ? "is-dragging" : ""}`}>
       {creating && <div className="group-create">
         <Folder size={14} />
         <input autoFocus maxLength={30} value={newName} placeholder="分组名称，回车创建"
@@ -206,8 +236,8 @@ export function ConversationList({
         const collapsed = !searching && group.collapsed;
         const memberIds = members.map((item) => item.id);
         const groupChecked = members.length > 0 && memberIds.every((id) => selected.has(id));
-        return <section key={group.id} className={`history-group ${dropTarget === group.id ? "drop-target" : ""}`}
-          {...dropProps(group.id)}>
+        return <DropSection key={group.id} groupId={group.id} disabled={managing}
+          className={`history-group ${dropTarget === group.id ? "drop-target" : ""}`}>
           <div className="group-head">
             {managing && <input type="checkbox" aria-label={`选择分组${group.name}的全部对话`}
               checked={groupChecked} disabled={!members.length}
@@ -251,15 +281,23 @@ export function ConversationList({
           {!collapsed && (members.length
             ? <div className="group-items">{members.map(row)}</div>
             : <p className="group-empty">{managing ? "空分组" : "把对话拖到这里，或在对话的「…」里选择移到分组"}</p>)}
-        </section>;
+        </DropSection>;
       })}
 
-      <section className={`history-ungrouped ${dropTarget === "" ? "drop-target" : ""}`} {...dropProps(undefined)}>
+      <DropSection groupId={undefined} disabled={managing}
+        className={`history-ungrouped ${dropTarget === "" ? "drop-target" : ""}`}>
         {groups.length > 0 && (!searching || ungrouped.length > 0) && <div className="history-sublabel">未分组</div>}
         {ungrouped.map(row)}
-      </section>
+      </DropSection>
       {searching && !conversations.length && <p className="history-empty">没有找到「{query.trim()}」相关的对话</p>}
     </nav>
+    {typeof document !== "undefined" && createPortal(
+      <DragOverlay className="mote-drag-overlay">
+        {dragging && <div className="history-row is-lifted"><span className="history-title">{dragging.title}</span></div>}
+      </DragOverlay>,
+      document.body,
+    )}
+    </DndContext>
 
     {managing && <div className="manage-actions">
       {confirmDelete ? <>

@@ -4,6 +4,8 @@ import type { Message } from "./types";
 export interface NavigationNode {
   id: string;
   preview: string;
+  /** 完整提示词(搜索用) */
+  text: string;
 }
 
 /**
@@ -17,7 +19,7 @@ export function navigationNodes(messages: Message[]): NavigationNode[] {
     const text = (prompt?.content || "").replace(/\s+/g, " ").trim();
     const fallback = prompt?.attachments?.length ? "图片消息" : turn.kind === "generation" ? "生成记录" : "空消息";
     const preview = text || fallback;
-    return [{ id: turn.message.id, preview: preview.length > 72 ? `${preview.slice(0, 72)}…` : preview }];
+    return [{ id: turn.message.id, preview: preview.length > 72 ? `${preview.slice(0, 72)}…` : preview, text: preview }];
   });
 }
 
@@ -32,4 +34,14 @@ export function navigationWindow(
     nodes.length - maximum,
   );
   return nodes.slice(start, start + maximum);
+}
+
+/** 目录搜索:提示词里包含所有关键词(空格分隔,不分大小写)的项 */
+export function searchNavigation(nodes: NavigationNode[], query: string) {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return nodes;
+  return nodes.filter((node) => {
+    const text = node.text.toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
 }

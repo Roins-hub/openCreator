@@ -30,31 +30,46 @@ export interface ImageModel {
 export type ImageRatio = ImageOptions["ratio"];
 export type ImageResolution = ImageOptions["resolution"];
 
-export const IMAGE_RATIOS: ImageRatio[] = ["1:1", "4:3", "3:4", "16:9", "9:16"];
+/** 预设比例;另外支持自定义「宽:高」(如 5:4、2:1),长短边之比不超过 4 */
+export const IMAGE_RATIOS = ["1:1", "4:3", "3:4", "16:9", "9:16", "21:9"] as const;
+export const MAX_RATIO_SPAN = 4;
+
+/** 解析「宽:高」;两边是 1~999 的整数且长短边之比不超过 4 时返回 [宽, 高] */
+export function parseRatio(ratio: unknown): [number, number] | undefined {
+  const match = typeof ratio === "string" ? /^(\d{1,3}):(\d{1,3})$/.exec(ratio.trim()) : null;
+  if (!match) return undefined;
+  const [w, h] = [Number(match[1]), Number(match[2])];
+  if (!w || !h || Math.max(w, h) / Math.min(w, h) > MAX_RATIO_SPAN) return undefined;
+  return [w, h];
+}
+
+export const isPresetRatio = (ratio: string) => (IMAGE_RATIOS as readonly string[]).includes(ratio);
 export const IMAGE_RESOLUTIONS: ImageResolution[] = ["1k", "2k", "4k"];
 export const IMAGE_BACKGROUNDS: ImageOptions["background"][] = ["auto", "opaque", "transparent"];
 export const IMAGE_FORMATS: ImageOptions["format"][] = ["png", "jpeg", "webp"];
-export const MAX_IMAGE_REFERENCES = 4;
+export const MAX_IMAGE_REFERENCES = 20;
 const PROMPT_MAX = 6000;
 
 export const BACKGROUND_LABEL: Record<ImageOptions["background"], string> = { auto: "自动", opaque: "不透明", transparent: "透明" };
 
 export const imageDefaults: ImageOptions = { ratio: "1:1", resolution: "1k", background: "auto", format: "png", count: 1 };
 
-// 1K:各比例的标准尺寸;2K / 4K:长边 2048 / 4096(与生图站一致,也正好对上中转站阶梯计价识别的尺寸)
-const SIZES_1K: Record<ImageRatio, [number, number]> = {
+// 1K:常用比例的标准尺寸,其他比例长边 1280;2K / 4K:长边 2048 / 4096
+// (与生图站一致,也正好对上中转站阶梯计价识别的尺寸)。边长取 16 的倍数。
+const SIZES_1K: Record<string, [number, number]> = {
   "1:1": [1024, 1024], "4:3": [960, 720], "3:4": [720, 960], "16:9": [1280, 720], "9:16": [720, 1280],
 };
 
 export function imageSize(ratio: ImageRatio, resolution: ImageResolution = "1k") {
-  if (resolution === "1k") {
+  if (resolution === "1k" && SIZES_1K[ratio]) {
     const [width, height] = SIZES_1K[ratio];
     return { width, height };
   }
-  const [w, h] = ratio.split(":").map(Number);
-  const edge = resolution === "4k" ? 4096 : 2048;
+  const [w, h] = parseRatio(ratio) || [1, 1];
+  const edge = resolution === "4k" ? 4096 : resolution === "2k" ? 2048 : 1280;
   const scale = edge / Math.max(w, h);
-  return { width: Math.round(w * scale), height: Math.round(h * scale) };
+  const snap = (value: number) => Math.max(16, Math.round(value / 16) * 16);
+  return { width: snap(w * scale), height: snap(h * scale) };
 }
 
 /** 某个分辨率档位的每张价格(按尺寸分档的模型);拿不到时返回 undefined */
@@ -65,7 +80,7 @@ export function tierPrice(price: ImagePrice, resolution: ImageResolution) {
 
 /** 在提示词后注明画布比例,上游按这个比例构图(与生图站一致) */
 export function withComposition(prompt: string, ratio: ImageRatio) {
-  const [w, h] = ratio.split(":").map(Number);
+  const [w, h] = parseRatio(ratio) || [1, 1];
   const direction = w === h ? "正方形" : w > h ? "横版" : "竖版";
   return `${prompt}\n\n画布要求：宽高比必须为 ${ratio}，${direction}构图。按该比例安排完整画面，文字与主体留在安全区域。画布比例以此设置为准。`;
 }
@@ -75,7 +90,7 @@ export function fitImageOptions(options?: Partial<ImageOptions> | null): ImageOp
   const pick = <T,>(values: readonly T[], value: unknown, fallback: T) =>
     values.includes(value as T) ? value as T : fallback;
   return {
-    ratio: pick(IMAGE_RATIOS, options?.ratio, imageDefaults.ratio),
+    ratio: parseRatio(options?.ratio) ? String(options?.ratio).trim() : imageDefaults.ratio,
     resolution: pick(IMAGE_RESOLUTIONS, options?.resolution, imageDefaults.resolution),
     background: pick(IMAGE_BACKGROUNDS, options?.background, imageDefaults.background),
     format: pick(IMAGE_FORMATS, options?.format, imageDefaults.format),

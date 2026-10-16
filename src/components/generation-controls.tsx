@@ -4,14 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
 import type { ImageOptions, VideoOptions } from "@/lib/types";
 import {
-  BACKGROUND_LABEL, IMAGE_BACKGROUNDS, IMAGE_FORMATS, IMAGE_RATIOS, IMAGE_RESOLUTIONS, imageSize, tierPrice, yuan,
-  type ImageModel,
+  BACKGROUND_LABEL, IMAGE_BACKGROUNDS, IMAGE_FORMATS, IMAGE_RATIOS, IMAGE_RESOLUTIONS, imageSize, isPresetRatio,
+  MAX_RATIO_SPAN, parseRatio, tierPrice, yuan, type ImageModel,
 } from "@/lib/image-models";
 import {
-  durationSummary, normalizeReferenceMode, type ReferenceMode, type VideoModel, type VideoRatio,
+  durationSummary, normalizeReferenceMode, type ReferenceMode, type VideoModel,
 } from "@/lib/tangzhi";
 
-const videoRatios: VideoRatio[] = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"];
+const videoRatios: VideoOptions["ratio"][] = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"];
+const ratioLabel = (ratio: VideoOptions["ratio"]) => ratio === "adaptive" ? "智能" : ratio;
 const resolutions: VideoOptions["resolution"][] = ["480p", "720p", "1080p", "4k"];
 const durationPresets = [3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30];
 const UNSUPPORTED = "当前模型不支持";
@@ -113,19 +114,19 @@ export function VideoControls({
       <button type="button" className={`parameter-trigger ${optionsOpen ? "active" : ""}`}
         aria-expanded={optionsOpen} onClick={() => { setOptionsOpen((open) => !open); setModeOpen(false); }}>
         <SlidersHorizontal size={14} />
-        <span>{value.ratio}</span><i /><span>{value.resolution.toUpperCase()}</span><i />
+        <span>{ratioLabel(value.ratio)}</span><i /><span>{value.resolution.toUpperCase()}</span><i />
         <span>{value.duration}秒</span><i /><span>{value.count}条</span>
       </button>
       {optionsOpen && <div className="parameter-popover video-parameter-popover">
-        <section><h3>视频比例</h3>
+        <section><h3>视频比例{value.ratio === "adaptive" && <small>按第一张参考图的比例；没有参考图时按提示词（如「竖屏」「宽银幕」），默认 16:9</small>}</h3>
           <div className="ratio-grid video-ratios">
             {videoRatios.map((ratio) => {
-              const disabled = !model.ratios.includes(ratio);
+              const disabled = ratio === "adaptive" ? model.ratios.length < 2 : !model.ratios.includes(ratio);
               return <button type="button" key={ratio} disabled={disabled}
-                title={disabled ? UNSUPPORTED : undefined}
+                title={disabled ? UNSUPPORTED : ratio === "adaptive" ? "根据参考图或提示词自动选择比例" : undefined}
                 className={value.ratio === ratio ? "selected" : ""}
                 onClick={() => onChange({ ...value, ratio })}>
-                <span className={`ratio-shape ratio-${ratio.replace(":", "-")}`} /><b>{ratio}</b>
+                <span className={`ratio-shape ratio-${ratio.replace(":", "-")}`} /><b>{ratioLabel(ratio)}</b>
               </button>;
             })}
           </div>
@@ -179,6 +180,18 @@ export function ImageControls({
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
   const { width, height } = imageSize(value.ratio, value.resolution);
+  // 自定义比例:输入框里的草稿,合法时才写回参数
+  const [customOpen, setCustomOpen] = useState(false);
+  const current = parseRatio(value.ratio) || [1, 1];
+  const [draft, setDraft] = useState<[string, string]>([String(current[0]), String(current[1])]);
+  const custom = customOpen || !isPresetRatio(value.ratio);
+  const draftRatio = `${draft[0]}:${draft[1]}`;
+  const draftValid = Boolean(parseRatio(draftRatio));
+  const changeDraft = (next: [string, string]) => {
+    setDraft(next);
+    const ratio = `${next[0]}:${next[1]}`;
+    if (parseRatio(ratio)) onChange({ ...value, ratio });
+  };
   const priced = model.price.kind === "per_image" && model.price.tiers.length > 1;
   return <div className="video-parameter-group" ref={ref}>
     <div className="parameter-control">
@@ -192,11 +205,28 @@ export function ImageControls({
         <section><h3>图片比例<small>按 {width} × {height} 请求，实际尺寸以中转站返回为准</small></h3>
           <div className="ratio-grid image-ratios">
             {IMAGE_RATIOS.map((ratio) => <button type="button" key={ratio}
-              className={value.ratio === ratio ? "selected" : ""}
-              onClick={() => onChange({ ...value, ratio })}>
+              className={value.ratio === ratio && !custom ? "selected" : ""}
+              onClick={() => { setCustomOpen(false); onChange({ ...value, ratio }); }}>
               <span className={`ratio-shape ratio-${ratio.replace(":", "-")}`} /><b>{ratio}</b>
             </button>)}
+            <button type="button" className={custom ? "selected" : ""}
+              onClick={() => {
+                setCustomOpen(true);
+                const [w, h] = parseRatio(value.ratio) || [1, 1];
+                setDraft([String(w), String(h)]);
+              }}>
+              <span className="ratio-shape ratio-adaptive" /><b>自定义</b>
+            </button>
           </div>
+          {custom && <div className="custom-size custom-ratio">
+            <label>宽<input type="number" min={1} max={999} value={draft[0]} aria-label="自定义比例的宽"
+              onChange={(event) => changeDraft([event.target.value, draft[1]])} /></label>
+            <span>:</span>
+            <label>高<input type="number" min={1} max={999} value={draft[1]} aria-label="自定义比例的高"
+              onChange={(event) => changeDraft([draft[0], event.target.value])} /></label>
+          </div>}
+          {custom && !draftValid && <p className="parameter-note parameter-error">
+            请填 1~999 的整数，长边不超过短边的 {MAX_RATIO_SPAN} 倍（当前仍按 {value.ratio}）</p>}
         </section>
         <section><h3>分辨率<small>{priced ? "价格与中转站阶梯计价同步" : "2K / 4K 耗时更长"}</small></h3>
           <Segmented values={IMAGE_RESOLUTIONS} value={value.resolution}

@@ -42,7 +42,7 @@ export default function DocsPage() {
           </section>
           <section id="generate" className="docs-section">
             <SectionTitle icon={<Film size={17} />} eyebrow="02 · GENERATE" title="生成视频" />
-            <p>输入镜头描述（至少 10 个字）后按 Enter 提交。比例、分辨率和时长只能选择当前模型支持的值，不支持的选项会显示为灰色。</p>
+            <p>输入镜头描述后按 Enter 提交。比例、分辨率和时长只能选择当前模型支持的值，不支持的选项会显示为灰色。</p>
             <div className="docs-parameter-list">
               <div><strong>文生视频</strong><span>只输入文字，适合从零生成镜头。</span></div>
               <div><strong>首尾帧</strong><span>上传两张图片，固定开头与结尾画面。</span></div>

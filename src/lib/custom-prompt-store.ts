@@ -46,7 +46,9 @@ export async function saveCustomPrompt(root: string, input: unknown) {
   return saved;
 }
 
-export async function deleteCustomPrompt(root: string, id: string) {
+/** 删除一条或多条 */
+export async function deleteCustomPrompt(root: string, id: string | string[]) {
+  const ids = new Set(Array.isArray(id) ? id : [id]);
   const current = await listCustomPrompts(root);
-  await writeJsonAtomic(promptsFile(root), current.filter((item) => item.id !== id));
+  await writeJsonAtomic(promptsFile(root), current.filter((item) => !ids.has(item.id)));
 }

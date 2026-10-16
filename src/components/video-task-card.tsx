@@ -43,13 +43,48 @@ export function formatDuration(ms: number) {
   return `${minutes}分${total % 60 ? `${total % 60}秒` : ""}`;
 }
 
-/** 生成日期:今年的省略年份,如「10月14日 21:53」 */
-export function formatDate(iso: string, now = new Date()) {
+const pad = (value: number) => String(value).padStart(2, "0");
+
+/** 生成日期:今年的省略年份,如「10月14日 21:53」;seconds 时带上秒 */
+export function formatDate(iso: string, now = new Date(), seconds = false) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}${seconds ? `:${pad(date.getSeconds())}` : ""}`;
   const day = `${date.getMonth() + 1}月${date.getDate()}日`;
   return date.getFullYear() === now.getFullYear() ? `${day} ${time}` : `${date.getFullYear()}年${day} ${time}`;
+}
+
+/** 开始/结束时间:结束和开始在同一天时只显示时刻 */
+export function taskTimes(createdAt: string, elapsedMs?: number, now = new Date()) {
+  const start = formatDate(createdAt, now, true);
+  if (!start || elapsedMs === undefined) return { start };
+  const endDate = new Date(new Date(createdAt).getTime() + elapsedMs);
+  const sameDay = endDate.toDateString() === new Date(createdAt).toDateString();
+  const end = sameDay
+    ? `${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:${pad(endDate.getSeconds())}`
+    : formatDate(endDate.toISOString(), now, true);
+  return { start, end };
+}
+
+const fullTime = (date: Date) => date.toLocaleString("zh-CN", { hour12: false });
+
+/** 任务卡片底部的开始时间、结束时间和总时长;生成中显示已等待 */
+export function TaskTimes({ message, durationTitle }: { message: Message; durationTitle: string }) {
+  const finished = message.status === "complete" || message.status === "failed";
+  const { start, end } = taskTimes(message.createdAt, finished ? message.elapsedMs : undefined);
+  if (!start) return null;
+  const startDate = new Date(message.createdAt);
+  return (
+    <span className="task-times">
+      {message.status === "processing" && <span className="task-note">已等待 <Elapsed since={message.createdAt} /></span>}
+      <span className="task-note">开始 <time dateTime={message.createdAt} title={fullTime(startDate)}>{start}</time></span>
+      {end && message.elapsedMs !== undefined && <>
+        <span className="task-note">结束 <time dateTime={new Date(startDate.getTime() + message.elapsedMs).toISOString()}
+          title={fullTime(new Date(startDate.getTime() + message.elapsedMs))}>{end}</time></span>
+        <span className="task-note task-elapsed" title={durationTitle}>总时长 {formatDuration(message.elapsedMs)}</span>
+      </>}
+    </span>
+  );
 }
 
 export function formatTime(iso: string) {
@@ -190,11 +225,7 @@ export function VideoTaskCard({
           {message.status === "failed" && <span className="task-error">{message.error || "视频生成失败"}</span>}
           {message.status === "stopped" && <span className="task-note">
             {message.taskIds?.length || message.taskId ? "正在重新获取云端结果…" : message.error || "已停止"}</span>}
-          {message.status === "processing" && <span className="task-note">已等待 <Elapsed since={message.createdAt} /></span>}
-          {formatDate(message.createdAt) && <time className="task-note task-date" dateTime={message.createdAt}
-            title={new Date(message.createdAt).toLocaleString("zh-CN", { hour12: false })}>{formatDate(message.createdAt)}</time>}
-          {(message.status === "complete" || message.status === "failed") && message.elapsedMs !== undefined &&
-            <span className="task-note task-elapsed" title="中转站从受理任务到出结果的用时">用时 {formatDuration(message.elapsedMs)}</span>}
+          <TaskTimes message={message} durationTitle="中转站从受理任务到出结果的用时" />
           <span className="task-meta">
             {meta.join(" | ")}
             <span className="task-info" tabIndex={0} aria-label="任务详情">

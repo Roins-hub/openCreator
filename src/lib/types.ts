@@ -56,7 +56,8 @@ export interface Conversation {
  * 没有「画质」:2026-10-15 实测中转站会忽略它,高低画质扣费和效果都一样。
  */
 export interface ImageOptions {
-  ratio: "1:1" | "4:3" | "3:4" | "16:9" | "9:16";
+  /** 预设比例(1:1、16:9、21:9 等)或自定义「宽:高」 */
+  ratio: string;
   resolution: "1k" | "2k" | "4k";
   background: "auto" | "opaque" | "transparent";
   format: "png" | "jpeg" | "webp";

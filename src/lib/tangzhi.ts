@@ -141,7 +141,7 @@ export function toVideoModels(payload: unknown, group = "default", rechargeRate 
       face: info.face,
       billing: perSecond ? "per_second" : "per_request",
       price: Number(perSecond && perSecondPrice ? perSecondPrice : entry.model_price || 0) * groupRatio * rechargeRate,
-      promptMin: 10,
+      promptMin: 1,
       promptMax: defaults.promptMax,
     });
   }
@@ -206,7 +206,9 @@ export function fitVideoOptions(model: VideoModel, options: VideoOptions): Video
   const duration = model.durations.includes(options.duration) ? options.duration :
     model.durations.reduce((best, value) =>
       Math.abs(value - options.duration) < Math.abs(best - options.duration) ? value : best, model.durations[0]);
-  const ratio = options.ratio !== "adaptive" && model.ratios.includes(options.ratio) ? options.ratio : model.ratios[0];
+  // 「智能」在提交时按图片或提示词换成具体比例;只有一种比例的模型没必要选
+  const ratio = options.ratio === "adaptive" ? (model.ratios.length > 1 ? "adaptive" : model.ratios[0]) :
+    model.ratios.includes(options.ratio) ? options.ratio : model.ratios[0];
   return {
     ...options,
     referenceMode: normalizeReferenceMode(options.referenceMode),
@@ -216,12 +218,41 @@ export function fitVideoOptions(model: VideoModel, options: VideoOptions): Video
   };
 }
 
+const ratioValue = (ratio: string) => {
+  const [w, h] = ratio.split(":").map(Number);
+  return w / h;
+};
+
+// 提示词里的画幅线索,按顺序匹配,命中第一个就用
+const RATIO_HINTS: [RegExp, number][] = [
+  [/(21|２１)\s*[:：比]\s*9|超宽|宽银幕|宽画幅|电影宽幅|ultra[- ]?wide|anamorphic/i, 21 / 9],
+  [/(9|９)\s*[:：比]\s*16|竖屏|竖版|竖构图|竖画幅|手机屏|抖音|快手|小红书|视频号|短视频|vertical|portrait/i, 9 / 16],
+  [/(3|３)\s*[:：比]\s*4/, 3 / 4],
+  [/(1|１)\s*[:：比]\s*1|正方形|方形|方图|头像|square/i, 1],
+  [/(4|４)\s*[:：比]\s*3|老电视|复古电视/, 4 / 3],
+  [/(16|１６)\s*[:：比]\s*9|横屏|横版|横构图|landscape|widescreen/i, 16 / 9],
+];
+
+/**
+ * 「智能」比例:有参考图(首帧/首尾帧/参考图)时取第一张图的宽高比,
+ * 否则看提示词里的画幅线索(竖屏、抖音、宽银幕、1:1 等),都没有时用 16:9;
+ * 最后就近换成当前模型支持的比例。
+ */
+export function smartVideoRatio(ratios: readonly VideoRatio[], prompt: string, image?: { width: number; height: number }) {
+  const supported = [...ratios];
+  if (!supported.length) return "16:9" as VideoRatio;
+  const hint = RATIO_HINTS.find(([pattern]) => pattern.test(prompt))?.[1];
+  const target = image?.width && image.height ? image.width / image.height : hint ?? 16 / 9;
+  return supported.reduce((best, ratio) =>
+    Math.abs(Math.log(ratioValue(ratio) / target)) < Math.abs(Math.log(ratioValue(best) / target)) ? ratio : best);
+}
+
 /** 提交前的完整校验;返回第一条错误,全部满足时返回空字符串。 */
 export function videoRequestError(
   model: VideoModel, prompt: string, options: VideoOptions, attachments: readonly Pick<MediaRef, "kind">[],
 ) {
   const length = [...prompt.trim()].length;
-  if (length < model.promptMin) return `提示词至少需要 ${model.promptMin} 个字`;
+  if (!length) return "请先填写提示词";
   if (length > model.promptMax) return `提示词最多 ${model.promptMax} 个字`;
   if (options.resolution !== model.resolution) return `当前模型只支持 ${model.resolution.toUpperCase()}`;
   if (!model.durations.includes(options.duration)) return `当前模型支持的时长为 ${durationSummary(model.durations)}`;

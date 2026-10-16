@@ -95,6 +95,9 @@ describe("generateRequestSchema", () => {
     expect(generateRequestSchema.safeParse(base).success).toBe(true);
     const image = { ratio: "16:9", background: "auto", format: "png", count: 2 };
     expect(generateRequestSchema.safeParse({ ...base, imageOptions: image }).success).toBe(true);
-    expect(generateRequestSchema.safeParse({ ...base, imageOptions: { ...image, ratio: "21:9" } }).success).toBe(false);
+    expect(generateRequestSchema.safeParse({ ...base, imageOptions: { ...image, ratio: "21:9" } }).success).toBe(true);
+    expect(generateRequestSchema.safeParse({ ...base, imageOptions: { ...image, ratio: "7:5" } }).success).toBe(true);
+    expect(generateRequestSchema.safeParse({ ...base, imageOptions: { ...image, ratio: "1:9" } }).success).toBe(false);
+    expect(generateRequestSchema.safeParse({ ...base, imageOptions: { ...image, ratio: "宽" } }).success).toBe(false);
   });
 });

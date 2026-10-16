@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { navigationNodes, navigationWindow } from "./conversation-navigation";
+import { navigationNodes, navigationWindow, searchNavigation } from "./conversation-navigation";
 import type { Message } from "./types";
 
 const message = (id: string, role: Message["role"], content: string): Message => ({
@@ -16,8 +16,8 @@ describe("conversation navigation", () => {
       }] },
     ]);
     expect(nodes).toEqual([
-      { id: "u1", preview: "第一行 第二行" },
-      { id: "u2", preview: "图片消息" },
+      { id: "u1", preview: "第一行 第二行", text: "第一行 第二行" },
+      { id: "u2", preview: "图片消息", text: "图片消息" },
     ]);
   });
 
@@ -28,18 +28,28 @@ describe("conversation navigation", () => {
       message("u2", "user", "提交失败的提示词"),
     ]);
     expect(nodes).toEqual([
-      { id: "v1", preview: "海边的灯塔" },
-      { id: "u2", preview: "提交失败的提示词" },
+      { id: "v1", preview: "海边的灯塔", text: "海边的灯塔" },
+      { id: "u2", preview: "提交失败的提示词", text: "提交失败的提示词" },
     ]);
   });
 
   it("keeps a bounded window centered near the active turn", () => {
     const nodes = Array.from({ length: 12 }, (_, index) => ({
-      id: `u${index}`, preview: `问题 ${index}`,
+      id: `u${index}`, preview: `问题 ${index}`, text: `问题 ${index}`,
     }));
     expect(navigationWindow(nodes, 6, 7).map((node) => node.id))
       .toEqual(["u3", "u4", "u5", "u6", "u7", "u8", "u9"]);
     expect(navigationWindow(nodes, 11, 7).map((node) => node.id))
       .toEqual(["u5", "u6", "u7", "u8", "u9", "u10", "u11"]);
+  });
+
+  it("searches the full prompt with every keyword", () => {
+    const long = `开头${"很长的描述".repeat(20)}结尾有只猫`;
+    const nodes = navigationNodes([message("u1", "user", long), message("u2", "user", "海边 Lighthouse")]);
+    expect(nodes[0].preview.endsWith("…")).toBe(true);
+    expect(searchNavigation(nodes, "猫").map((node) => node.id)).toEqual(["u1"]);
+    expect(searchNavigation(nodes, "海边 lighthouse").map((node) => node.id)).toEqual(["u2"]);
+    expect(searchNavigation(nodes, "海边 猫")).toEqual([]);
+    expect(searchNavigation(nodes, "  ")).toHaveLength(2);
   });
 });
