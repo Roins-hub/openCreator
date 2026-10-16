@@ -194,9 +194,9 @@ a { color: inherit; text-decoration: none; }
 .history.is-dragging, .history.is-dragging * { cursor: grabbing; user-select: none; }
 .history-row.is-lifted {
   color: var(--ink); background: var(--paper); cursor: grabbing;
-  box-shadow: 0 12px 30px oklch(20% .02 80 / .24), 0 0 0 1px var(--line); transform: rotate(-1deg) scale(1.02);
+  box-shadow: 0 12px 30px oklch(20% .02 80 / .24), 0 0 0 1px var(--line); transform: scale(1.02);
 }
-.history-row.is-lifted .history-title { display: flex; align-items: center; padding-right: 10px; }
+.history-row.is-lifted .history-title { display: block; padding-right: 12px; line-height: 38px; }
 .manage-bar {
   display: flex; align-items: center; gap: 10px; margin: 0 2px 6px; padding: 6px 8px; border-radius: 8px;
   color: var(--muted); background: var(--warm); font-size: 12px;
@@ -1439,7 +1439,7 @@ body { transition: background-color .2s ease, color .2s ease; }
 .prompt-card.is-lifted {
   height: 100%; border-color: var(--line-strong); background: var(--paper); cursor: grabbing;
   box-shadow: 0 18px 44px oklch(20% .02 80 / .26), 0 2px 6px oklch(20% .02 80 / .12);
-  transform: rotate(1.2deg) scale(1.02);
+  transform: scale(1.02);
 }
 .prompt-card .drag-count {
   position: absolute; top: -8px; right: -8px; display: grid; place-items: center; min-width: 22px; height: 22px;
