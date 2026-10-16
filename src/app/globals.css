@@ -1389,15 +1389,23 @@ body { transition: background-color .2s ease, color .2s ease; }
 .prompt-list-bar strong span { color: var(--faint); font-size: 11px; font-weight: 400; }
 .prompt-list-notice { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .prompt-sort { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; margin-left: auto; color: var(--faint); font-size: 11px; }
-.prompt-sort select, .prompt-bulk-bar select {
-  height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: 7px; outline: 0;
-  color: var(--ink); background: var(--warm); font: inherit; font-size: 11px;
+/* 提示词库里的下拉框:和旁边的小按钮一样高 */
+.prompt-dropdown .dropdown-trigger {
+  height: 26px; gap: 6px; padding: 0 8px; border-radius: 7px; color: var(--ink); background: var(--paper); font-size: 11px;
 }
-.prompt-manage, .prompt-bulk-bar button {
+.prompt-dropdown .dropdown-trigger:disabled { opacity: .45; cursor: default; }
+.prompt-dropdown .dropdown-list { min-width: 132px; max-height: min(280px, 45vh); }
+.prompt-dropdown .dropdown-option { padding: 7px 10px; font-size: 12px; }
+.prompt-sort .prompt-dropdown { min-width: 98px; }
+.prompt-sort .dropdown-list { left: auto; right: 0; }
+.prompt-bulk-bar .prompt-dropdown { min-width: 112px; }
+.prompt-editor .prompt-dropdown .dropdown-trigger { height: 37px; padding: 0 10px; border-radius: 9px; background: var(--warm); font-size: 13px; }
+.prompt-dropdown.opens-up .dropdown-list { top: auto; bottom: calc(100% + 6px); }
+.prompt-manage, .prompt-bulk-bar > button {
   display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; height: 26px; padding: 0 9px; border: 1px solid var(--line);
   border-radius: 7px; color: var(--muted); background: var(--paper); font-size: 11px; font-weight: 600;
 }
-.prompt-manage:hover, .prompt-bulk-bar button:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); }
+.prompt-manage:hover, .prompt-bulk-bar > button:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); }
 .prompt-manage.active { color: var(--paper); border-color: var(--dark); background: var(--dark); }
 .prompt-bulk-bar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 12px 0; padding: 7px 10px;
@@ -1405,8 +1413,8 @@ body { transition: background-color .2s ease, color .2s ease; }
 }
 .prompt-bulk-bar label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .prompt-bulk-bar input { accent-color: var(--ink); }
-.prompt-bulk-bar button:disabled, .prompt-bulk-bar select:disabled { opacity: .45; cursor: default; }
-.prompt-bulk-bar button.danger:hover:not(:disabled), .prompt-bulk-bar button.confirm { color: var(--danger); border-color: var(--danger); }
+.prompt-bulk-bar > button:disabled { opacity: .45; cursor: default; }
+.prompt-bulk-bar > button.danger:hover:not(:disabled), .prompt-bulk-bar > button.confirm { color: var(--danger); border-color: var(--danger); }
 .prompt-hidden-cats {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 12px 0; color: var(--faint); font-size: 11px;
 }
@@ -1485,7 +1493,7 @@ body { transition: background-color .2s ease, color .2s ease; }
 .prompt-library-empty button { height: 30px; padding: 0 14px; border-radius: 8px; font-size: 12px; font-weight: 700; }
 .prompt-editor { display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow-y: auto; }
 .prompt-editor h4 { margin: 0; font-size: 14px; }
-.prompt-editor label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.prompt-editor label, .prompt-editor-field { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .prompt-editor label small { color: var(--faint); font-weight: 400; }
 .prompt-editor input, .prompt-editor textarea, .prompt-editor select {
   width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; outline: 0;

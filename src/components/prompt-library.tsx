@@ -24,10 +24,12 @@ import {
   renamePromptGroup, reorderCategories, reorderPrompts, restoreCategories, restorePrompts, visibleCategories,
 } from "@/lib/prompt-layout";
 import type { VideoOptions } from "@/lib/types";
+import { Dropdown } from "@/components/dropdown";
 import { dragPointer, droppablesUnderPointer, startDragPointer, stopDragPointer } from "@/lib/drag-pointer";
 
 const APPLY_PARAMS_KEY = "mote-prompt-apply-params";
 const RATIOS: VideoOptions["ratio"][] = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive"];
+const NO_RATIO = "none";
 const CARD = "card:";
 const CAT = "cat:";
 const LIST = "prompt-list";
@@ -181,7 +183,8 @@ export function PromptLibrary({
       onClose();
     };
     const key = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // 下拉框自己处理的 Esc(收起列表)不再关闭整个提示词库
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       // 正在编辑时 Esc 先关表单
       if (panelRef.current?.querySelector(".prompt-editor")) setEditing(null);
       else onClose();
@@ -539,18 +542,18 @@ export function PromptLibrary({
                   onChange={(event) => setEditing({ ...editing, tags: event.target.value })} />
               </label>
               <div className="prompt-editor-row">
-                <label>分类
-                  <select value={editingCategory} onChange={(event) => setEditingCategory(event.target.value)}>
-                    {categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                  </select>
-                </label>
-                <label>推荐比例
-                  <select value={editing.ratio || ""}
-                    onChange={(event) => setEditing({ ...editing, ratio: (event.target.value || undefined) as CustomPromptInput["ratio"] })}>
-                    <option value="">不指定</option>
-                    {RATIOS.map((ratio) => <option key={ratio} value={ratio}>{ratio === "adaptive" ? "智能比例" : ratio}</option>)}
-                  </select>
-                </label>
+                {/* 下拉框不能放在 <label> 里:点选项时 label 会再点一次触发按钮,把列表又打开 */}
+                <div className="prompt-editor-field"><span>分类</span>
+                  <Dropdown className="prompt-dropdown opens-up" ariaLabel="分类" value={editingCategory}
+                    options={categories.map((item) => ({ value: item.id, label: item.name }))}
+                    onChange={setEditingCategory} />
+                </div>
+                <div className="prompt-editor-field"><span>推荐比例</span>
+                  <Dropdown className="prompt-dropdown opens-up" ariaLabel="推荐比例" value={editing.ratio || NO_RATIO}
+                    options={[{ value: NO_RATIO, label: "不指定" },
+                      ...RATIOS.map((ratio) => ({ value: ratio, label: ratio === "adaptive" ? "智能比例" : ratio }))]}
+                    onChange={(ratio) => setEditing({ ...editing, ratio: ratio === NO_RATIO ? undefined : ratio })} />
+                </div>
                 <label>推荐时长（秒）
                   <input type="number" min={1} max={60} value={editing.duration ?? ""} placeholder="不指定"
                     onChange={(event) => setEditing({
@@ -569,12 +572,11 @@ export function PromptLibrary({
               <div className="prompt-list-bar">
                 <strong>{categoryTitle}<span>{results.length} 条</span></strong>
                 {notice && <span className="prompt-list-notice" role="status">{notice}</span>}
-                <label className="prompt-sort">排序
-                  <select value={layout.sort} aria-label="提示词排序"
-                    onChange={(event) => onLayoutChange({ ...layout, sort: event.target.value as PromptSort })}>
-                    {PROMPT_SORTS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                  </select>
-                </label>
+                <div className="prompt-sort"><span>排序</span>
+                  <Dropdown className="prompt-dropdown" ariaLabel="提示词排序" value={layout.sort}
+                    options={PROMPT_SORTS.map((item) => ({ value: item.id, label: item.name }))}
+                    onChange={(sort: PromptSort) => onLayoutChange({ ...layout, sort })} />
+                </div>
                 <button type="button" className={`prompt-manage ${managing ? "active" : ""}`} onClick={toggleManaging}>
                   {managing ? <><Check size={13} />完成</> : <><ListChecks size={13} />批量管理</>}
                 </button>
@@ -589,16 +591,14 @@ export function PromptLibrary({
                       <RotateCcw size={12} />恢复所选
                     </button>
                   ) : <>
-                    <select value="" disabled={!selected.size} aria-label="移动到分类"
-                      onChange={(event) => {
-                        if (!event.target.value) return;
-                        onLayoutChange(movePrompts(layout, templates, [...selected], event.target.value));
+                    <Dropdown className="prompt-dropdown" ariaLabel="移动到分类" placeholder="移动到…" value=""
+                      disabled={!selected.size}
+                      options={categories.map((item) => ({ value: item.id, label: item.name }))}
+                      onChange={(target) => {
+                        onLayoutChange(movePrompts(layout, templates, [...selected], target));
                         flash(`已移动 ${selected.size} 条提示词`);
                         setSelected(new Set());
-                      }}>
-                      <option value="">移动到…</option>
-                      {categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                    </select>
+                      }} />
                     <button type="button" className={`danger ${confirm === "bulk-prompts" ? "confirm" : ""}`}
                       disabled={!selected.size} onClick={removeSelected}>
                       <Trash2 size={12} />

@@ -100,7 +100,7 @@ export function AssetLibrary() {
   return <main className="utility-page">
     <header className="utility-topbar">
       <Link href="/" className="back-link"><ArrowLeft size={17} /> 返回对话</Link>
-      <span>Mote Assets</span>
+      <span>TZ Assets</span>
     </header>
     <div className="asset-content">
       <div className="asset-heading">

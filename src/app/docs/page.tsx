@@ -15,7 +15,7 @@ export default function DocsPage() {
     <main className="docs-page">
       <header className="docs-topbar">
         <Link href="/" className="docs-back"><ArrowLeft size={16} /> 返回工作台</Link>
-        <div className="docs-brand"><LogoMark size={25} /><span>Mote 文档</span></div>
+        <div className="docs-brand"><LogoMark size={25} /><span>TZ 文档</span></div>
         <Link href="/settings" className="docs-settings"><Settings2 size={15} /> 设置</Link>
       </header>
       <div className="docs-layout">
@@ -27,7 +27,7 @@ export default function DocsPage() {
           <section id="overview" className="docs-hero docs-section">
             <span className="docs-kicker">使用说明 · VIDEO WORKBENCH</span>
             <h1>把一段描述，变成一段视频。</h1>
-            <p>Mote 通过 new.tangzhi.org 中转站生成视频。只需要在中转站创建一个 API Key，填到设置里就能开始；每个模型支持的分辨率、时长和素材数量会自动同步。</p>
+            <p>TZ 通过 new.tangzhi.org 中转站生成视频。只需要在中转站创建一个 API Key，填到设置里就能开始；每个模型支持的分辨率、时长和素材数量会自动同步。</p>
             <div className="docs-quick-links"><Link href="/settings"><KeyRound size={16} /> 填写 API Key</Link><a href="#generate"><Film size={16} /> 开始生成</a></div>
           </section>
           <section id="connect" className="docs-section">

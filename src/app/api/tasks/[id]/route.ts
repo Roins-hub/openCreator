@@ -19,7 +19,7 @@ function fetchVideo(apiKey: string, userId: string, upstreamId: string, relay: R
     pending = (async () => {
       // 从中转站取回视频,直接写入对象存储(不落服务器磁盘)
       const bytes = await downloadVideo(apiKey, upstreamId, relay);
-      const name = `mote-${new Date().toISOString().slice(0, 10)}-${upstreamId.slice(-8)}.mp4`;
+      const name = `tz-${new Date().toISOString().slice(0, 10)}-${upstreamId.slice(-8)}.mp4`;
       const video: MediaRef = { kind: "video", path: mediaKey(userId, "videos", name), name, mimeType: "video/mp4" };
       await putObject(video.path, bytes, "video/mp4");
       return { video, size: bytes.byteLength };

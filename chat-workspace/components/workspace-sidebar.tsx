@@ -123,7 +123,7 @@ export function WorkspaceSidebar({ open, onClose, collapsed }: WorkspaceSidebarP
             title={MOTE_MODE ? "回到视频 · 图片工作台" : undefined}
           >
             <MessageSquare className="size-5 shrink-0" strokeWidth={2.15} />
-            <span className="whitespace-nowrap text-foreground/90">{MOTE_MODE ? "Mote 对话" : "SUB2 聊天"}</span>
+            <span className="whitespace-nowrap text-foreground/90">{MOTE_MODE ? "TZ 对话" : "SUB2 聊天"}</span>
           </a>
           <button
             className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted md:hidden"

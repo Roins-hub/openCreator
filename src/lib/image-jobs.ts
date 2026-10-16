@@ -68,7 +68,7 @@ async function runImageJob(job: ImageJob) {
   try {
     const result = await requestImage(job);
     const format = /webp/.test(result.mimeType) ? "webp" : /jpe?g/.test(result.mimeType) ? "jpeg" : result.mimeType ? "png" : job.options.format;
-    const name = `mote-${new Date().toISOString().slice(0, 10)}-${job.taskId.slice(-8)}.${EXTENSION[format]}`;
+    const name = `tz-${new Date().toISOString().slice(0, 10)}-${job.taskId.slice(-8)}.${EXTENSION[format]}`;
     const mimeType = `image/${format}`;
     media = { kind: "image", path: mediaKey(job.userId, "images", name), name, mimeType };
     await putObject(media.path, result.bytes, mimeType);

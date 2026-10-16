@@ -963,7 +963,7 @@ export function AppShell() {
     <main className="app-frame">
       <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
         <div className="sidebar-head">
-          <button className="wordmark" onClick={create} aria-label="新建对话"><LogoMark size={27} /> Mote</button>
+          <button className="wordmark" onClick={create} aria-label="新建对话"><LogoMark size={27} /> TZ</button>
           <div className="sidebar-head-actions">
             <button className="icon-button" onClick={() => setSearchOpen(true)}
               aria-label="搜索对话" title="搜索对话 · ⌘ K">
@@ -1322,7 +1322,7 @@ function MessageView({
   }, [confirmDelete]);
   return (
     <article id={`message-${message.id}`} className={`message ${message.role}`}>
-      <div className="message-meta">{message.role === "user" ? "你" : "Mote"}</div>
+      <div className="message-meta">{message.role === "user" ? "你" : "TZ"}</div>
       <div className="message-body">
         {(onReedit || onDelete) && <div className="message-actions">
           {onReedit && <button type="button" onClick={onReedit} title="放回输入框重新编辑"><Pencil size={13} />重新编辑</button>}
