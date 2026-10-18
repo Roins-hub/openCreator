@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/core";
 import { droppablesUnderPointer, startDragPointer, stopDragPointer } from "@/lib/drag-pointer";
 import {
-  Check, ChevronDown, ChevronRight, Folder, FolderPlus, ListChecks, MoreHorizontal, Pencil, Search, Trash2, X,
+  Check, ChevronDown, Folder, FolderPlus, ListChecks, MoreHorizontal, Pencil, Search, Trash2, X,
 } from "lucide-react";
 import { Dropdown } from "@/components/dropdown";
 import { HistoryMenu } from "@/components/history-menu";
@@ -255,7 +255,7 @@ export function ConversationList({
                 setRenamingGroup(undefined);
               }} /> : <button type="button" className="group-toggle" aria-expanded={!collapsed}
                 disabled={searching} onClick={() => updateGroup(group.id, { collapsed: !group.collapsed })}>
-              {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+              <ChevronDown size={13} className="group-chevron" />
               <Folder size={13} />
               <span>{group.name}</span>
               <em>{members.length}</em>
@@ -278,9 +278,14 @@ export function ConversationList({
               </div>}
             </div>}
           </div>
-          {!collapsed && (members.length
-            ? <div className="group-items">{members.map(row)}</div>
-            : <p className="group-empty">{managing ? "空分组" : "把对话拖到这里，或在对话的「…」里选择移到分组"}</p>)}
+          {/* 内容一直在,收起时高度过渡到 0(展开、收起都有动画);收起后里面的按钮不能被 Tab 到 */}
+          <div className={`group-body ${collapsed ? "is-collapsed" : ""}`} inert={collapsed}>
+            <div className="group-body-inner">
+              {members.length
+                ? <div className="group-items">{members.map(row)}</div>
+                : <p className="group-empty">{managing ? "空分组" : "把对话拖到这里，或在对话的「…」里选择移到分组"}</p>}
+            </div>
+          </div>
         </DropSection>;
       })}
 

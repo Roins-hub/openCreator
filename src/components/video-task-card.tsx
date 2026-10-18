@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Copy, Download, Info, Loader2,
@@ -283,7 +284,8 @@ function VideoViewer({ videos, index, prompt, onIndex, onClose }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [index, videos.length, onClose, onIndex]);
 
-  return (
+  // 挂到 body 上:放在卡片里时,卡片的动画 / 变换会让 position: fixed 不再相对整个窗口
+  return createPortal(
     <div className="video-viewer" role="dialog" aria-modal="true" aria-label="视频预览" onClick={onClose}>
       <div className="video-viewer-body" onClick={(event) => event.stopPropagation()}>
         <video key={current.path} src={`/api/media/${current.path}`} controls autoPlay playsInline />
@@ -298,6 +300,7 @@ function VideoViewer({ videos, index, prompt, onIndex, onClose }: {
       {index < videos.length - 1 && <button type="button" className="video-viewer-nav next" aria-label="下一个"
         onClick={(event) => { event.stopPropagation(); onIndex(index + 1); }}><ChevronRight size={22} /></button>}
       <button type="button" className="video-viewer-close" onClick={onClose} aria-label="关闭"><X size={20} /></button>
-    </div>
+    </div>,
+    document.body,
   );
 }

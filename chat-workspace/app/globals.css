@@ -811,3 +811,164 @@ html[data-mote-theme] {
   --chat-panel: var(--m-paper);
   --composer-surface: var(--m-warm);
 }
+
+/* ---------- 侧栏聊天列表:与工作台侧栏(.history-*)同样的尺寸、字号和配色 ----------
+ * ink / muted / paper / warm / line 直接取对话页的主题变量,faint 和 line-strong 由它们混出来,
+ * 浅色、深色主题都能对上。 */
+.ws-list {
+  --ws-ink: var(--foreground);
+  --ws-muted: var(--muted-foreground);
+  --ws-faint: color-mix(in oklch, var(--muted-foreground) 62%, var(--background));
+  --ws-line: var(--border);
+  --ws-line-strong: color-mix(in oklch, var(--border) 72%, var(--foreground));
+  --ws-paper: var(--background);
+  --ws-warm: var(--muted);
+  --ws-hover: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+.ws-label {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 18px 8px 8px; color: var(--ws-faint); font-size: 10px; font-weight: 700; letter-spacing: .12em;
+}
+.ws-tools { display: flex; gap: 2px; margin: -6px -6px -6px 0; }
+.ws-tools button {
+  width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px;
+  color: var(--ws-faint); background: transparent; transition: color .15s, background .15s;
+}
+.ws-tools button:hover:not(:disabled) { color: var(--ws-ink); background: var(--ws-hover); }
+.ws-tools svg { width: 14px; height: 14px; }
+.ws-search {
+  display: flex; align-items: center; height: 32px; margin: 0 2px 8px; padding: 0 6px 0 10px; gap: 7px;
+  border: 1px solid var(--ws-line); border-radius: 8px; color: var(--ws-faint);
+  background: color-mix(in srgb, var(--ws-paper) 55%, transparent); transition: border-color .15s, background .15s;
+}
+.ws-search:focus-within { border-color: var(--ws-line-strong); color: var(--ws-muted); background: var(--ws-paper); }
+.ws-search svg { width: 13px; height: 13px; flex: 0 0 auto; }
+.ws-search input {
+  flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0;
+  color: var(--ws-ink); background: transparent; font: inherit; font-size: 12px;
+}
+.ws-search input::placeholder { color: var(--ws-faint); }
+.ws-search input::-webkit-search-cancel-button { display: none; }
+.ws-search button {
+  width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: var(--ws-faint);
+}
+.ws-search button:hover { color: var(--ws-ink); background: var(--ws-hover); }
+.ws-sublabel { margin: 12px 10px 4px; color: var(--ws-faint); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.ws-group { border-radius: 9px; transition: background .15s; }
+.ws-group + .ws-group { margin-top: 2px; }
+.ws-group.is-drop-target, .ws-ungrouped.is-drop-target {
+  outline: 1.5px dashed var(--ws-line-strong); outline-offset: -1px; background: color-mix(in srgb, var(--ws-ink) 4%, transparent);
+}
+.ws-ungrouped { min-height: 24px; border-radius: 9px; }
+.ws-group-head { position: relative; display: flex; align-items: center; gap: 4px; height: 34px; padding-left: 4px; }
+.ws-group-head > input[type=checkbox] { margin: 0 2px 0 6px; accent-color: var(--ws-ink); }
+.ws-group-toggle {
+  flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 6px; padding: 0 36px 0 6px;
+  border-radius: 8px; color: var(--ws-muted); background: transparent; font-size: 12px; font-weight: 700; text-align: left;
+  transition: color .15s, background .15s;
+}
+.ws-group-toggle svg { width: 13px; height: 13px; flex: 0 0 auto; }
+.ws-group-toggle .ws-chevron { transition: transform .22s cubic-bezier(.16, 1, .3, 1); }
+.ws-group-toggle[aria-expanded="false"] .ws-chevron { transform: rotate(-90deg); }
+.ws-group-toggle span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ws-group-toggle em { margin-left: auto; color: var(--ws-faint); font-size: 10px; font-style: normal; font-weight: 600; }
+.ws-group-toggle:hover:not(:disabled) { color: var(--ws-ink); background: var(--ws-hover); }
+.ws-group-toggle:disabled { cursor: default; }
+.ws-group-menu { position: absolute; z-index: 12; right: 4px; top: 3px; }
+.ws-more {
+  width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border-radius: 8px;
+  color: var(--ws-faint); background: transparent; opacity: 0; transition: color .15s, background .15s, opacity .15s;
+}
+.ws-more svg { width: 15px; height: 15px; }
+.ws-group-head:hover .ws-more, .ws-group-head:focus-within .ws-more, .ws-more[aria-expanded=true] { opacity: 1; }
+.ws-more:hover, .ws-more[aria-expanded=true] { color: var(--ws-ink); background: color-mix(in oklch, var(--ws-ink) 8%, var(--ws-paper)); }
+.ws-popover {
+  position: absolute; z-index: 30; top: 32px; right: 0; width: 176px; padding: 6px;
+  border: 1px solid var(--ws-line); border-radius: 11px; background: var(--ws-paper);
+  box-shadow: 0 12px 32px oklch(20% .02 80 / .14);
+  animation: ws-popover-in .14s cubic-bezier(.16, 1, .3, 1);
+}
+.ws-popover.opens-up { top: auto; bottom: 36px; left: 0; right: auto; width: 100%; min-width: 176px; max-height: 260px; overflow-y: auto; }
+@keyframes ws-popover-in { from { opacity: 0; transform: translateY(4px) scale(.985); } }
+.ws-action {
+  width: 100%; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 9px; border-radius: 7px;
+  color: var(--ws-muted); background: transparent; font-size: 11px; text-align: left; transition: color .15s, background .15s;
+}
+.ws-action svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.ws-action span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ws-action:hover { color: var(--ws-ink); background: var(--ws-warm); }
+.ws-action.is-danger { color: var(--destructive); }
+.ws-action.is-danger:hover { background: color-mix(in oklch, var(--destructive) 7%, var(--ws-paper)); }
+.ws-hint { margin: 4px 9px 6px; color: var(--ws-faint); font-size: 11px; }
+.ws-group-items { padding-left: 14px; }
+.ws-group-body {
+  display: grid; grid-template-rows: 1fr; opacity: 1;
+  transition: grid-template-rows .26s cubic-bezier(.16, 1, .3, 1), opacity .2s ease;
+}
+.ws-group-body.is-collapsed { grid-template-rows: 0fr; opacity: 0; }
+.ws-group-body > div { min-height: 0; overflow: hidden; }
+.ws-group-empty { margin: 0 0 6px 30px; color: var(--ws-faint); font-size: 11px; line-height: 1.5; }
+.ws-rename {
+  flex: 1; min-width: 0; height: 30px; padding: 0 9px; border: 1px solid var(--ws-line-strong); border-radius: 7px;
+  outline: 0; color: var(--ws-ink); background: var(--ws-paper); font: inherit; font-size: 12px;
+}
+.ws-create { display: flex; align-items: center; gap: 6px; height: 38px; margin: 0 2px 4px; padding: 0 2px 0 8px; color: var(--ws-faint); }
+.ws-create svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.ws-create button {
+  width: 28px; height: 28px; display: grid; place-items: center; border-radius: 7px; color: var(--ws-muted);
+}
+.ws-create button:hover:not(:disabled) { color: var(--ws-ink); background: var(--ws-hover); }
+.ws-create button:disabled { opacity: .35; }
+/* 一行聊天:和工作台的对话行一样高、一样的字号和悬停底色 */
+.ws-row {
+  position: relative; height: 38px; display: flex; align-items: center; border-radius: 8px; color: var(--ws-muted);
+  transition: color .15s, background .15s;
+}
+.ws-row:hover, .ws-row[data-active], .ws-row:focus-within, .ws-row.is-selected {
+  color: var(--ws-ink); background: var(--ws-hover);
+}
+.ws-row.is-selected { background: color-mix(in srgb, var(--ws-ink) 8%, transparent); }
+.ws-row-title {
+  min-width: 0; height: 100%; flex: 1; display: flex; align-items: center; padding: 0 36px 0 10px;
+  border-radius: inherit; color: inherit; background: transparent; font-size: 13px; text-align: left; outline: none;
+}
+.ws-row-title > span { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ws-row-check { display: flex; align-items: center; gap: 8px; width: 100%; height: 100%; padding: 0 10px; cursor: pointer; font-size: 13px; }
+.ws-row-check input { flex: 0 0 auto; accent-color: var(--ws-ink); }
+.ws-row-check span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ws-row.is-placeholder { opacity: .35; }
+.ws-row-lifted {
+  height: 38px; display: flex; align-items: center; padding: 0 12px; border-radius: 8px; color: var(--ws-ink, var(--foreground));
+  background: var(--background); font-size: 13px; cursor: grabbing; transform: scale(1.02);
+  box-shadow: 0 12px 30px oklch(20% .02 80 / .24), 0 0 0 1px var(--border);
+}
+.ws-row-lifted span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ws-manage-bar {
+  display: flex; align-items: center; gap: 10px; margin: 0 2px 6px; padding: 6px 8px; border-radius: 8px;
+  color: var(--ws-muted); background: var(--ws-warm); font-size: 12px;
+}
+.ws-manage-bar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.ws-manage-bar input { accent-color: var(--ws-ink); }
+.ws-manage-bar span { color: var(--ws-faint); }
+.ws-manage-bar button {
+  margin-left: auto; height: 26px; padding: 0 10px; border-radius: 7px;
+  color: var(--background); background: var(--primary); font-size: 12px; font-weight: 700;
+}
+.ws-manage-actions {
+  position: sticky; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 6px; padding: 10px 2px 2px; border-top: 1px solid var(--ws-line); color: var(--ws-muted); font-size: 12px;
+  background: var(--sidebar, var(--ws-warm));
+}
+.ws-manage-actions > span { flex: 1 1 100%; color: var(--destructive); }
+.ws-manage-actions > button, .ws-manage-move > button {
+  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px; border: 1px solid var(--ws-line);
+  border-radius: 8px; color: var(--ws-muted); background: var(--ws-paper); font: inherit; font-size: 12px;
+}
+.ws-manage-actions svg { width: 13px; height: 13px; }
+.ws-manage-move { position: relative; flex: 1; min-width: 0; }
+.ws-manage-move > button { width: 100%; justify-content: space-between; }
+.ws-manage-move > button svg { transition: transform .18s; }
+.ws-manage-move > button[aria-expanded=true] svg { transform: rotate(180deg); }
+.ws-manage-actions > button.is-danger { border-color: var(--destructive); color: var(--background); background: var(--destructive); font-weight: 700; }
+.ws-manage-actions button:disabled { opacity: .4; }
+.ws-empty { margin: 10px; color: var(--ws-faint); font-size: 12px; line-height: 1.6; }
