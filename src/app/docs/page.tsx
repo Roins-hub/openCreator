@@ -35,7 +35,7 @@ export default function DocsPage() {
           <section id="overview" className="docs-hero docs-section">
             <span className="docs-kicker">使用说明 · TZ WORKBENCH</span>
             <h1>一段描述，变成图片和视频。</h1>
-            <p>TZ 通过 new.tangzhi.org 中转站生成图片和视频，还可以在「对话」里和 AI 聊天。只需要在中转站创建一个 API Key，填到设置里就能开始；每个模型支持的比例、分辨率、时长、素材数量和价格都会自动同步。</p>
+            <p>TZ 通过 new.tangzhi.org 中转站生成图片和视频，还可以在「聊天」里和 AI 聊天。只需要在中转站创建一个 API Key，填到设置里就能开始（聊天和提示词优化也可以各用一个能调文本模型的 Key）；每个模型支持的比例、分辨率、时长、素材数量和价格都会自动同步。</p>
             <div className="docs-quick-links">
               <Link href="/settings"><KeyRound size={16} /> 填写 API Key</Link>
               <a href="#image"><ImageIcon size={16} /> 生成图片</a>
@@ -48,7 +48,7 @@ export default function DocsPage() {
             <p>接口已内置为 <code>https://new.tangzhi.org</code>，不需要再配置供应商或模型。</p>
             <div className="docs-steps">
               <Step index="1" title="创建令牌">登录 <a href="https://new.tangzhi.org" target="_blank" rel="noopener noreferrer">new.tangzhi.org</a>，在「令牌」页面创建 API Key。</Step>
-              <Step index="2" title="填写到设置">打开左下角「设置」，粘贴 API Key 后点击「保存」，可以先点「验证」确认可用。</Step>
+              <Step index="2" title="填写到设置">打开左下角「设置」，把 Key 粘贴到「视频 · 图片」后点击「保存」，可以先点「验证」确认可用。「聊天」和「提示词优化」需要文本模型，如果这个 Key 的分组里没有文本模型，就给它们各填一个能用的 Key（选填，不填就沿用同一个）。</Step>
               <Step index="3" title="选择图片或视频">回到首页，在输入框下方点「图片」或「视频」，再从旁边的下拉框选模型；顶部会显示这个模型的参数范围和价格。</Step>
             </div>
             <div className="docs-note"><CheckCircle2 size={16} /><span>API Key 只保存在你当前的浏览器里；「验证」只读取模型列表，不会产生费用。同一个 Key 在任何设备上打开，都能看到同一份对话和资产。</span></div>
@@ -110,7 +110,7 @@ export default function DocsPage() {
               <div><strong>侧栏对话</strong><span>可以搜索标题和内容；新建分组后，按住对话拖进分组，或用「管理」多选删除、移动。</span></div>
               <div><strong>右侧大纲</strong><span>对话较长时，右边会出现目录线；鼠标移上去可以搜索这个对话里的所有提示词，点一下跳过去。</span></div>
               <div><strong>资产</strong><span>生成的图片和视频都在「资产」里，可以收藏、筛选、下载。</span></div>
-              <div><strong><MessageSquare size={13} /> 对话</strong><span>左侧「对话」是和 AI 聊天的页面，和工作台共用同一个 Key 和主题，可以上传图片。</span></div>
+              <div><strong><MessageSquare size={13} /> 聊天</strong><span>左侧「聊天」是和 AI 聊天的页面，和工作台共用主题和账号，可以上传图片；在设置里可以给它单独填一个 Key。</span></div>
             </div>
             <div className="docs-note"><CheckCircle2 size={16} /><span>生成的图片、视频和上传的素材会保留 {retentionDays} 天，到期自动删除，需要长期保存请及时下载。对话记录不受影响。</span></div>
           </section>

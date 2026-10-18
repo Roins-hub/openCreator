@@ -12,6 +12,7 @@ import { fitImageOptions, imageOptionsSummary } from "@/lib/image-models";
 import { findReference, referenceLabels, splitPromptReferences } from "@/lib/prompt-references";
 import { unfinishedTaskIds } from "@/lib/generation-stop";
 import { MediaThumb } from "@/components/media-thumb";
+import { MediaPreview, mediaPreviewItem } from "@/components/media-preview";
 import { formatTime, StatusBadge, TaskTimes } from "@/components/video-task-card";
 
 type Props = {
@@ -46,6 +47,8 @@ export function ImageTaskCard({
   const options = message.generation?.imageOptions ? fitImageOptions(message.generation.imageOptions) : undefined;
   const pending = message.status === "processing" ? unfinishedTaskIds(message).length : 0;
   const labels = referenceLabels(references);
+  // 点参考图放大查看
+  const [refPreview, setRefPreview] = useState<number | null>(null);
   const shape = (options?.ratio || "1:1").replace(":", " / ");
 
   useEffect(() => {
@@ -127,7 +130,8 @@ export function ImageTaskCard({
             const position = findReference(references, segment.mediaKind, segment.index);
             const ref = references[position];
             return ref ? (
-              <span className="task-ref" key={index} title={ref.name}><MediaThumb media={ref} />{labels[position]}</span>
+              <button type="button" className="task-ref" key={index} title={`放大查看 ${ref.name}`}
+                onClick={() => setRefPreview(position)}><MediaThumb media={ref} />{labels[position]}</button>
             ) : <span key={index}>[图{segment.index + 1}]</span>;
           }) : <span className="task-prompt-empty">（无提示词）</span>}
         </p>
@@ -135,11 +139,16 @@ export function ImageTaskCard({
         {references.length > 0 && (
           <div className="task-refs" aria-label="参考图">
             {references.map((ref, index) => (
-              <span className="task-ref-thumb" key={`${ref.path}-${index}`} title={`${labels[index]} · ${ref.name}`}>
+              <button type="button" className="task-ref-thumb" key={`${ref.path}-${index}`}
+                title={`放大查看 ${labels[index]} · ${ref.name}`} onClick={() => setRefPreview(index)}>
                 <MediaThumb media={ref} alt={ref.name} /><i>{labels[index]}</i>
-              </span>
+              </button>
             ))}
           </div>
+        )}
+        {refPreview !== null && (
+          <MediaPreview items={references.map((ref, index) => mediaPreviewItem(ref, `${labels[index]} · ${ref.name}`))}
+            index={refPreview} onIndex={setRefPreview} onClose={() => setRefPreview(null)} />
         )}
 
         {(images.length > 0 || pending > 0) && (

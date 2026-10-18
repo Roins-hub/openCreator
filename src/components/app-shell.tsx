@@ -16,7 +16,9 @@ import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
 import { acceptAttribute, MEDIA_KIND_LABEL, MEDIA_RULES, pickMediaFiles } from "@/lib/media-files";
 import { NETWORK_ERROR, readableError } from "@/lib/network-error";
-import { apiKeyHeaders, onApiKeyChange, openSession, readApiKey, readAssistModel, readRelayBase } from "@/lib/api-key";
+import {
+  apiKeyHeaders, assistKeyHeaders, effectiveAssistKey, onApiKeyChange, openSession, readApiKey, readAssistModel, readRelayBase,
+} from "@/lib/api-key";
 import {
   countMedia, durationSummary, effectiveReferenceMode, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
   smartVideoRatio, TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError, type MediaKind, type VideoModel,
@@ -40,6 +42,7 @@ import { PromptLibrary, type CustomPromptInput, type PromptUseMode } from "@/com
 import { fitDuration, type PromptTemplate } from "@/lib/prompt-library";
 import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-layout";
 import { MediaThumb } from "@/components/media-thumb";
+import { MediaPreview } from "@/components/media-preview";
 
 type PickerAsset = { id: string; kind: MediaKind; path: string; name: string; mimeType: string };
 /** /api/models 返回的视频模型和生图模型 */
@@ -136,6 +139,8 @@ export function AppShell() {
   const [draggingImages, setDraggingImages] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
+  // 输入框里已添加的素材放大查看(第几个)
+  const [attachmentPreview, setAttachmentPreview] = useState<number | null>(null);
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [customPrompts, setCustomPrompts] = useState<PromptTemplate[]>([]);
@@ -808,12 +813,13 @@ export function AppShell() {
     if (!editor || !selected || optimizing) return;
     const prompt = serializePrompt(editor, attachments).trim();
     if (!prompt) { setError("先写一点想法，再让 AI 帮你扩写"); return; }
-    if (!apiKey) { setError("请先在「设置」中填写中转站 API Key"); return; }
+    if (!effectiveAssistKey()) { setError("请先在「设置」中填写中转站 API Key"); return; }
     setOptimizing(true);
     setError("");
     try {
+      // 用「提示词优化」的 Key(没单独填时就是视频 / 图片的 Key)
       const result = await request<{ prompt: string; model: string }>("/api/prompt-assist", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { ...assistKeyHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ prompt, kind: selected.type, model: readAssistModel() || undefined }),
       });
       setBeforeOptimize({ html: editor.innerHTML, draft });
@@ -979,7 +985,7 @@ export function AppShell() {
         <button className="new-chat" onClick={create}><Plus size={16} /> 新对话</button>
         <Link className="asset-link" href="/assets"><Images size={16} /> 资产</Link>
         {/* 对话是同域名下的另一个程序,整页跳转 */}
-        <a className="asset-link" href="/chat"><MessageSquare size={16} /> 对话</a>
+        <a className="asset-link" href="/chat"><MessageSquare size={16} /> 聊天</a>
         <ConversationList conversations={conversations} groups={groups} activeId={activeId}
           onOpen={(id) => { setActiveId(id); closeSidebarOnMobile(); }}
           onRename={(conversation, title) => void rename(conversation, title)}
@@ -1125,7 +1131,11 @@ export function AppShell() {
                   style={{ "--count": attachments.length + 1 } as React.CSSProperties}>
                   {attachments.map((item, index) => (
                     <div className={`stack-card kind-${item.kind} ${item.uploading ? "is-uploading" : ""}`} key={item.path}
-                      title={item.uploading ? `正在上传 · ${item.name}` : `${labels[index]} · ${item.name}`}
+                      title={item.uploading ? `正在上传 · ${item.name}` : `点击放大 · ${labels[index]} · ${item.name}`}
+                      role="button" tabIndex={0} aria-label={`放大查看 ${labels[index]}`}
+                      // 点卡片放大查看;右上角的 × 是删除,不触发放大
+                      onClick={(event) => { if (!(event.target as HTMLElement).closest(".stack-card-remove")) setAttachmentPreview(index); }}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setAttachmentPreview(index); } }}
                       style={{ "--i": index, "--r": `${stackTilt(index)}deg` } as React.CSSProperties}>
                       <MediaThumb media={item} src={attachmentSrc(item)} alt={item.name} />
                       {item.uploading && <span className="stack-card-spinner" aria-label="上传中" />}
@@ -1145,6 +1155,13 @@ export function AppShell() {
                     aria-label="清空全部素材" title="清空全部素材"><Trash2 size={15} /></button>
                   {attachments.length > 1 && <span className="stack-count">{attachments.length}</span>}
                 </div>
+              )}
+              {attachmentPreview !== null && attachments[attachmentPreview] && (
+                <MediaPreview
+                  items={attachments.map((item, index) => ({
+                    kind: item.kind, name: item.name, src: attachmentSrc(item), caption: `${labels[index]} · ${item.name}`,
+                  }))}
+                  index={attachmentPreview} onIndex={setAttachmentPreview} onClose={() => setAttachmentPreview(null)} />
               )}
               {attachments.length === 0 && modeKinds.length > 0 && (
                 <button type="button" className="reference-tile" onClick={() => fileRef.current?.click()}

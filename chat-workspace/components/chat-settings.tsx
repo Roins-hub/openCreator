@@ -15,7 +15,7 @@ import {
   reasoningEffortsForModel,
   type ReasoningEffort,
 } from "@/lib/reasoning";
-import { MOTE_MODE, moteApiKey, moteRelayBase, onMoteSettingsChange, withBasePath } from "@/lib/mote";
+import { MOTE_MODE, moteChatKey, moteRelayBase, onMoteSettingsChange, withBasePath } from "@/lib/mote";
 
 type LoadState = "idle" | "loading" | "success" | "error";
 
@@ -80,7 +80,7 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
     const next: ProviderChoice = base ? CUSTOM_PROVIDER_ID : DEFAULT_PROVIDER_ID;
     setProviderState(next);
     setCustomUrlState(base);
-    setApiKeyState(moteApiKey());
+    setApiKeyState(moteChatKey());
     setRememberKeyState(true);
     setModelState(localStorage.getItem(modelName(next)) ?? "");
     setModelsByProvider({});

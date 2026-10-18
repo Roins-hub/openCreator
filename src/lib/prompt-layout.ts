@@ -14,7 +14,8 @@ export const PROMPT_SORTS: { id: PromptSort; name: string }[] = [
   { id: "name", name: "名称" },
 ];
 
-export interface PromptGroup { id: string; name: string }
+/** 分组:像文件夹一样装分类(也可以直接放卡片);collapsed 为收起 */
+export interface PromptGroup { id: string; name: string; collapsed?: boolean }
 export interface PromptUsage { count: number; lastUsedAt: string }
 
 export interface PromptLayout {
@@ -29,13 +30,15 @@ export interface PromptLayout {
   promptOrder: string[];
   /** 拖到别的分类的卡片:提示词 ID → 分类 ID */
   placement: Record<string, string>;
+  /** 放进分组的分类:分类 ID → 分组 ID(分组不能再放进分组) */
+  parents: Record<string, string>;
   usage: Record<string, PromptUsage>;
   sort: PromptSort;
 }
 
 export const emptyPromptLayout = (): PromptLayout => ({
-  groups: [], categoryOrder: [], hiddenCategories: [], hiddenPrompts: [], promptOrder: [], placement: {}, usage: {},
-  sort: "manual",
+  groups: [], categoryOrder: [], hiddenCategories: [], hiddenPrompts: [], promptOrder: [], placement: {}, parents: {},
+  usage: {}, sort: "manual",
 });
 
 export type CategoryKind = "mine" | "builtin" | "group";
@@ -59,6 +62,36 @@ export const visibleCategories = (layout: PromptLayout) =>
 
 export const hiddenCategoryList = (layout: PromptLayout) =>
   allCategories(layout).filter((item) => layout.hiddenCategories.includes(item.id));
+
+const isGroupId = (layout: PromptLayout, id: string) => layout.groups.some((group) => group.id === id);
+
+/** 分类所在的分组;分组本身、或分组已经删掉时返回 undefined */
+export function parentOf(layout: PromptLayout, id: string) {
+  const parent = layout.parents?.[id];
+  return parent && !isGroupId(layout, id) && isGroupId(layout, parent) ? parent : undefined;
+}
+
+export interface CategoryNode { category: LibraryCategory; children: LibraryCategory[] }
+
+/** 左侧分类树:顶层是分组和没放进分组的分类,分组下面是它装的分类(都按用户排的顺序) */
+export function categoryTree(layout: PromptLayout): CategoryNode[] {
+  const visible = visibleCategories(layout);
+  return visible
+    .filter((item) => !parentOf(layout, item.id))
+    .map((category) => ({
+      category,
+      children: category.kind === "group" ? visible.filter((item) => parentOf(layout, item.id) === category.id) : [],
+    }));
+}
+
+/** 选中某个分类时包含的分类:分组 = 它自己 + 里面所有分类 */
+export function categoryScope(layout: PromptLayout, id: string) {
+  const scope = new Set([id]);
+  if (isGroupId(layout, id)) {
+    for (const item of allCategories(layout)) if (parentOf(layout, item.id) === id) scope.add(item.id);
+  }
+  return scope;
+}
 
 /** 卡片当前所在的分类:挪过且目标分类还在就用挪到的,否则用原分类 */
 export function categoryOf(template: PromptTemplate, layout: PromptLayout) {
@@ -106,8 +139,9 @@ export type LibraryFilter = "all" | "hidden" | string;
 export function arrangePrompts(templates: PromptTemplate[], layout: PromptLayout, category: LibraryFilter, query: string) {
   const matched = searchPrompts(query, "all", templates);
   const visible = matched.filter((item) => category === "hidden" ? isPromptHidden(item, layout) : !isPromptHidden(item, layout));
+  const scope = categoryScope(layout, category);
   const inCategory = category === "all" || category === "hidden" ? visible
-    : visible.filter((item) => categoryOf(item, layout) === category);
+    : visible.filter((item) => scope.has(categoryOf(item, layout)));
   return sortPrompts(inCategory, layout);
 }
 
@@ -119,6 +153,9 @@ export function categoryCounts(templates: PromptTemplate[], layout: PromptLayout
     counts.all += 1;
     const category = categoryOf(item, layout);
     counts[category] = (counts[category] || 0) + 1;
+    // 分组的数量也算上里面分类的卡片
+    const parent = parentOf(layout, category);
+    if (parent) counts[parent] = (counts[parent] || 0) + 1;
   }
   return counts;
 }
@@ -147,14 +184,42 @@ export function reorderPrompts(layout: PromptLayout, templates: PromptTemplate[]
   return { ...layout, promptOrder: kept };
 }
 
+/**
+ * 把分类拖到 targetId 前面(after 时放后面)。分类跟着目标进出分组:目标在某个分组里就放进那个分组,
+ * 目标在顶层就移到顶层;拖的是分组时只在顶层排序(目标在分组里时排到那个分组旁边)。
+ */
 export function reorderCategories(layout: PromptLayout, id: string, targetId: string, after = false): PromptLayout {
   if (id === targetId) return layout;
+  const draggingGroup = isGroupId(layout, id);
+  const target = draggingGroup ? parentOf(layout, targetId) || targetId : targetId;
+  if (target === id) return layout;
   const order = allCategories(layout).map((item) => item.id).filter((item) => item !== id);
-  const index = order.indexOf(targetId);
+  const index = order.indexOf(target);
   if (index < 0) return layout;
   order.splice(after ? index + 1 : index, 0, id);
-  return { ...layout, categoryOrder: order };
+  const parents = { ...(layout.parents || {}) };
+  if (!draggingGroup) {
+    const parent = parentOf(layout, targetId);
+    if (parent) parents[id] = parent;
+    else delete parents[id];
+  }
+  return { ...layout, categoryOrder: order, parents };
 }
+
+/** 把分类放进分组(groupId 为空 = 移出分组);分组不能放进分组 */
+export function nestCategories(layout: PromptLayout, ids: string[], groupId: string | undefined): PromptLayout {
+  const parents = { ...(layout.parents || {}) };
+  for (const id of ids) {
+    if (isGroupId(layout, id) || id === groupId) continue;
+    if (groupId && isGroupId(layout, groupId)) parents[id] = groupId;
+    else delete parents[id];
+  }
+  return { ...layout, parents };
+}
+
+/** 展开 / 收起分组 */
+export const toggleGroupCollapsed = (layout: PromptLayout, id: string): PromptLayout =>
+  ({ ...layout, groups: layout.groups.map((group) => group.id === id ? { ...group, collapsed: !group.collapsed } : group) });
 
 export const MAX_PROMPT_GROUPS = 50;
 
@@ -162,7 +227,10 @@ export function addPromptGroup(layout: PromptLayout, name: string, id = `grp-${c
   const trimmed = name.trim().slice(0, 20);
   if (!trimmed) throw new Error("分组名称不能为空");
   if (layout.groups.length >= MAX_PROMPT_GROUPS) throw new Error(`最多 ${MAX_PROMPT_GROUPS} 个分组`);
-  return { layout: { ...layout, groups: [...layout.groups, { id, name: trimmed }] }, id };
+  const groups = [...layout.groups, { id, name: trimmed }];
+  // 新分组排在分类列表最上面,建完马上能看到
+  const categoryOrder = [id, ...allCategories({ ...layout, groups }).map((item) => item.id).filter((item) => item !== id)];
+  return { layout: { ...layout, groups, categoryOrder }, id };
 }
 
 export function renamePromptGroup(layout: PromptLayout, id: string, name: string): PromptLayout {
@@ -183,6 +251,8 @@ export function removeCategories(layout: PromptLayout, ids: string[]): PromptLay
     categoryOrder: layout.categoryOrder.filter((id) => !removedGroups.has(id)),
     hiddenCategories: [...new Set([...layout.hiddenCategories, ...hidden])],
     placement: Object.fromEntries(Object.entries(layout.placement).filter(([, target]) => !removedGroups.has(target))),
+    // 删掉的分组里的分类回到顶层
+    parents: Object.fromEntries(Object.entries(layout.parents || {}).filter(([, group]) => !removedGroups.has(group))),
   };
 }
 

@@ -14,12 +14,14 @@ const layoutSchema = z.object({
   groups: z.array(z.object({
     id: z.string().regex(/^grp-[\w-]{1,40}$/, "分组 ID 不正确"),
     name: z.string().trim().min(1, "分组名称不能为空").max(20, "分组名称最多 20 个字"),
+    collapsed: z.boolean().optional(),
   })).max(MAX_PROMPT_GROUPS, `最多 ${MAX_PROMPT_GROUPS} 个分组`),
   categoryOrder: ids,
   hiddenCategories: ids,
   hiddenPrompts: ids,
   promptOrder: ids,
   placement: z.record(id, id).refine((value) => Object.keys(value).length <= 2000, "记录太多"),
+  parents: z.record(id, id).refine((value) => Object.keys(value).length <= 500, "记录太多").optional(),
   usage: z.record(id, usageSchema).optional(),
   sort: z.enum(["manual", "recent", "frequent", "added", "name"]),
 });
@@ -37,7 +39,10 @@ function serial<T>(root: string, task: () => Promise<T>) {
 export async function getPromptLayout(root: string): Promise<PromptLayout> {
   const parsed = layoutSchema.safeParse(await readJson<unknown>(layoutFile(root), null));
   if (!parsed.success) return emptyPromptLayout();
-  return { ...parsed.data, usage: parsed.data.usage || {}, hiddenCategories: parsed.data.hiddenCategories.filter((item) => item !== "mine") };
+  return {
+    ...parsed.data, usage: parsed.data.usage || {}, parents: parsed.data.parents || {},
+    hiddenCategories: parsed.data.hiddenCategories.filter((item) => item !== "mine"),
+  };
 }
 
 /** 整体保存布局;使用次数以服务端记的为准,不被页面上的旧数据覆盖 */
@@ -47,7 +52,7 @@ export async function savePromptLayout(root: string, value: unknown) {
     const current = await getPromptLayout(root);
     const groups = [...new Map(data.groups.map((group) => [group.id, group])).values()];
     const next: PromptLayout = {
-      ...data, groups, usage: current.usage,
+      ...data, groups, usage: current.usage, parents: data.parents || {},
       hiddenCategories: [...new Set(data.hiddenCategories)].filter((item) => item !== "mine"),
       hiddenPrompts: [...new Set(data.hiddenPrompts)],
       categoryOrder: [...new Set(data.categoryOrder)],

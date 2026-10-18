@@ -1802,3 +1802,96 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
   .composer-tools > .composer-spacer { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .kind-switch button { padding: 0 9px; }
 }
+
+/* ---------- 提示词库左侧分类栏:与工作台侧栏(.sidebar / .history-*)同样的底色、标题、搜索框和行样式 ---------- */
+.prompt-library-body { grid-template-columns: 196px minmax(0, 1fr); }
+.prompt-library-cats { gap: 0; padding: 12px 10px 10px; background: var(--warm); }
+.prompt-cat-label {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 2px 6px 8px; color: var(--faint); font-size: 10px; font-weight: 700; letter-spacing: .12em;
+}
+.prompt-cat-head-tools { display: flex; gap: 2px; margin: -6px -6px -6px 0; }
+.prompt-cat-head-tools button {
+  width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; color: var(--faint); background: transparent;
+}
+.prompt-cat-head-tools button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.prompt-cat-search {
+  height: 32px; margin: 0 0 8px; padding: 0 6px 0 10px; gap: 7px;
+  border: 1px solid var(--line); border-radius: 8px; color: var(--faint);
+  background: color-mix(in srgb, var(--paper) 55%, transparent);
+}
+.prompt-cat-search:focus-within { border-color: var(--line-strong); color: var(--muted); background: var(--paper); }
+.prompt-cat-search input { height: 100%; padding: 0; font: inherit; font-size: 12px; }
+.prompt-cat-search input::placeholder { color: var(--faint); }
+.prompt-cat-search input::-webkit-search-cancel-button { display: none; }
+.prompt-cat-search button {
+  width: 22px; height: 22px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 6px; color: var(--faint); background: transparent;
+}
+.prompt-cat-search button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.prompt-cat-create { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; padding-left: 6px; color: var(--faint); }
+.prompt-cat-create svg { flex: 0 0 auto; }
+.prompt-cat-rename { height: 30px; border-color: var(--line-strong); border-radius: 7px; }
+.prompt-cat {
+  height: 38px; padding: 0 10px; border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 400;
+}
+.prompt-cat span { color: var(--faint); font-size: 10px; font-weight: 600; }
+.prompt-cat:hover, .prompt-cat.active {
+  color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); font-weight: 400;
+}
+.prompt-cat.is-empty:not(.active) { opacity: 1; color: var(--faint); }
+.prompt-cat-item { border-radius: 8px; }
+.prompt-cat-item.is-mine { margin-bottom: 0; }
+.prompt-cat-item.is-drop-target { background: color-mix(in srgb, var(--ink) 4%, transparent); box-shadow: none; outline: 1.5px dashed var(--line-strong); outline-offset: -1px; }
+.prompt-cat-item.is-drop-target .prompt-cat { font-weight: 400; }
+.prompt-cat-tools { right: 6px; padding: 2px; border-radius: 8px; background: color-mix(in oklch, var(--ink) 4%, var(--warm)); }
+.prompt-cat-tools button { width: 24px; height: 24px; border-radius: 6px; }
+.prompt-cat-hidden { margin-top: auto; }
+@media (max-width: 700px) { .prompt-library-body { grid-template-columns: 1fr; } .prompt-cat { height: 34px; } }
+
+/* 参考素材可以点开放大:卡片里的缩略图、提示词里的 [图1] 标签、输入框里叠放的素材 */
+.task-ref { color: inherit; font: inherit; font-size: 12px; cursor: zoom-in; transition: border-color .15s, background .15s; }
+.task-ref:hover { border-color: var(--line-strong); background: var(--warm); }
+.task-ref-thumb { display: block; padding: 0; cursor: zoom-in; transition: border-color .15s, transform .18s, box-shadow .18s; }
+.task-ref-thumb:hover { border-color: var(--line-strong); transform: translateY(-1px); box-shadow: 0 6px 16px oklch(20% .02 80 / .14); }
+.stack-card { cursor: zoom-in; }
+.media-preview-audio {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+  min-height: 240px; padding: 32px; border-radius: 12px; color: oklch(92% 0 0); background: oklch(18% 0 0);
+}
+.media-preview-audio audio { width: min(520px, 100%); }
+/* 分类多到需要滚动时,各行保持原高度(竖向弹性布局默认会把它们压扁) */
+.prompt-library-cats > * { flex-shrink: 0; }
+
+/* ---------- 设置页:三个用途的 API Key 放在一起(视频 · 图片 / 聊天 / 提示词优化) ---------- */
+.key-intro { margin: -18px 0 22px; max-width: 760px; }
+.key-fields { display: flex; flex-direction: column; gap: 14px; }
+.key-field {
+  padding: 18px 18px 8px; border: 1px solid var(--line); border-radius: 14px;
+  background: color-mix(in srgb, var(--warm) 55%, transparent);
+}
+.key-field-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.key-field-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.key-field-head span { color: var(--faint); font-size: 12px; }
+.key-field .key-help { margin: 0 0 10px; }
+.key-field .assist-setting { margin: 6px 0 4px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.assist-label { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.assist-label em { color: var(--faint); font-size: 11px; font-style: normal; font-weight: 500; }
+
+/* 提示词库的分组:像工作台侧栏的分组一样,箭头 + 文件夹,里面的分类缩进,展开收起有动画 */
+.prompt-cat.is-group { gap: 6px; padding-left: 6px; color: var(--muted); font-weight: 700; font-size: 12px; }
+.prompt-cat.is-group em { font-weight: 700; }
+.prompt-cat-chevron {
+  display: grid; place-items: center; width: 18px; height: 18px; flex: 0 0 auto; border-radius: 5px; color: var(--faint);
+  transition: transform .22s cubic-bezier(.16, 1, .3, 1), color .15s, background .15s;
+}
+.prompt-cat-chevron:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.prompt-cat-chevron.is-collapsed { transform: rotate(-90deg); }
+.prompt-cat-folder { flex: 0 0 auto; color: var(--faint); }
+.prompt-cat-children {
+  display: grid; grid-template-rows: 1fr; opacity: 1;
+  transition: grid-template-rows .26s cubic-bezier(.16, 1, .3, 1), opacity .2s ease;
+}
+.prompt-cat-children.is-collapsed { grid-template-rows: 0fr; opacity: 0; }
+.prompt-cat-children > div { min-height: 0; overflow: hidden; }
+.prompt-cat-item.is-child { margin-left: 14px; }
+.prompt-cat-empty { margin: 0 0 6px 30px; color: var(--faint); font-size: 11px; line-height: 1.5; }

@@ -26,6 +26,7 @@ import {
 } from "@/components/assistant-ui/tool-group";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { ConnectionSettingsDialog } from "@/components/connection-settings-dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useChatSettings } from "@/components/chat-settings";
 import { usePluginSettings } from "@/components/plugin-settings";
 import { ModelSelect } from "@/components/model-select";
@@ -64,6 +65,7 @@ import {
   Globe2Icon,
   ImageIcon,
   LightbulbIcon,
+  Maximize2Icon,
   MicIcon,
   MoreHorizontalIcon,
   PenLineIcon,
@@ -748,7 +750,7 @@ const Composer: FC = () => {
         >
           <ComposerQuotePreview />
           <ComposerAttachments />
-          <div className="relative">
+          <div className="relative pe-8">
             <ComposerEditableInput
               value={text}
               commandItem={highlightedCommandItem}
@@ -758,11 +760,93 @@ const Composer: FC = () => {
               onPaste={handlePaste}
               inputRef={inputRef}
             />
+            <ComposerExpand
+              text={text}
+              disabled={composerInput.isDisabled}
+              canSend={composerInput.canSend}
+              onChange={composerInput.setText}
+              onSend={() => composerInput.send()}
+              onClosed={() => {
+                const input = inputRef.current;
+                if (!input) return;
+                input.focus({ preventScroll: true });
+                setEditableCaret(input, editableText(input).length);
+              }}
+            />
           </div>
           <ComposerAction />
         </div>
       </ComposerPrimitive.AttachmentDropzone>
     </ComposerPrimitive.Root>
+  );
+};
+
+/**
+ * 输入框右上角的「放大」按钮:弹出大号编辑框,长提示词看得清、改得动。
+ * 编辑框和输入框是同一份文字,改完直接发送,或点「完成」回到输入框。Ctrl / ⌘ + Enter 发送。
+ */
+const ComposerExpand: FC<{
+  text: string;
+  disabled: boolean;
+  canSend: boolean;
+  onChange: (value: string) => void;
+  onSend: () => void;
+  onClosed: () => void;
+}> = ({ text, disabled, canSend, onChange, onSend, onClosed }) => {
+  const [open, setOpen] = useState(false);
+  const close = () => {
+    setOpen(false);
+    requestAnimationFrame(onClosed);
+  };
+  const send = () => {
+    if (!canSend) return;
+    setOpen(false);
+    onSend();
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+        title="放大编辑提示词"
+        aria-label="放大编辑提示词"
+        className="text-muted-foreground hover:text-foreground hover:bg-muted absolute end-0 top-0 z-20 flex size-7 items-center justify-center rounded-lg transition-colors disabled:opacity-40"
+      >
+        <Maximize2Icon className="size-3.5" />
+      </button>
+      <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
+        <DialogContent className="flex max-h-[min(820px,calc(100dvh-2rem))] w-full flex-col gap-3 p-5 sm:max-w-[min(860px,calc(100%-2rem))]">
+          <DialogTitle className="text-base font-semibold">编辑提示词</DialogTitle>
+          <textarea
+            autoFocus
+            value={text}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                send();
+              }
+            }}
+            placeholder="发个消息……"
+            className="bg-background border-border focus:border-ring min-h-[46vh] w-full flex-1 resize-none rounded-xl border p-4 text-[15px] leading-7 outline-none transition-colors"
+          />
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground me-auto text-xs tabular-nums">
+              {[...text].length} 字 · Ctrl / ⌘ + Enter 发送
+            </span>
+            <Button variant="outline" size="sm" onClick={close}>
+              完成
+            </Button>
+            <Button size="sm" disabled={!canSend} onClick={send}>
+              <ArrowUpIcon className="size-4" />
+              发送
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

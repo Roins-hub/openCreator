@@ -47,7 +47,7 @@ export function ConnectionSettingsDialog({ trigger }: { trigger: ReactElement })
           <DialogTitle className="text-lg font-semibold">连接设置</DialogTitle>
           <DialogDescription>
             {MOTE_MODE
-              ? "与视频、图片工作台共用同一个 API Key 和中转站。"
+              ? "使用工作台设置里「聊天」的 API Key 和中转站。"
               : "Key 只用于转发请求，可选择仅在本次浏览器会话中保存。"}
           </DialogDescription>
         </DialogHeader>
@@ -57,10 +57,11 @@ export function ConnectionSettingsDialog({ trigger }: { trigger: ReactElement })
             <section className="space-y-1.5 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
               <div className="flex items-center gap-2 font-medium">
                 <KeyRound className="size-4" />
-                {settings.apiKey ? "已使用工作台的 API Key" : "还没有填写 API Key"}
+                {settings.apiKey ? "已使用工作台设置里的聊天 Key" : "还没有填写 API Key"}
               </div>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                中转站：{activeShortUrl || "new.tangzhi.org"}。Key 和中转站地址在工作台设置里修改，聊天会自动同步。
+                中转站：{activeShortUrl || "new.tangzhi.org"}。在工作台「设置 → 中转站 API Key → 聊天」里可以单独填一个能用文本模型的 Key；
+                没填时沿用视频 · 图片的 Key。改完聊天会自动同步。
               </p>
               <a className="inline-block text-xs font-medium underline underline-offset-4" href={MOTE_SETTINGS}>
                 打开工作台设置

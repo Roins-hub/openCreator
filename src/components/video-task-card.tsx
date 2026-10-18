@@ -10,6 +10,7 @@ import {
 import type { MediaRef, Message, VideoOptions } from "@/lib/types";
 import { findReference, referenceLabels, splitPromptReferences } from "@/lib/prompt-references";
 import { MediaThumb } from "@/components/media-thumb";
+import { MediaPreview, mediaPreviewItem } from "@/components/media-preview";
 
 const modeLabels: Record<VideoOptions["referenceMode"], string> = {
   text: "文生视频", first: "首帧", first_last: "首尾帧", references: "参考生成",
@@ -122,6 +123,8 @@ export function VideoTaskCard({
   const options = message.generation?.videoOptions;
   const taskId = message.taskIds?.[0] || message.taskId;
   const labels = referenceLabels(references);
+  // 点参考素材放大查看
+  const [refPreview, setRefPreview] = useState<number | null>(null);
   const shortTaskId = taskId ? (taskId.length > 22 ? `${taskId.slice(0, 10)}…${taskId.slice(-8)}` : taskId) : "";
 
   useEffect(() => {
@@ -204,9 +207,10 @@ export function VideoTaskCard({
             const position = findReference(references, segment.mediaKind, segment.index);
             const ref = references[position];
             return ref ? (
-              <span className="task-ref" key={index} title={ref.name}>
+              <button type="button" className="task-ref" key={index} title={`放大查看 ${ref.name}`}
+                onClick={() => setRefPreview(position)}>
                 <MediaThumb media={ref} />{labels[position]}
-              </span>
+              </button>
             ) : <span key={index}>[{segment.mediaKind === "image" ? "图" : segment.mediaKind === "video" ? "视频" : "音频"}{segment.index + 1}]</span>;
           }) : <span className="task-prompt-empty">（无提示词）</span>}
         </p>
@@ -214,12 +218,17 @@ export function VideoTaskCard({
         {references.length > 0 && (
           <div className="task-refs" aria-label="参考素材">
             {references.map((ref, index) => (
-              <span className="task-ref-thumb" key={`${ref.path}-${index}`} title={`${labels[index]} · ${ref.name}`}>
+              <button type="button" className="task-ref-thumb" key={`${ref.path}-${index}`}
+                title={`放大查看 ${labels[index]} · ${ref.name}`} onClick={() => setRefPreview(index)}>
                 <MediaThumb media={ref} alt={ref.name} />
                 <i>{labels[index]}</i>
-              </span>
+              </button>
             ))}
           </div>
+        )}
+        {refPreview !== null && (
+          <MediaPreview items={references.map((ref, index) => mediaPreviewItem(ref, `${labels[index]} · ${ref.name}`))}
+            index={refPreview} onIndex={setRefPreview} onClose={() => setRefPreview(null)} />
         )}
 
         <footer className="task-foot">

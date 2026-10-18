@@ -12,14 +12,15 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  BookMarked, Check, Clock3, FolderPlus, ImageIcon, ListChecks, Pencil, Plus, RectangleHorizontal,
+  BookMarked, Check, ChevronDown, Clock3, CornerUpLeft, Folder, FolderPlus, ImageIcon, ListChecks, Pencil, Plus, RectangleHorizontal,
   RotateCcw, Search, Trash2, X,
 } from "lucide-react";
 import {
   MY_PROMPTS, PROMPT_TEMPLATES, type PromptTemplate, requiredReferences,
 } from "@/lib/prompt-library";
 import {
-  addPromptGroup, arrangePrompts, categoryCounts, categoryOf, hiddenCategoryList, hidePrompts, type LibraryCategory,
+  addPromptGroup, arrangePrompts, categoryCounts, categoryOf, categoryTree, hiddenCategoryList, hidePrompts, nestCategories,
+  parentOf, toggleGroupCollapsed, type LibraryCategory,
   type LibraryFilter, movePrompts, PROMPT_SORTS, type PromptLayout, type PromptSort, removeCategories,
   renamePromptGroup, reorderCategories, reorderPrompts, restoreCategories, restorePrompts, visibleCategories,
 } from "@/lib/prompt-layout";
@@ -166,8 +167,22 @@ export function PromptLibrary({
     ? category : "all";
   const results = useMemo(() => arrangePrompts(templates, layout, activeCategory, query),
     [templates, layout, activeCategory, query]);
-  const shownCategories = categoryQuery.trim()
-    ? categories.filter((item) => item.name.toLowerCase().includes(categoryQuery.trim().toLowerCase())) : categories;
+  // 左侧分类树:分组下面挂着放进去的分类;搜索时只留匹配的(分组名匹配时整组都留),并自动展开
+  const tree = useMemo(() => categoryTree(layout), [layout]);
+  const catQuery = categoryQuery.trim().toLowerCase();
+  const catMatches = (item: LibraryCategory) => !catQuery || item.name.toLowerCase().includes(catQuery);
+  const shownTree = tree.flatMap((node) => {
+    const groupHit = catMatches(node.category);
+    const children = groupHit ? node.children : node.children.filter(catMatches);
+    if (!groupHit && !children.length) return [];
+    const group = layout.groups.find((item) => item.id === node.category.id);
+    return [{ ...node, children, expanded: Boolean(catQuery) || !group?.collapsed }];
+  });
+  // 拖动排序用的平铺顺序:收起的分组里的分类不参与
+  const flatCategoryIds = shownTree.flatMap((node) => [node.category.id, ...(node.expanded ? node.children.map((item) => item.id) : [])]);
+  // 正在把分类拖进某个分组:这时其他分类不让位,只高亮那个分组
+  const intoGroupRef = useRef<string | undefined>(undefined);
+  const categoryStrategy: SortingStrategy = (args) => (intoGroupRef.current ? null : verticalListSortingStrategy(args));
   const hiddenView = activeCategory === "hidden";
   const canReorder = layout.sort === "manual" && !hiddenView;
 
@@ -328,7 +343,16 @@ export function PromptLibrary({
   };
   const dragOver = ({ over }: DragOverEvent) => {
     const id = over ? String(over.id) : "";
-    setOverCategory(activeDrag?.kind === "cards" && id.startsWith(CAT) ? id.slice(CAT.length) : undefined);
+    const target = id.startsWith(CAT) ? id.slice(CAT.length) : undefined;
+    if (activeDrag?.kind === "category") {
+      const dragging = activeDrag.id;
+      const isGroup = (value?: string) => Boolean(value && layout.groups.some((group) => group.id === value));
+      const into = !isGroup(dragging) && isGroup(target) && parentOf(layout, dragging) !== target ? target : undefined;
+      intoGroupRef.current = into;
+      setOverCategory(into);
+      return;
+    }
+    setOverCategory(activeDrag?.kind === "cards" ? target : undefined);
   };
   const dragEnd = ({ active, over }: DragEndEvent) => {
     stopDragPointer();
@@ -337,10 +361,19 @@ export function PromptLibrary({
     setOverCategory(undefined);
     if (!drag || !over || over.id === active.id) return;
     const overId = String(over.id);
+    const into = intoGroupRef.current;
+    intoGroupRef.current = undefined;
     if (drag.kind === "category" && overId.startsWith(CAT)) {
-      const order = categories.map((item) => item.id);
       const target = overId.slice(CAT.length);
-      onLayoutChange(reorderCategories(layout, drag.id, target, order.indexOf(target) > order.indexOf(drag.id)));
+      if (into) {
+        // 放进分组;分组收着的话顺手展开,能看到放进去了
+        let next = nestCategories(layout, [drag.id], into);
+        if (layout.groups.find((group) => group.id === into)?.collapsed) next = toggleGroupCollapsed(next, into);
+        onLayoutChange(next);
+        flash(`已把「${categories.find((item) => item.id === drag.id)?.name}」放进「${categories.find((item) => item.id === into)?.name}」`);
+        return;
+      }
+      onLayoutChange(reorderCategories(layout, drag.id, target, flatCategoryIds.indexOf(target) > flatCategoryIds.indexOf(drag.id)));
       return;
     }
     if (drag.kind !== "cards") return;
@@ -357,7 +390,7 @@ export function PromptLibrary({
       onLayoutChange(reorderPrompts(layout, templates, drag.ids, target, order.indexOf(target) > order.indexOf(drag.lead)));
     }
   };
-  const dragCancel = () => { stopDragPointer(); setActiveDrag(null); setOverCategory(undefined); };
+  const dragCancel = () => { stopDragPointer(); intoGroupRef.current = undefined; setActiveDrag(null); setOverCategory(undefined); };
 
   const toggle = (set: Set<string>, id: string) => {
     const next = new Set(set);
@@ -423,8 +456,9 @@ export function PromptLibrary({
     </>;
   };
 
-  const categoryRow = (item: LibraryCategory) => {
+  const categoryRow = (item: LibraryCategory, expanded = true) => {
     const removable = item.kind !== "mine";
+    const parent = parentOf(layout, item.id);
     return <>
       {managing && removable && (
         <input type="checkbox" checked={selectedCategories.has(item.id)} aria-label={`选择分类 ${item.name}`}
@@ -439,13 +473,26 @@ export function PromptLibrary({
             if (event.key === "Escape") { event.stopPropagation(); skipBlur.current = true; setRenaming(null); }
           }} />
       ) : (
-        <button type="button" className={`prompt-cat ${activeCategory === item.id ? "active" : ""} ${counts[item.id] ? "" : "is-empty"}`}
-          onClick={() => changeCategory(item.id)} title="按住拖动调整顺序；把卡片拖到这里可移到该分类">
+        <button type="button" className={`prompt-cat ${item.kind === "group" ? "is-group" : ""} ${activeCategory === item.id ? "active" : ""} ${counts[item.id] ? "" : "is-empty"}`}
+          onClick={() => changeCategory(item.id)}
+          title={item.kind === "group" ? "按住拖动调整顺序；把分类或卡片拖到这里可放进这个分组" : "按住拖动调整顺序；拖到分组上可放进分组；把卡片拖到这里可移到该分类"}>
+          {item.kind === "group" && (
+            <span className={`prompt-cat-chevron ${expanded ? "" : "is-collapsed"}`} role="button" tabIndex={-1}
+              aria-label={expanded ? "收起分组" : "展开分组"}
+              onClick={(event) => { event.stopPropagation(); onLayoutChange(toggleGroupCollapsed(layout, item.id)); }}>
+              <ChevronDown size={13} />
+            </span>
+          )}
+          {item.kind === "group" && <Folder size={13} className="prompt-cat-folder" />}
           <em>{item.name}</em><span>{counts[item.id] || 0}</span>
         </button>
       )}
       {!renaming && removable && (
         <span className="prompt-cat-tools">
+          {parent && (
+            <button type="button" onClick={() => onLayoutChange(nestCategories(layout, [item.id], undefined))}
+              title="移出分组" aria-label={`把 ${item.name} 移出分组`}><CornerUpLeft size={11} /></button>
+          )}
           {item.kind === "group" && (
             <button type="button" onClick={() => setRenaming({ id: item.id, name: item.name })}
               title="重命名" aria-label={`重命名分组 ${item.name}`}><Pencil size={11} /></button>
@@ -482,36 +529,64 @@ export function PromptLibrary({
         accessibility={{ screenReaderInstructions: { draggable: "按空格键拿起，方向键移动，再按空格键放下，Esc 取消" } }}>
         <div className="prompt-library-body">
           <nav className="prompt-library-cats" aria-label="提示词分类">
+            {/* 和工作台侧栏一样:小标题 + 新建分组按钮、搜索框、分组输入框 */}
+            <div className="prompt-cat-label">
+              <span>分类</span>
+              <span className="prompt-cat-head-tools">
+                <button type="button" title="新建分组" aria-label="新建分组" onClick={() => setNewGroup("")}>
+                  <FolderPlus size={14} />
+                </button>
+              </span>
+            </div>
             <label className="prompt-cat-search">
-              <Search size={12} />
-              <input value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)}
+              <Search size={13} />
+              <input type="search" value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Escape" && categoryQuery) { event.stopPropagation(); setCategoryQuery(""); } }}
                 placeholder="搜索分类" aria-label="搜索分类" />
+              {categoryQuery && <button type="button" aria-label="清空搜索" onClick={() => setCategoryQuery("")}><X size={13} /></button>}
             </label>
+            {newGroup !== null && (
+              <div className="prompt-cat-create">
+                <Folder size={14} />
+                <input className="prompt-cat-rename" value={newGroup} maxLength={20} autoFocus placeholder="分组名称，回车创建"
+                  onChange={(event) => setNewGroup(event.target.value)}
+                  onFocus={() => { skipBlur.current = false; }} onBlur={createGroup}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (event.key === "Escape") { event.stopPropagation(); skipBlur.current = true; setNewGroup(null); }
+                  }} />
+              </div>
+            )}
             <button type="button" className={`prompt-cat ${activeCategory === "all" ? "active" : ""}`}
               onClick={() => changeCategory("all")}>
               全部<span>{counts.all}</span>
             </button>
-            <SortableContext items={shownCategories.map((item) => CAT + item.id)} strategy={verticalListSortingStrategy}>
-              {shownCategories.map((item) => (
-                <SortableCategory key={item.id} id={item.id} disabled={renaming?.id === item.id}
-                  className={`prompt-cat-item ${item.kind === "mine" ? "is-mine" : ""} ${overCategory === item.id ? "is-drop-target" : ""}`}>
-                  {categoryRow(item)}
-                </SortableCategory>
+            <SortableContext items={flatCategoryIds.map((id) => CAT + id)} strategy={categoryStrategy}>
+              {shownTree.map(({ category: item, children, expanded }) => (
+                <div key={item.id} className="prompt-cat-node">
+                  <SortableCategory id={item.id} disabled={renaming?.id === item.id}
+                    className={`prompt-cat-item ${item.kind === "mine" ? "is-mine" : ""} ${overCategory === item.id ? "is-drop-target" : ""}`}>
+                    {categoryRow(item, expanded)}
+                  </SortableCategory>
+                  {item.kind === "group" && (
+                    // 分组里的分类:收起时高度过渡到 0,展开收起都有动画
+                    <div className={`prompt-cat-children ${expanded ? "" : "is-collapsed"}`} inert={!expanded}>
+                      <div>
+                        {children.map((child) => (
+                          <SortableCategory key={child.id} id={child.id} disabled={!expanded || renaming?.id === child.id}
+                            className={`prompt-cat-item is-child ${overCategory === child.id ? "is-drop-target" : ""}`}>
+                            {categoryRow(child)}
+                          </SortableCategory>
+                        ))}
+                        {!children.length && !catQuery && (
+                          <p className="prompt-cat-empty">把左侧的分类拖到这里</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               ))}
             </SortableContext>
-            {newGroup === null ? (
-              <button type="button" className="prompt-cat prompt-cat-add" onClick={() => setNewGroup("")}>
-                <FolderPlus size={12} />新建分组
-              </button>
-            ) : (
-              <input className="prompt-cat-rename" value={newGroup} maxLength={20} autoFocus placeholder="分组名称，回车确认"
-                onChange={(event) => setNewGroup(event.target.value)}
-                onFocus={() => { skipBlur.current = false; }} onBlur={createGroup}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") event.currentTarget.blur();
-                  if (event.key === "Escape") { event.stopPropagation(); skipBlur.current = true; setNewGroup(null); }
-                }} />
-            )}
             {managing && selectedCategories.size > 0 && (
               <button type="button" className={`prompt-cat prompt-cat-bulk ${confirm === "bulk-categories" ? "confirm" : ""}`}
                 onClick={() => removeCategoryList([...selectedCategories])}>
