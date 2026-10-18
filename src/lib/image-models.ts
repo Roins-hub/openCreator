@@ -7,13 +7,16 @@ export type ImagePrice =
   | { kind: "unknown" };
 
 /**
- * 中转站的生图模型(new-api /api/pricing 里带 image-generation 端点的模型)。
- * 请求走 OpenAI 兼容的 /v1/images/generations;有参考图时走 /v1/images/edits。
- * 尺寸、构图提示与原生图站(image.tangzhi.org)保持一致。
+ * 中转站的生图模型。两种调用方式:
+ * - images:new-api /api/pricing 里带 image-generation 端点的模型,走 OpenAI 兼容的 /v1/images/generations,
+ *   有参考图时走 /v1/images/edits;尺寸、构图提示与原生图站(image.tangzhi.org)保持一致。
+ * - chat:只有对话端点的 Gemini 生图模型(Nano Banana 等),走 /v1/chat/completions,
+ *   比例和清晰度通过 extra_body.google.image_config 传,图片在回复内容里返回。
  */
 export interface ImageModel {
   type: "image";
   id: string;
+  api: "images" | "chat";
   tag: string;
   description: string;
   /** 中转站后台设置的价格(已换算成人民币) */
@@ -48,6 +51,23 @@ export const IMAGE_RESOLUTIONS: ImageResolution[] = ["1k", "2k", "4k"];
 export const IMAGE_BACKGROUNDS: ImageOptions["background"][] = ["auto", "opaque", "transparent"];
 export const IMAGE_FORMATS: ImageOptions["format"][] = ["png", "jpeg", "webp"];
 export const MAX_IMAGE_REFERENCES = 20;
+/** Gemini 生图(Nano Banana)一次最多 14 张参考图 */
+export const MAX_CHAT_IMAGE_REFERENCES = 14;
+/** Gemini 生图支持的比例;其他比例按最接近的生成 */
+export const CHAT_IMAGE_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] as const;
+
+/** 把任意「宽:高」换成 Gemini 支持的最接近的比例 */
+export function nearestChatRatio(ratio: string) {
+  const [w, h] = parseRatio(ratio) || [1, 1];
+  const target = Math.log(w / h);
+  let best: string = CHAT_IMAGE_RATIOS[0];
+  for (const candidate of CHAT_IMAGE_RATIOS) {
+    const [cw, ch] = candidate.split(":").map(Number);
+    const [bw, bh] = best.split(":").map(Number);
+    if (Math.abs(Math.log(cw / ch) - target) < Math.abs(Math.log(bw / bh) - target)) best = candidate;
+  }
+  return best;
+}
 const PROMPT_MAX = 6000;
 
 export const BACKGROUND_LABEL: Record<ImageOptions["background"], string> = { auto: "自动", opaque: "不透明", transparent: "透明" };
@@ -104,7 +124,8 @@ export function imageRequestError(model: ImageModel, prompt: string, options: Im
   if (length > model.promptMax) return `提示词最多 ${model.promptMax} 个字`;
   if (attachments.some((item) => item.kind !== "image")) return "生图只能用图片作为参考";
   if (attachments.length > model.maxReferences) return `最多 ${model.maxReferences} 张参考图`;
-  if (options.background === "transparent" && options.format === "jpeg") return "透明背景需要 PNG 或 WebP 格式";
+  // 对话式生图不支持选背景和格式,不拦
+  if (model.api === "images" && options.background === "transparent" && options.format === "jpeg") return "透明背景需要 PNG 或 WebP 格式";
   return "";
 }
 
@@ -205,24 +226,36 @@ export function priceDetail(price: ImagePrice) {
   return "按量计费";
 }
 
+// 只有对话端点、但其实是生图的模型:Nano Banana、gemini-*-image、Imagen,或按张计费(表达式里有 image_count)的
+const CHAT_IMAGE_NAME = /nano[\s_-]*banana|gemini[\w.-]*-image|imagen/i;
+
+/** 走对话接口出图的模型(Nano Banana 等):没有 image-generation 端点,但有 openai 对话端点 */
+export function isChatImageModel(entry: PricingEntry) {
+  const types = entry.supported_endpoint_types || [];
+  if (!entry.model_name || types.includes("image-generation") || !types.includes("openai")) return false;
+  return CHAT_IMAGE_NAME.test(entry.model_name) || /\bimage_count\b/.test(entry.billing_expr || "");
+}
+
 /** 从 /api/pricing 里挑出生图模型 */
 export function toImageModels(payload: unknown, group = "default", rechargeRate = 1): ImageModel[] {
   const data = (payload as { data?: PricingEntry[]; group_ratio?: Record<string, number> }) || {};
   const context: PriceContext = { groupRatio: Number(data.group_ratio?.[group] || 1), rechargeRate };
   const models: ImageModel[] = [];
   for (const entry of data.data || []) {
-    if (!entry.model_name || !entry.supported_endpoint_types?.includes("image-generation")) continue;
+    const chat = isChatImageModel(entry);
+    if (!entry.model_name || (!chat && !entry.supported_endpoint_types?.includes("image-generation"))) continue;
     if (entry.enable_groups && !entry.enable_groups.includes(group)) continue;
     const price = imagePricing(entry, context);
     models.push({
       type: "image",
       id: entry.model_name,
+      api: chat ? "chat" : "images",
       tag: (String(entry.tags || "").split(",")[0] || "").trim(),
       description: entry.description || "",
       price,
       priceLabel: priceLabel(price),
       priceDetail: priceDetail(price),
-      maxReferences: MAX_IMAGE_REFERENCES,
+      maxReferences: chat ? MAX_CHAT_IMAGE_REFERENCES : MAX_IMAGE_REFERENCES,
       promptMax: PROMPT_MAX,
     });
   }

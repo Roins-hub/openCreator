@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { friendlyMessage, upstreamMessage } from "./tangzhi-server";
+import { chatImageResult, friendlyMessage, upstreamMessage } from "./tangzhi-server";
 
 describe("relay error messages", () => {
   it("explains a failed quota pre-deduction", () => {
@@ -13,5 +13,26 @@ describe("relay error messages", () => {
       code: "fail_to_fetch_task",
       message: JSON.stringify({ error: { code: "invalid_params", message: "mode 为必填项" } }),
     }, 400)).toBe("mode 为必填项");
+  });
+});
+
+describe("chatImageResult", () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64");
+  const reply = (content: unknown, extra = {}) => ({ choices: [{ message: { role: "assistant", content, ...extra } }] });
+
+  it("reads the markdown data URL Nano Banana returns", async () => {
+    const result = await chatImageResult(reply(`![image](data:image/jpeg;base64,${png})`));
+    expect(result.mimeType).toBe("image/jpeg");
+    expect([...result.bytes]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+
+  it("reads message.images and content parts", async () => {
+    expect((await chatImageResult(reply("", { images: [{ image_url: { url: `data:image/png;base64,${png}` } }] }))).mimeType).toBe("image/png");
+    expect((await chatImageResult(reply([{ type: "image_url", image_url: { url: `data:image/webp;base64,${png}` } }]))).mimeType).toBe("image/webp");
+  });
+
+  it("reports the model's text when no image comes back", async () => {
+    await expect(chatImageResult(reply("这个请求无法生成图片"))).rejects.toThrow("模型没有返回图片：这个请求无法生成图片");
+    await expect(chatImageResult({})).rejects.toThrow("中转站没有返回图片");
   });
 });

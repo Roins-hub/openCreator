@@ -5,7 +5,7 @@ import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
 import { useSlidingIndicator } from "@/components/sliding-indicator";
 import type { ImageOptions, VideoOptions } from "@/lib/types";
 import {
-  BACKGROUND_LABEL, IMAGE_BACKGROUNDS, IMAGE_FORMATS, IMAGE_RATIOS, IMAGE_RESOLUTIONS, imageSize, isPresetRatio,
+  BACKGROUND_LABEL, nearestChatRatio, IMAGE_BACKGROUNDS, IMAGE_FORMATS, IMAGE_RATIOS, IMAGE_RESOLUTIONS, imageSize, isPresetRatio,
   MAX_RATIO_SPAN, parseRatio, tierPrice, yuan, type ImageModel,
 } from "@/lib/image-models";
 import {
@@ -199,16 +199,20 @@ export function ImageControls({
     if (parseRatio(ratio)) onChange({ ...value, ratio });
   };
   const priced = model.price.kind === "per_image" && model.price.tiers.length > 1;
+  // Nano Banana 等对话式生图:比例按最接近的支持比例,不能选背景和格式
+  const chatApi = model.api === "chat";
+  const chatRatio = chatApi ? nearestChatRatio(value.ratio) : value.ratio;
   return <div className="video-parameter-group" ref={ref}>
     <div className="parameter-control">
       <button type="button" className={`parameter-trigger ${open ? "active" : ""}`}
         aria-expanded={open} onClick={() => setOpen((current) => !current)}>
         <SlidersHorizontal size={14} />
-        <span>{value.ratio}</span><i /><span>{value.resolution.toUpperCase()}</span><i />
-        <span>{value.format.toUpperCase()}</span><i /><span>{value.count}张</span>
+        <span>{chatRatio}</span><i /><span>{value.resolution.toUpperCase()}</span><i />
+        {!chatApi && <><span>{value.format.toUpperCase()}</span><i /></>}<span>{value.count}张</span>
       </button>
       {open && <div className="parameter-popover video-parameter-popover image-parameter-popover">
-        <section><h3>图片比例<small>按 {width} × {height} 请求，实际尺寸以中转站返回为准</small></h3>
+        <section><h3>图片比例<small>{chatApi ? `按 ${chatRatio} · ${value.resolution.toUpperCase()} 请求，实际尺寸以模型返回为准`
+          : `按 ${width} × ${height} 请求，实际尺寸以中转站返回为准`}</small></h3>
           <div className="ratio-grid image-ratios has-slider" ref={ratioSliderRef}>
             {ratioIndicator}
             {IMAGE_RATIOS.map((ratio) => <button type="button" key={ratio}
@@ -232,6 +236,8 @@ export function ImageControls({
             <label>高<input type="number" min={1} max={999} value={draft[1]} aria-label="自定义比例的高"
               onChange={(event) => changeDraft([draft[0], event.target.value])} /></label>
           </div>}
+          {chatApi && custom && draftValid && chatRatio !== value.ratio && <p className="parameter-note">
+            {model.id} 只支持固定比例，会按最接近的 {chatRatio} 生成</p>}
           {custom && !draftValid && <p className="parameter-note parameter-error">
             请填 1~999 的整数，长边不超过短边的 {MAX_RATIO_SPAN} 倍（当前仍按 {value.ratio}）</p>}
         </section>
@@ -243,7 +249,7 @@ export function ImageControls({
             }}
             onChange={(resolution) => onChange({ ...value, resolution })} />
         </section>
-        <section><h3>背景</h3>
+        {!chatApi && <><section><h3>背景</h3>
           <Segmented values={IMAGE_BACKGROUNDS} value={value.background}
             format={(background) => BACKGROUND_LABEL[background]}
             onChange={(background) => onChange({
@@ -257,7 +263,7 @@ export function ImageControls({
             format={(format) => format.toUpperCase()}
             isDisabled={(format) => format === "jpeg" && value.background === "transparent"}
             onChange={(format) => onChange({ ...value, format })} />
-        </section>
+        </section></>}
         <section><h3>生成数量<small>每张单独生成并计费</small></h3>
           <Segmented values={[1, 2, 3, 4] as const} value={value.count}
             onChange={(count) => onChange({ ...value, count })} />

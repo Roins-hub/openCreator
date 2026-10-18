@@ -1,11 +1,11 @@
 import { recordAsset } from "./asset-store";
 import { getConversation, updateConversation } from "./conversation-store";
-import { imageSize, withComposition, type ImageModel } from "./image-models";
+import { imageSize, nearestChatRatio, withComposition, type ImageModel } from "./image-models";
 import { mediaKey } from "./media-store";
 import { deleteObject, getObject, putObject } from "./object-store";
 import type { Relay } from "./relay";
 import { hasTask, isTerminal, settleTask } from "./task-settle";
-import { editImage, generateImage, type ImageResult } from "./tangzhi-server";
+import { chatImage, editImage, generateImage, type ImageResult } from "./tangzhi-server";
 import type { ImageOptions, MediaRef } from "./types";
 
 /**
@@ -48,6 +48,18 @@ export function imageRequestFields(model: ImageModel, prompt: string, options: I
 }
 
 async function requestImage(job: ImageJob): Promise<ImageResult> {
+  if (job.model.api === "chat") {
+    const references = await Promise.all(job.references.map(async (reference) => ({
+      bytes: await getObject(reference.path), mimeType: reference.mimeType || "image/png",
+    })));
+    return chatImage(job.apiKey, {
+      model: job.model.id,
+      prompt: job.prompt.trim(),
+      aspectRatio: nearestChatRatio(job.options.ratio),
+      imageSize: job.options.resolution.toUpperCase(),
+      references,
+    }, job.relay);
+  }
   const fields = imageRequestFields(job.model, job.prompt, job.options);
   if (!job.references.length) return generateImage(job.apiKey, fields, job.relay);
   const form = new FormData();

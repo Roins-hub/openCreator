@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  fitImageOptions, imageDefaults, imageOptionsSummary, imageRequestError, imageSize, tierPrice, toImageModels, withComposition,
+  fitImageOptions, imageDefaults, imageOptionsSummary, imageRequestError, imageSize, nearestChatRatio, tierPrice, toImageModels,
+  withComposition,
   type ImageModel,
 } from "./image-models";
 
 const model: ImageModel = {
-  type: "image", id: "gpt-image-2", tag: "", description: "", price: { kind: "unknown" }, priceLabel: "按量计费", priceDetail: "按量计费", maxReferences: 4, promptMax: 6000,
+  type: "image", id: "gpt-image-2", api: "images", tag: "", description: "", price: { kind: "unknown" }, priceLabel: "按量计费", priceDetail: "按量计费", maxReferences: 4, promptMax: 6000,
 };
 
 describe("image sizes", () => {
@@ -71,12 +72,33 @@ describe("toImageModels", () => {
       { model_name: "vip-image", supported_endpoint_types: ["image-generation"], enable_groups: ["vip"], model_price: 1, quota_type: 1 },
       { model_name: "gpt-5.5", supported_endpoint_types: ["openai"] },
       { model_name: "ch0101-sd-2.0-480p", supported_endpoint_types: ["openai-video"] },
+      // 只有对话端点的 Gemini 生图模型
+      { model_name: "Nano Banana 2", supported_endpoint_types: ["openai"], enable_groups: ["default"], billing_mode: "tiered_expr", billing_expr: SIZE_TIERS, model_price: 1.2, quota_type: 1 },
+      { model_name: "gemini-3.8-flash", supported_endpoint_types: ["gemini", "openai"], enable_groups: ["default"], billing_mode: "tiered_expr", billing_expr: TOKENS },
     ],
   };
   const byId = (rate = 1) => Object.fromEntries(toImageModels(pricing, "default", rate).map((item) => [item.id, item]));
 
   it("keeps only image-generation models available to the group", () => {
-    expect(toImageModels(pricing).map((item) => item.id)).toEqual(["ch5-gpt-image-2", "flat-image", "gpt-image-2", "ratio-image"]);
+    expect(toImageModels(pricing).map((item) => item.id)).toEqual(["ch5-gpt-image-2", "flat-image", "gpt-image-2", "Nano Banana 2", "ratio-image"]);
+  });
+
+  it("treats chat-only Gemini image models (Nano Banana) as image models", () => {
+    const nano = byId()["Nano Banana 2"];
+    expect(nano).toMatchObject({ api: "chat", maxReferences: 14, priceDetail: "1K ¥0.12 · 2K ¥0.24 · 4K ¥0.36（每张）" });
+    expect(byId()["gpt-image-2"].api).toBe("images");
+    expect(byId()["gemini-3.8-flash"]).toBeUndefined();
+    // 对话式生图不拦透明背景 + JPEG(这两个选项不会发出去)
+    expect(imageRequestError(nano, "猫", { ...imageDefaults, background: "transparent", format: "jpeg" }, [])).toBe("");
+  });
+
+  it("maps any ratio to the nearest one Gemini supports", () => {
+    expect(nearestChatRatio("16:9")).toBe("16:9");
+    expect(nearestChatRatio("2:1")).toBe("16:9");
+    expect(nearestChatRatio("5:7")).toBe("3:4");
+    expect(nearestChatRatio("7:10")).toBe("2:3");
+    expect(nearestChatRatio("1:4")).toBe("9:16");
+    expect(nearestChatRatio("12:5")).toBe("21:9");
   });
 
   it("reads size tiers from the relay's billing expression", () => {

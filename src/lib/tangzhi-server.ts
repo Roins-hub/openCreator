@@ -217,6 +217,58 @@ export async function generateImage(apiKey: string, body: Record<string, unknown
   return imageResponse(response, relay);
 }
 
+/**
+ * 对话式生图(Nano Banana 等 Gemini 生图模型):/v1/chat/completions,参考图作为 image_url 一起发。
+ * 比例和清晰度放在 extra_body.google.image_config;顶层 size(1K / 2K / 4K)给中转站的阶梯计价识别档位。
+ * 图片在回复内容里,形如 ![image](data:image/jpeg;base64,…) 或图片链接。
+ */
+export async function chatImage(
+  apiKey: string,
+  request: { model: string; prompt: string; aspectRatio: string; imageSize: string; references: { bytes: Uint8Array; mimeType: string }[] },
+  relay: Relay = DEFAULT_RELAY,
+): Promise<ImageResult> {
+  const content = [
+    { type: "text", text: request.prompt },
+    ...request.references.map((item) => ({
+      type: "image_url",
+      image_url: { url: `data:${item.mimeType || "image/png"};base64,${Buffer.from(item.bytes).toString("base64")}` },
+    })),
+  ];
+  const data = await call(relay, apiKey, "/v1/chat/completions", {
+    method: "POST", signal: AbortSignal.timeout(300_000),
+    body: JSON.stringify({
+      model: request.model,
+      messages: [{ role: "user", content }],
+      size: request.imageSize,
+      extra_body: { google: { image_config: { aspect_ratio: request.aspectRatio, image_size: request.imageSize } } },
+    }),
+  });
+  return chatImageResult(data);
+}
+
+/** 从对话回复里取出第一张图:data URL、图片链接,或 message.images 里的图 */
+export async function chatImageResult(data: Record<string, unknown>): Promise<ImageResult> {
+  const message = (data.choices as Array<{ message?: { content?: unknown; images?: Array<{ image_url?: { url?: string } }> } }> | undefined)?.[0]?.message;
+  const content = typeof message?.content === "string" ? message.content
+    : Array.isArray(message?.content) ? (message.content as Array<{ text?: string; image_url?: { url?: string } }>)
+      .map((part) => part.image_url?.url ? `![image](${part.image_url.url})` : part.text || "").join("\n") : "";
+  const url = message?.images?.find((item) => item.image_url?.url)?.image_url?.url
+    || content.match(/!\[[^\]]*\]\((data:image\/[\w+.-]+;base64,[A-Za-z0-9+/=]+|https?:\/\/[^\s)]+)\)/)?.[1]
+    || content.match(/data:image\/[\w+.-]+;base64,[A-Za-z0-9+/=]+/)?.[0];
+  if (!url) {
+    const text = content.trim().slice(0, 200);
+    throw new Error(text ? `模型没有返回图片：${text}` : "中转站没有返回图片");
+  }
+  const inline = url.match(/^data:(image\/[\w+.-]+);base64,(.+)$/);
+  if (inline) return { bytes: new Uint8Array(Buffer.from(inline[2], "base64")), mimeType: inline[1] };
+  const download = await publicFetch(url);
+  const type = download.headers.get("content-type") || "";
+  if (!download.ok || !type.startsWith("image/")) throw new Error("无法读取中转站返回的图片");
+  const bytes = new Uint8Array(await download.arrayBuffer());
+  if (bytes.byteLength > 50 * 1024 * 1024) throw new Error("图片超过 50MB 限制");
+  return { bytes, mimeType: type };
+}
+
 export async function editImage(apiKey: string, form: FormData, relay: Relay = DEFAULT_RELAY) {
   const response = await relayFetch(relay, "/v1/images/edits", {
     method: "POST", body: form, signal: AbortSignal.timeout(300_000),

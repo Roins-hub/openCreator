@@ -2,10 +2,13 @@
  * 提示词优化:用中转站的对话模型把用户写的几句话扩写成完整的视频 / 生图提示词。
  * 默认挑一个便宜、快的对话模型(名字带 luna / mini / flash 等),可用 MOTE_ASSIST_MODEL 指定。
  */
+import { isChatImageModel } from "./image-models";
+
 interface PricingEntry {
   model_name?: string;
   supported_endpoint_types?: string[];
   enable_groups?: string[];
+  billing_expr?: string;
 }
 
 const NON_CHAT = new Set(["openai-video", "image-generation"]);
@@ -15,7 +18,7 @@ export function toTextModels(payload: unknown, group = "default"): string[] {
   const data = (payload as { data?: PricingEntry[] }) || {};
   return (data.data || [])
     .filter((entry) => entry.model_name && entry.supported_endpoint_types?.includes("openai") &&
-      !entry.supported_endpoint_types.some((type) => NON_CHAT.has(type)) &&
+      !entry.supported_endpoint_types.some((type) => NON_CHAT.has(type)) && !isChatImageModel(entry) &&
       (!entry.enable_groups || entry.enable_groups.includes(group)))
     .map((entry) => entry.model_name as string)
     .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
