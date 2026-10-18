@@ -70,7 +70,7 @@ function KeyField({ id, label, note, value, placeholder, check, onChange, onVeri
 export function SettingsForm() {
   const [apiKey, setApiKey] = useState("");
   const [saved, setSaved] = useState("");
-  // 聊天 / 提示词优化单独用的 Key(选填,空 = 沿用视频 / 图片的 Key)
+  // 聊天 / 提示词优化单独用的 Key(选填;聊天空 = 用视频 / 图片的,提示词优化空 = 先用聊天的,再用视频 / 图片的)
   const [chatKey, setChatKey] = useState("");
   const [savedChatKey, setSavedChatKey] = useState("");
   const [assistKey, setAssistKey] = useState("");
@@ -157,17 +157,18 @@ export function SettingsForm() {
     }
   };
 
-  /** 验证某个 Key:选填的没填时验证它实际会用的视频 / 图片 Key */
+  /** 验证某个 Key:选填的没填时验证它实际会用的 Key(提示词优化 → 聊天 → 视频 / 图片) */
   const verify = async (which: "main" | "chat" | "assist") => {
     const own = (which === "chat" ? chatKey : which === "assist" ? assistKey : apiKey).trim();
-    const key = own || apiKey.trim();
+    const fallbackToChat = which === "assist" && !own && Boolean(chatKey.trim());
+    const key = own || (fallbackToChat ? chatKey.trim() : apiKey.trim());
     if (!key) return setCheck(which, { state: "error", message: "请先填写 API Key" });
     setCheck(which, { state: "loading", message: "正在验证…" });
     try {
       const response = await fetch("/api/key-check", { method: "POST", headers: apiKeyHeaders(key, base) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "验证失败");
-      const prefix = which !== "main" && !own ? "没有单独填写，使用视频 / 图片的 Key：" : "";
+      const prefix = which === "main" || own ? "" : `没有单独填写，使用${fallbackToChat ? "聊天" : "视频 / 图片"}的 Key：`;
       setCheck(which, { state: "success", message: `${prefix}${data.message}` });
     } catch (cause) {
       setCheck(which, { state: "error", message: (cause as Error).message });
@@ -247,8 +248,8 @@ export function SettingsForm() {
                 onVerify={() => void verify("chat")}>
                 <p className="key-help">「聊天」页面的模型列表和回复都用这个 Key；聊天模型在聊天页面的输入框里选。</p>
               </KeyField>
-              <KeyField id="key-assist" label="提示词优化" note="选填 · 不填就用视频 · 图片的 Key"
-                value={assistKey} placeholder="不填则沿用上面的 Key" check={checks.assist} onEnter={saveIfDirty}
+              <KeyField id="key-assist" label="提示词优化" note="选填 · 不填就用聊天的 Key（聊天也没填则用视频 · 图片的）"
+                value={assistKey} placeholder="不填则沿用聊天的 Key" check={checks.assist} onEnter={saveIfDirty}
                 onChange={(value) => { setAssistKey(value); setCheck("assist", undefined); }}
                 onVerify={() => void verify("assist")}>
                 <div className="assist-setting">

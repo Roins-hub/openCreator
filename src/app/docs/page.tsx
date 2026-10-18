@@ -48,7 +48,7 @@ export default function DocsPage() {
             <p>接口已内置为 <code>https://new.tangzhi.org</code>，不需要再配置供应商或模型。</p>
             <div className="docs-steps">
               <Step index="1" title="创建令牌">登录 <a href="https://new.tangzhi.org" target="_blank" rel="noopener noreferrer">new.tangzhi.org</a>，在「令牌」页面创建 API Key。</Step>
-              <Step index="2" title="填写到设置">打开左下角「设置」，把 Key 粘贴到「视频 · 图片」后点击「保存」，可以先点「验证」确认可用。「聊天」和「提示词优化」需要文本模型，如果这个 Key 的分组里没有文本模型，就给它们各填一个能用的 Key（选填，不填就沿用同一个）。</Step>
+              <Step index="2" title="填写到设置">打开左下角「设置」，把 Key 粘贴到「视频 · 图片」后点击「保存」，可以先点「验证」确认可用。「聊天」和「提示词优化」需要文本模型，如果这个 Key 的分组里没有文本模型，就给它们各填一个能用的 Key（选填：聊天不填用视频 · 图片的 Key，提示词优化不填用聊天的 Key）。</Step>
               <Step index="3" title="选择图片或视频">回到首页，在输入框下方点「图片」或「视频」，再从旁边的下拉框选模型；顶部会显示这个模型的参数范围和价格。</Step>
             </div>
             <div className="docs-note"><CheckCircle2 size={16} /><span>API Key 只保存在你当前的浏览器里；「验证」只读取模型列表，不会产生费用。同一个 Key 在任何设备上打开，都能看到同一份对话和资产。</span></div>

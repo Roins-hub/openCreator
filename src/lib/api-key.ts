@@ -62,7 +62,8 @@ export async function openSession(key = readApiKey(), base = readRelayBase()) {
 
 /**
  * 按用途分开的 Key(选填):聊天和提示词优化要调用文本模型,视频 / 图片的 Key 所在分组未必有,
- * 所以可以各填一个;没填时沿用上面视频 / 图片的 Key。聊天记录、资产始终按视频 / 图片的 Key 对应的账号存放。
+ * 所以可以各填一个。聊天没填用视频 / 图片的 Key;提示词优化没填先用聊天的 Key,聊天也没填再用视频 / 图片的 Key。
+ * 聊天记录、资产始终按视频 / 图片的 Key 对应的账号存放。
  */
 const CHAT_KEY_STORAGE = "mote.tangzhi.chatKey";
 const ASSIST_KEY_STORAGE = "mote.tangzhi.assistKey";
@@ -85,7 +86,7 @@ export const readAssistKey = () => readStored(ASSIST_KEY_STORAGE);
 export const writeAssistKey = (value: string) => writeStored(ASSIST_KEY_STORAGE, value);
 
 /** 提示词优化实际用的 Key:单独填了就用它,否则用视频 / 图片的 Key */
-export const effectiveAssistKey = () => readAssistKey() || readApiKey();
+export const effectiveAssistKey = () => readAssistKey() || readChatKey() || readApiKey();
 export const assistKeyHeaders = () => apiKeyHeaders(effectiveAssistKey());
 
 // 提示词优化用的对话模型:空 = 自动(只存在当前浏览器)
