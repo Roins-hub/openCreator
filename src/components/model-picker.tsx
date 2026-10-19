@@ -272,16 +272,18 @@ export function ModelPicker({
                     const starred = favorites.includes(model.id);
                     return (
                       <div key={`${section.title}-${model.id}`} data-row={index} role="option" aria-selected={model.id === value}
-                        className={`model-row ${index === active ? "is-active" : ""} ${model.id === value ? "is-selected" : ""}`}
+                        className={`pick-row ${index === active ? "is-active" : ""} ${model.id === value ? "is-selected" : ""}`}
                         onMouseEnter={() => setActive(index)}>
-                        <button type="button" className="model-row-main" onClick={() => choose(model.id)}
+                        <button type="button" className="pick-row-main" onClick={() => choose(model.id)}
                           title={model.description || model.id}>
-                          <span className="model-row-name">{model.id}</span>
-                          <span className="model-row-chips">{rowChips(model).map((label) => <em key={label}>{label}</em>)}</span>
+                          <span className="pick-row-name">{model.id}</span>
+                          <span className="pick-row-chips">{rowChips(model).map((label) => (
+                            <em key={label} className={label === channelOf(model.id, model.tag) ? "is-channel" : undefined}>{label}</em>
+                          ))}</span>
                         </button>
-                        <span className="model-row-price">{priceText(model, imageResolution)}</span>
-                        {model.id === value && <Check size={14} className="model-row-check" aria-label="当前模型" />}
-                        <button type="button" className={`model-row-star ${starred ? "is-on" : ""}`} aria-pressed={starred}
+                        <span className="pick-row-price">{priceText(model, imageResolution)}</span>
+                        {model.id === value && <Check size={14} className="pick-row-check" aria-label="当前模型" />}
+                        <button type="button" className={`pick-row-star ${starred ? "is-on" : ""}`} aria-pressed={starred}
                           aria-label={starred ? `从常用移除 ${model.id}` : `加入常用 ${model.id}`}
                           title={starred ? "从常用移除" : "加入常用"} onClick={() => toggleFavorite(model.id)}>
                           <Star size={14} />

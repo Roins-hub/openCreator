@@ -4,7 +4,7 @@ import { ThemeWatcher } from "@/components/theme-watcher";
 import { themeBootScript } from "@/lib/themes";
 
 export const metadata: Metadata = {
-  title: "TZ · AI 视频工作台",
+  title: "TZ",
   description: "本地优先的 AI 视频创作工作台。",
 };
 
