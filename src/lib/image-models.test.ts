@@ -7,6 +7,7 @@ import {
 
 const model: ImageModel = {
   type: "image", id: "gpt-image-2", api: "images", tag: "", description: "", price: { kind: "unknown" }, priceLabel: "按量计费", priceDetail: "按量计费", maxReferences: 4, promptMax: 6000,
+  vendor: "OpenAI", series: "GPT Image 2",
 };
 
 describe("image sizes", () => {

@@ -97,9 +97,10 @@ export function SettingsForm() {
   const host = (savedBase || TANGZHI_BASE_URL).replace(/^https?:\/\//, "");
   const keyPage = savedBase ? `${savedBase}/console/token` : TANGZHI_KEY_PAGE;
 
-  const loadModels = (relayBase: string) => {
+  // 自定义中转站的模型按 Key 读取(/v1/models),所以带上 Key
+  const loadModels = (relayBase: string, key: string) => {
     setModels(undefined);
-    fetch("/api/models", { headers: apiKeyHeaders("", relayBase) }).then(async (response) => {
+    fetch("/api/models", { headers: apiKeyHeaders(key, relayBase) }).then(async (response) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "无法获取模型列表");
       const list = data as (VideoModel | ImageModel)[];
@@ -137,7 +138,7 @@ export function SettingsForm() {
       setBaseInput(relayBase);
       setCustomMode(Boolean(relayBase));
       setAssistModel(readAssistModel());
-      loadModels(relayBase);
+      loadModels(relayBase, key);
       setReady(true);
     }, 0);
     return () => clearTimeout(timer);
@@ -160,7 +161,7 @@ export function SettingsForm() {
       writeAssistKey(assistKey);
       setSavedChatKey(chatKey.trim());
       setSavedAssistKey(assistKey.trim());
-      if (base !== savedBase) loadModels(base);
+      if (base !== savedBase || key !== saved) loadModels(base, key);
       setSavedBase(base);
       setStatus(key ? "已保存" : "已清除");
       window.setTimeout(() => setStatus(""), 2000);

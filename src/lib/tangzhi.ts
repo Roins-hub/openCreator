@@ -1,4 +1,5 @@
 import type { MediaRef, VideoOptions } from "./types";
+import { classifyModel, vendorNames } from "./model-catalog";
 
 /** 唯一内置的中转站。用户只需要在这里创建 API Key。 */
 export const TANGZHI_BASE_URL = "https://new.tangzhi.org";
@@ -41,6 +42,11 @@ export interface VideoModel {
    * - "ark":火山方舟格式,经 new-api 的豆包插件转换,只认 seconds / metadata / images
    */
   protocol: "videos" | "ark";
+  /** 模型选择面板的分组:厂商 → 系列 */
+  vendor: string;
+  series: string;
+  /** 自定义中转站里只知道名字的模型:参数用通用值,价格未知 */
+  generic?: boolean;
 }
 
 const ALL_RATIOS: VideoRatio[] = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
@@ -101,6 +107,7 @@ interface PricingEntry {
   model_name?: string;
   description?: string | null;
   tags?: string | null;
+  vendor_id?: number;
   supported_endpoint_types?: string[];
   enable_groups?: string[];
   billing_mode?: string;
@@ -118,6 +125,7 @@ export function arkProtocol(tag: string, modelId: string) {
 export function toVideoModels(payload: unknown, group = "default", rechargeRate = 1): VideoModel[] {
   const data = (payload as { data?: PricingEntry[]; group_ratio?: Record<string, number> }) || {};
   const groupRatio = Number(data.group_ratio?.[group] || 1);
+  const vendors = vendorNames(payload);
   const models: VideoModel[] = [];
   for (const entry of data.data || []) {
     if (!entry.model_name || !entry.supported_endpoint_types?.includes("openai-video")) continue;
@@ -143,14 +151,30 @@ export function toVideoModels(payload: unknown, group = "default", rechargeRate 
       price: Number(perSecond && perSecondPrice ? perSecondPrice : entry.model_price || 0) * groupRatio * rechargeRate,
       promptMin: 1,
       promptMax: defaults.promptMax,
+      ...classifyModel(entry.model_name, entry.tags, vendors.get(entry.vendor_id ?? -1)),
     });
   }
   const order = (id: string) => id.replace(/-4k(?=$|-)/i, "-4000p");
   return models.sort((a, b) => order(a.id).localeCompare(order(b.id), "en", { numeric: true }));
 }
 
-export function formatPrice(model: Pick<VideoModel, "billing" | "price">) {
+export function formatPrice(model: Pick<VideoModel, "billing" | "price" | "generic">) {
+  if (model.generic) return "价格未知";
   return `¥${model.price.toFixed(2)}/${model.billing === "per_second" ? "秒" : "次"}`;
+}
+
+/**
+ * 自定义中转站里只知道名字的视频模型:不猜参数,用通用的时长、比例和素材上限,
+ * 分辨率取名字里写的(没有就 720p),实际能不能用以中转站的返回为准。
+ */
+export function genericVideoModel(id: string): VideoModel {
+  const resolution = (id.match(/(480p|720p|1080p|4k)/i)?.[1] || "720p").toLowerCase() as VideoResolution;
+  return {
+    type: "video", id, tag: "", description: "", resolution, durations: [5, 10], ratios: ALL_RATIOS,
+    limits: { images: 9, audios: 3, videos: 3, total: 12 }, face: "", billing: "per_request", price: 0,
+    promptMin: 1, promptMax: FALLBACK_DEFAULTS.promptMax, protocol: arkProtocol("", id) ? "ark" : "videos",
+    ...classifyModel(id), generic: true,
+  };
 }
 
 export function mediaSummary(limits: MediaLimits) {

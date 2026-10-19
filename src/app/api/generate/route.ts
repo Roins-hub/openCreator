@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     const input = generateRequestSchema.parse(await request.json());
     const conversation = await getConversation(userId, input.conversationId);
     if (!conversation) throw new Error("会话不存在");
-    const model = await findModel(input.modelId, relay);
+    const model = await findModel(input.modelId, relay, apiKey);
     // 只能引用自己的素材
     const prefixes = await mediaPrefixes(userId);
     if (input.attachments.some((item) => !prefixes.some((prefix) => item.path.startsWith(prefix)))) {

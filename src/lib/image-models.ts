@@ -1,5 +1,6 @@
 import { evaluateExpr, parseExpr } from "./billing-expr";
 import type { ImageOptions, MediaRef } from "./types";
+import { classifyModel, vendorNames } from "./model-catalog";
 
 export type ImagePrice =
   | { kind: "per_image"; tiers: { name: string; price: number }[]; current: number }
@@ -28,6 +29,11 @@ export interface ImageModel {
   /** 参考图上限(图生图) */
   maxReferences: number;
   promptMax: number;
+  /** 模型选择面板的分组:厂商 → 系列 */
+  vendor: string;
+  series: string;
+  /** 自定义中转站里只知道名字的模型:价格未知 */
+  generic?: boolean;
 }
 
 export type ImageRatio = ImageOptions["ratio"];
@@ -144,6 +150,7 @@ interface PricingEntry {
   model_name?: string;
   description?: string | null;
   tags?: string | null;
+  vendor_id?: number;
   supported_endpoint_types?: string[];
   enable_groups?: string[];
   billing_mode?: string;
@@ -240,6 +247,7 @@ export function isChatImageModel(entry: PricingEntry) {
 export function toImageModels(payload: unknown, group = "default", rechargeRate = 1): ImageModel[] {
   const data = (payload as { data?: PricingEntry[]; group_ratio?: Record<string, number> }) || {};
   const context: PriceContext = { groupRatio: Number(data.group_ratio?.[group] || 1), rechargeRate };
+  const vendors = vendorNames(payload);
   const models: ImageModel[] = [];
   for (const entry of data.data || []) {
     const chat = isChatImageModel(entry);
@@ -257,7 +265,26 @@ export function toImageModels(payload: unknown, group = "default", rechargeRate 
       priceDetail: priceDetail(price),
       maxReferences: chat ? MAX_CHAT_IMAGE_REFERENCES : MAX_IMAGE_REFERENCES,
       promptMax: PROMPT_MAX,
+      ...classifyModel(entry.model_name, entry.tags, vendors.get(entry.vendor_id ?? -1)),
     });
   }
   return models.sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
 }
+
+/** 名字像生图模型(没有端点信息的中转站用) */
+export const IMAGE_MODEL_NAME = /image|banana|imagen|flux|seedream|dall-?e|midjourney|(?:^|[-_])mj[-_]|recraft|ideogram|kolors/i;
+
+/** 自定义中转站里只知道名字的生图模型:Gemini 一类走对话接口,其余走 /v1/images,价格未知 */
+export function genericImageModel(id: string, chatOnly = false): ImageModel {
+  const chat = chatOnly || CHAT_IMAGE_NAME.test(id);
+  const price: ImagePrice = { kind: "unknown" };
+  return {
+    type: "image", id, api: chat ? "chat" : "images", tag: "", description: "", price,
+    priceLabel: "价格未知", priceDetail: "价格未知",
+    maxReferences: chat ? MAX_CHAT_IMAGE_REFERENCES : MAX_IMAGE_REFERENCES, promptMax: PROMPT_MAX,
+    ...classifyModel(id), generic: true,
+  };
+}
+
+/** 名字是不是 Gemini 一类只能走对话接口的生图模型 */
+export const isChatImageName = (id: string) => CHAT_IMAGE_NAME.test(id);

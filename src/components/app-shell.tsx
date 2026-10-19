@@ -33,16 +33,16 @@ import {
 import { VideoTaskCard } from "@/components/video-task-card";
 import { ImageTaskCard } from "@/components/image-task-card";
 import {
-  fitImageOptions, imageDefaults, imageRequestError, parseRatio, tierPrice, yuan, type ImageModel,
+  fitImageOptions, imageDefaults, imageRequestError, parseRatio, type ImageModel,
 } from "@/lib/image-models";
 import { LogoMark } from "@/components/logo-mark";
-import { Dropdown } from "@/components/dropdown";
 import { useSlidingIndicator } from "@/components/sliding-indicator";
 import { PromptLibrary, type CustomPromptInput, type PromptUseMode } from "@/components/prompt-library";
 import { fitDuration, type PromptTemplate } from "@/lib/prompt-library";
 import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-layout";
 import { MediaThumb } from "@/components/media-thumb";
 import { MediaPreview } from "@/components/media-preview";
+import { ModelPicker } from "@/components/model-picker";
 import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
 import { uploadMedia } from "@/lib/direct-upload";
 
@@ -80,7 +80,6 @@ const videoDefaults: VideoOptions = {
   count: 1, audio: true, watermark: false, cameraFixed: false,
 };
 const MEDIA_KINDS: MediaKind[] = ["image", "video", "audio"];
-const RESOLUTION_ORDER: VideoOptions["resolution"][] = ["480p", "720p", "1080p", "4k"];
 
 /**
  * 所有本站接口都带上当前用户的 API Key(服务端据此区分用户数据)。
@@ -1310,27 +1309,9 @@ export function AppShell() {
                     onClick={() => switchKind(kind)}><Icon size={13} />{label}</button>
                 ))}
               </div>}
-              <Dropdown className="model-dropdown composer-model" ariaLabel="选择模型" placeholder="正在加载模型"
-                value={selected?.id || ""}
-                options={[
-                  ...[...(selected?.type === "image" ? [] : videoModels)].sort((a, b) => RESOLUTION_ORDER.indexOf(a.resolution) - RESOLUTION_ORDER.indexOf(b.resolution))
-                    .map((model) => ({
-                      value: model.id,
-                      label: model.id,
-                      group: `视频 · ${model.resolution.toUpperCase()}`,
-                      hint: `${durationSummary(model.durations)} · ${formatPrice(model)}`,
-                    })),
-                  ...(selected?.type === "video" ? [] : imageModels).map((model) => {
-                    const price = tierPrice(model.price, imageOptions.resolution);
-                    return {
-                      value: model.id, label: model.id, group: "图片",
-                      hint: price === undefined ? model.priceLabel : `${imageOptions.resolution.toUpperCase()} ${yuan(price)}/张`,
-                    };
-                  }),
-                ]}
-                renderValue={() => selected
-                  ? <>{selected.type === "image" ? <ImageIcon size={14} /> : <Clapperboard size={14} />}<span className="composer-model-name">{selected.id}</span></>
-                  : <span className="dropdown-placeholder">正在加载模型</span>}
+              <ModelPicker
+                models={selected?.type === "image" ? imageModels : selected?.type === "video" ? videoModels : models}
+                value={selected?.id || ""} imageResolution={imageOptions.resolution}
                 onChange={(value) => void chooseModel(value)} />
               {videoModel && <VideoControls key={videoModel.id} value={videoOptions} model={videoModel}
                 attachmentCount={attachments.length}

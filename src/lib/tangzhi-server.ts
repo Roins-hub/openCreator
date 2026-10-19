@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { toVideoModels, type VideoModel } from "./tangzhi";
-import { toImageModels, type ImageModel } from "./image-models";
+import { genericVideoModel, toVideoModels, type VideoModel } from "./tangzhi";
+import { genericImageModel, IMAGE_MODEL_NAME, isChatImageName, toImageModels, type ImageModel } from "./image-models";
 import { assistCandidates, assistSystemPrompt, cleanAssistOutput, toTextModels, type AssistKind } from "./prompt-assist";
 import { DEFAULT_RELAY, publicFetch, relayFetch, relayHost, type Relay } from "./relay";
 
@@ -56,14 +56,45 @@ export async function videoModels(relay: Relay = DEFAULT_RELAY): Promise<VideoMo
   return (await catalog(relay)).videos;
 }
 
-/** 视频模型在前,生图模型在后 */
-export async function catalogModels(relay: Relay = DEFAULT_RELAY): Promise<CatalogModel[]> {
+// 没有端点信息时按名字认视频模型
+const VIDEO_MODEL_NAME = /veo|sora|kling|hailuo|seedance|(?:^|[-_])sd-\d|(?:^|[-_])wan[\d.]*[-_]?(?:t2v|i2v)|vidu|video|runway|pika|luma|pixverse/i;
+
+/**
+ * 自定义中转站:模型以这个 Key 的 /v1/models 为准(能用哪些就列哪些)。
+ * 中转站的 /api/pricing 里按本站格式写了描述的,沿用解析出的参数和价格;
+ * 其余只知道名字的,按端点类型(new-api 会给)或名字认出视频 / 生图模型,参数用通用值,价格未知。
+ */
+async function customRelayModels(relay: Relay, apiKey: string): Promise<CatalogModel[]> {
+  const parsed = await catalog(relay).catch(() => undefined);
+  const list = await keyModelList(apiKey, relay);
+  if (!list) {
+    if (parsed) return [...parsed.videos, ...parsed.images];
+    throw new Error("无法获取中转站模型：请检查中转站地址和 API Key");
+  }
+  const known = new Map<string, CatalogModel>([...(parsed?.videos || []), ...(parsed?.images || [])].map((model) => [model.id, model]));
+  const models: CatalogModel[] = [];
+  for (const { id, types } of list) {
+    const found = known.get(id);
+    if (found) { models.push(found); continue; }
+    if (types.includes("openai-video") || (!types.length && VIDEO_MODEL_NAME.test(id))) {
+      models.push(genericVideoModel(id));
+    } else if (types.includes("image-generation") || isChatImageName(id) || (!types.length && IMAGE_MODEL_NAME.test(id))) {
+      models.push(genericImageModel(id, !types.includes("image-generation") && isChatImageName(id)));
+    }
+  }
+  if (!models.length) throw new Error("这个 Key 在中转站上没有可用的视频或生图模型");
+  return [...models.filter((model) => model.type === "video"), ...models.filter((model) => model.type === "image")];
+}
+
+/** 视频模型在前,生图模型在后;自定义中转站按 Key 读模型列表 */
+export async function catalogModels(relay: Relay = DEFAULT_RELAY, apiKey?: string): Promise<CatalogModel[]> {
+  if (relay.custom && apiKey) return customRelayModels(relay, apiKey);
   const { videos, images } = await catalog(relay);
   return [...videos, ...images];
 }
 
-export async function findModel(id: string, relay: Relay = DEFAULT_RELAY) {
-  const model = (await catalogModels(relay)).find((item) => item.id === id);
+export async function findModel(id: string, relay: Relay = DEFAULT_RELAY, apiKey?: string) {
+  const model = (await catalogModels(relay, apiKey)).find((item) => item.id === id);
   if (!model) throw new Error("所选模型已下线，请重新选择模型");
   return model;
 }
@@ -285,24 +316,36 @@ export async function editImage(apiKey: string, form: FormData, relay: Relay = D
 const workingAssistModel = new Map<string, string>();
 const MAX_ASSIST_ATTEMPTS = 6;
 
-// 每个 Key 能用的模型(中转站 /v1/models 按 Key 所在分组返回),1 分钟缓存
-const keyModels = new Map<string, { at: number; ids: Set<string> }>();
+// 每个 Key 能用的模型(中转站 /v1/models 按 Key 所在分组返回;new-api 还会给出端点类型),1 分钟缓存
+type KeyModel = { id: string; types: string[] };
+const keyModels = new Map<string, { at: number; list: KeyModel[] }>();
 
-async function keyModelIds(apiKey: string, relay: Relay) {
+async function keyModelList(apiKey: string, relay: Relay) {
   const cacheKey = `${relay.base}|${createHash("sha256").update(apiKey).digest("hex")}`;
   const cached = keyModels.get(cacheKey);
-  if (cached && Date.now() - cached.at < CATALOG_TTL) return cached.ids;
+  if (cached && Date.now() - cached.at < CATALOG_TTL) return cached.list;
   try {
     const data = await call(relay, apiKey, "/v1/models", { signal: AbortSignal.timeout(15_000) });
-    const list = Array.isArray(data.data) ? data.data as Array<{ id?: unknown }> : [];
-    const ids = new Set(list.map((item) => item.id).filter((id): id is string => typeof id === "string"));
+    const raw = Array.isArray(data.data) ? data.data as Array<{ id?: unknown; supported_endpoint_types?: unknown }> : [];
+    const list = raw
+      .filter((item): item is { id: string; supported_endpoint_types?: unknown } => typeof item.id === "string" && Boolean(item.id))
+      .map((item) => ({
+        id: item.id,
+        types: Array.isArray(item.supported_endpoint_types)
+          ? item.supported_endpoint_types.filter((type): type is string => typeof type === "string") : [],
+      }));
     if (keyModels.size >= MAX_CATALOGS * 4 && !keyModels.has(cacheKey)) keyModels.delete(keyModels.keys().next().value as string);
-    keyModels.set(cacheKey, { at: Date.now(), ids });
-    return ids;
+    keyModels.set(cacheKey, { at: Date.now(), list });
+    return list;
   } catch {
     // Key 无效等情况由真正调用时报错,这里先列出全部
-    return cached?.ids;
+    return cached?.list;
   }
+}
+
+async function keyModelIds(apiKey: string, relay: Relay) {
+  const list = await keyModelList(apiKey, relay);
+  return list ? new Set(list.map((item) => item.id)) : undefined;
 }
 
 /** 这个 Key 能用的对话模型;没给 Key 或中转站读不到 Key 的模型列表时,列出全部对话模型 */
