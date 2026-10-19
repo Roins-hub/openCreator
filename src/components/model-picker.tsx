@@ -5,12 +5,15 @@ import { Check, ChevronDown, Clapperboard, Image as ImageIcon, Search, Star, X }
 import { durationSummary, formatPrice, type VideoModel } from "@/lib/tangzhi";
 import { tierPrice, yuan, type ImageModel, type ImageResolution } from "@/lib/image-models";
 import { channelOf, groupModels, matchesQuery } from "@/lib/model-catalog";
+import { useSlidingIndicator } from "@/components/sliding-indicator";
 
 type PickerModel = VideoModel | ImageModel;
 
 const FAVORITES_KEY = "mote.modelFavorites";
 const RECENTS_KEY = "mote.modelRecents";
 const MAX_RECENTS = 8;
+// 关闭动画的时长(和 CSS 里 model-panel-out 一致)
+const CLOSE_MS = 160;
 const FAVORITE_VIEW = "\u0000favorites";
 const seriesKey = (model: Pick<PickerModel, "vendor" | "series">) => `${model.vendor}\u0000${model.series}`;
 
@@ -80,6 +83,8 @@ export function ModelPicker({
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef<number | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<string>();
   const [resolutionFilter, setResolutionFilter] = useState<string>();
@@ -89,9 +94,12 @@ export function ModelPicker({
   const [recents, setRecents] = useState<string[]>([]);
   const [active, setActive] = useState(0);
   const [position, setPosition] = useState<CSSProperties>();
+  const [placement, setPlacement] = useState<"above" | "below">("above");
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  // 左栏选中的系列、右栏当前行:各有一块底色滑过去,而不是瞬间跳
+  const { containerRef: navRef, indicator: navIndicator } = useSlidingIndicator<HTMLElement>(".model-nav-item.active");
+  const { containerRef: listRef, indicator: rowIndicator } = useSlidingIndicator<HTMLDivElement>(".pick-row.is-active");
   const searchRef = useRef<HTMLInputElement>(null);
   const selected = models.find((model) => model.id === value);
   const hasVideo = models.some((model) => model.type === "video");
@@ -143,10 +151,23 @@ export function ModelPicker({
     const left = Math.min(Math.max(12, trigger.left), window.innerWidth - width - 12);
     const above = trigger.top - 20;
     const below = window.innerHeight - trigger.bottom - 20;
-    setPosition(above >= 360 || above >= below
-      ? { left, width, bottom: window.innerHeight - trigger.top + 8, maxHeight: Math.min(560, above) }
-      : { left, width, top: trigger.bottom + 8, maxHeight: Math.min(560, below) });
+    const up = above >= 360 || above >= below;
+    // 从触发按钮的位置长出来
+    const origin = { "--origin-x": `${Math.round(trigger.left + trigger.width / 2 - left)}px` } as CSSProperties;
+    setPlacement(up ? "above" : "below");
+    setPosition(up
+      ? { ...origin, left, width, bottom: window.innerHeight - trigger.top + 8, maxHeight: Math.min(560, above) }
+      : { ...origin, left, width, top: trigger.bottom + 8, maxHeight: Math.min(560, below) });
   }, []);
+
+  /** 先播放收起动画,再卸载 */
+  const closePanel = useCallback(() => {
+    window.clearTimeout(closeTimer.current);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setOpen(false); return; }
+    setClosing(true);
+    closeTimer.current = window.setTimeout(() => { setOpen(false); setClosing(false); }, CLOSE_MS);
+  }, []);
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
   const openPanel = () => {
     if (!models.length) return;
@@ -159,13 +180,15 @@ export function ModelPicker({
     setView(selected ? seriesKey(selected) : favs.length || recent.length ? FAVORITE_VIEW : undefined);
     setActive(0);
     place();
+    window.clearTimeout(closeTimer.current);
+    setClosing(false);
     setOpen(true);
   };
 
   useEffect(() => {
     if (!open) return;
-    const close = (event: MouseEvent) => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false); };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); setOpen(false); } };
+    const close = (event: MouseEvent) => { if (!rootRef.current?.contains(event.target as Node)) closePanel(); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); closePanel(); } };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", key, true);
     window.addEventListener("resize", place);
@@ -174,17 +197,17 @@ export function ModelPicker({
       document.removeEventListener("keydown", key, true);
       window.removeEventListener("resize", place);
     };
-  }, [open, place]);
+  }, [closePanel, open, place]);
 
   useEffect(() => {
     if (open) listRef.current?.querySelector<HTMLElement>(`[data-row="${active}"]`)?.scrollIntoView?.({ block: "nearest" });
-  }, [active, open]);
+  }, [active, listRef, open]);
 
   const choose = (id: string) => {
     const next = [id, ...readList(RECENTS_KEY).filter((item) => item !== id)].slice(0, MAX_RECENTS);
     writeList(RECENTS_KEY, next);
     setRecents(next);
-    setOpen(false);
+    closePanel();
     if (id !== value) onChange(id);
     triggerRef.current?.focus();
   };
@@ -202,7 +225,7 @@ export function ModelPicker({
   return (
     <div className={`model-picker dropdown composer-model ${open ? "is-open" : ""}`} ref={rootRef}>
       <button type="button" ref={triggerRef} className="dropdown-trigger" aria-haspopup="dialog" aria-expanded={open}
-        aria-label="选择模型" disabled={!models.length} onClick={() => (open ? setOpen(false) : openPanel())}
+        aria-label="选择模型" disabled={!models.length} onClick={() => (open && !closing ? closePanel() : openPanel())}
         onKeyDown={(event) => { if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) { event.preventDefault(); openPanel(); } }}>
         <span className="dropdown-value">
           {selected
@@ -212,7 +235,8 @@ export function ModelPicker({
         <ChevronDown size={14} className="dropdown-chevron" />
       </button>
       {open && (
-        <div className="model-panel" role="dialog" aria-label="选择模型" style={position}>
+        <div className={`model-panel is-${placement} ${closing ? "is-closing" : ""}`} role="dialog" aria-label="选择模型"
+          style={position}>
           <div className="model-panel-top">
             <label className="model-search">
               <Search size={14} />
@@ -238,7 +262,8 @@ export function ModelPicker({
             )}
           </div>
           <div className="model-panel-body">
-            <nav className="model-nav" aria-label="模型分类">
+            <nav className="model-nav" aria-label="模型分类" ref={navRef}>
+              {navIndicator}
               {common.length > 0 && (
                 <button type="button" className={`model-nav-item is-common ${!searching && currentView === FAVORITE_VIEW ? "active" : ""}`}
                   onClick={() => { setView(FAVORITE_VIEW); setQuery(""); setActive(0); }}>
@@ -264,6 +289,9 @@ export function ModelPicker({
               {!groups.length && <p className="model-nav-empty">没有符合筛选条件的模型</p>}
             </nav>
             <div className="model-list" ref={listRef} role="listbox" aria-label="模型">
+              {rowIndicator}
+              {/* 换系列时整块换掉,行依次淡入;搜索时不换(否则每打一个字都闪) */}
+              <div className="model-list-body" key={searching ? "search" : currentView}>
               {sections.map((section) => (
                 <section key={section.title}>
                   <h4>{section.title}<span>{section.models.length} 个</span></h4>
@@ -272,6 +300,7 @@ export function ModelPicker({
                     const starred = favorites.includes(model.id);
                     return (
                       <div key={`${section.title}-${model.id}`} data-row={index} role="option" aria-selected={model.id === value}
+                        style={{ "--i": Math.min(index, 10) } as CSSProperties}
                         className={`pick-row ${index === active ? "is-active" : ""} ${model.id === value ? "is-selected" : ""}`}
                         onMouseEnter={() => setActive(index)}>
                         <button type="button" className="pick-row-main" onClick={() => choose(model.id)}
@@ -296,6 +325,7 @@ export function ModelPicker({
               {!sections.length && (
                 <p className="model-list-empty">{searching ? "没有找到匹配的模型" : "没有符合筛选条件的模型"}</p>
               )}
+              </div>
             </div>
           </div>
         </div>
