@@ -795,7 +795,7 @@ const Composer: FC = () => {
 
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      {panel.expanded && (
+      {panel.floating && (
         <div
           className={cn("composer-backdrop", panel.closing && "is-closing")}
           onClick={panel.close}
@@ -813,6 +813,7 @@ const Composer: FC = () => {
           data-slot="aui_composer-shell"
           className={cn(
             panel.expanded ? "composer-expanded" : "p-(--composer-padding)",
+            panel.floating && "composer-floating",
             "composer-shell border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] data-[dragging=true]:border-dashed dark:shadow-none",
           )}
         >

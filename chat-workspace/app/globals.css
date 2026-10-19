@@ -975,7 +975,7 @@ html[data-mote-theme] {
 
 /* ---------- 放大编辑提示词:输入框飞到屏幕中间,可拖边角调整大小 ---------- */
 /* 底部输入区是 sticky(自成层叠上下文),放大时整体抬高,面板才能盖住页面其他部分 */
-.aui-thread-viewport-footer:has(.composer-expanded) {
+.aui-thread-viewport-footer:has(.composer-floating) {
   z-index: 60;
 }
 
@@ -1004,10 +1004,15 @@ html[data-mote-theme] {
   }
 }
 
-.composer-shell.composer-expanded {
+@keyframes composer-head-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 浮在页面上(打开中和收起动画中);放大排版只在打开时 */
+.composer-shell.composer-floating {
   z-index: 70;
-  gap: 10px;
-  padding: 0 16px 12px;
   border-color: var(--border);
   background: var(--background);
   box-shadow:
@@ -1015,7 +1020,13 @@ html[data-mote-theme] {
     0 2px 8px color-mix(in oklab, var(--foreground) 8%, transparent);
 }
 
+.composer-shell.composer-expanded {
+  gap: 10px;
+  padding: 0 16px 12px;
+}
+
 .composer-expand-head {
+  animation: composer-head-in 0.22s ease 0.1s both;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -1161,7 +1172,8 @@ html[data-mote-theme] {
 
 @media (prefers-reduced-motion: reduce) {
   .composer-backdrop,
-  .composer-backdrop.is-closing {
+  .composer-backdrop.is-closing,
+  .composer-expand-head {
     animation: none;
   }
 }

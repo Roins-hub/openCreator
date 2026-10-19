@@ -162,19 +162,32 @@ export function useExpandablePanel({
     };
     animationRef.current?.cancel();
     if (!panel || !holder || reducedMotion()) { finish(); return; }
-    setState("closing");
     const current = panel.getBoundingClientRect();
+    // 一开始收起就换回普通输入框的排版(仍浮在原处),之后只有外框在缩小,落地时内容不会再跳
+    flushSync(() => setState("closing"));
+    // 按现在的内容量出回到原位后的真实高度,占位也改成这个高度,终点和最终布局完全一致
+    const width = holder.getBoundingClientRect().width;
+    const saved = { width: panel.style.width, height: panel.style.height };
+    panel.style.width = `${width}px`;
+    panel.style.height = "auto";
+    const height = panel.offsetHeight;
+    panel.style.width = saved.width;
+    panel.style.height = saved.height;
+    flushSync(() => setHolderHeight(height));
     const target = holder.getBoundingClientRect();
     const animation = panel.animate([
       frame({ left: current.left, top: current.top, width: current.width, height: current.height }),
-      frame({ left: target.left, top: target.top, width: target.width, height: holderHeight ?? target.height }),
+      frame({ left: target.left, top: target.top, width: target.width, height }),
     ], { duration: CLOSE_MS, easing: EASING, fill: "forwards" });
     animationRef.current = animation;
     // 先切回原位(同步渲染),再去掉动画的最后一帧,中间不会闪
     animation.onfinish = () => { finish(); animation.cancel(); };
-  }, [holderHeight, holderRef, panelRef, place, state]);
+  }, [holderRef, panelRef, place, state]);
 
-  const expanded = state !== "closed";
+  /** 面板浮在页面上(打开中或正在收起) */
+  const floating = state !== "closed";
+  /** 内容按放大排版(收起动画一开始就换回普通排版) */
+  const expanded = state === "open";
 
   // 窗口变小时面板跟着缩进屏幕;Esc 收起(输入框自己处理过的 Esc 不算)
   useEffect(() => {
@@ -212,13 +225,13 @@ export function useExpandablePanel({
       () => undefined);
   };
 
-  const panelStyle: CSSProperties | undefined = expanded && rect
+  const panelStyle: CSSProperties | undefined = floating && rect
     ? { position: "fixed", left: rect.left, top: rect.top, width: rect.width, height: rect.height, margin: 0 }
     : undefined;
-  const holderStyle: CSSProperties | undefined = expanded && holderHeight ? { minHeight: holderHeight } : undefined;
+  const holderStyle: CSSProperties | undefined = floating && holderHeight ? { minHeight: holderHeight } : undefined;
 
   return {
-    expanded, closing: state === "closing", open, close,
+    floating, expanded, closing: state === "closing", open, close,
     toggle: () => (state === "closed" ? open() : close()),
     panelStyle, holderStyle, startResize, startMove,
   };

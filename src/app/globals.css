@@ -1907,12 +1907,15 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .composer-backdrop.is-closing { animation: composer-backdrop-out .26s ease both; }
 @keyframes composer-backdrop-in { from { opacity: 0; } }
 @keyframes composer-backdrop-out { to { opacity: 0; } }
-.composer.is-expanded {
-  z-index: 70; display: flex; flex-direction: column; padding: 0 18px 12px; border-radius: 20px;
-  border-color: var(--line-strong);
+@keyframes composer-head-in { from { opacity: 0; } }
+/* 浮在页面上(打开中和收起动画中);放大排版只在打开时 */
+.composer.is-floating {
+  z-index: 70; border-color: var(--line-strong);
   box-shadow: 0 30px 90px oklch(20% .02 80 / .26), 0 2px 8px oklch(20% .02 80 / .08);
 }
+.composer.is-expanded { display: flex; flex-direction: column; padding: 0 18px 12px; border-radius: 20px; }
 .composer-expand-head {
+  animation: composer-head-in .22s ease .1s both;
   flex: 0 0 auto; display: flex; align-items: center; gap: 10px; margin: 0 -8px 6px -2px; padding: 12px 0 8px 2px;
   border-bottom: 1px dashed var(--line); cursor: grab; user-select: none; touch-action: none;
 }
@@ -1968,5 +1971,5 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 }
 .panel-resize[data-edge="se"]:hover::after { border-color: var(--muted); }
 @media (prefers-reduced-motion: reduce) {
-  .composer-backdrop, .composer-backdrop.is-closing { animation: none; }
+  .composer-backdrop, .composer-backdrop.is-closing, .composer-expand-head { animation: none; }
 }

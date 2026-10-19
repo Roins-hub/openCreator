@@ -756,7 +756,7 @@ export function AppShell() {
   const focusEditorEnd = () => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.focus();
+    editor.focus({ preventScroll: true });
     const range = document.createRange();
     range.selectNodeContents(editor);
     range.collapse(false);
@@ -1147,12 +1147,12 @@ export function AppShell() {
             onSaveCustom={saveCustomPrompt} onDeleteCustom={deleteCustomPrompts}
             layout={promptLayout} onLayoutChange={changePromptLayout} />
           {error && <div className="inline-error">{readableError(error)}<button onClick={() => setError("")}><X size={13} /></button></div>}
-          {composerPanel.expanded && (
+          {composerPanel.floating && (
             <div className={`composer-backdrop ${composerPanel.closing ? "is-closing" : ""}`} onClick={composerPanel.close}
               aria-hidden="true" />
           )}
           <div className="composer-holder" ref={composerHolderRef} style={composerPanel.holderStyle}>
-          <div className={`composer ${composerPanel.expanded ? "is-expanded" : ""} ${composerPanel.closing ? "is-closing" : ""}`}
+          <div className={`composer ${composerPanel.floating ? "is-floating" : ""} ${composerPanel.expanded ? "is-expanded" : ""}`}
             ref={composerRef} style={composerPanel.panelStyle}
             role={composerPanel.expanded ? "dialog" : undefined} aria-label={composerPanel.expanded ? "放大编辑提示词" : undefined}>
             {composerPanel.expanded && <>
