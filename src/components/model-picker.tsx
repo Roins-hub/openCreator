@@ -93,6 +93,7 @@ export function ModelPicker({
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recents, setRecents] = useState<string[]>([]);
   const [active, setActive] = useState(0);
+  const keyboardMove = useRef(false);
   const [position, setPosition] = useState<CSSProperties>();
   const [placement, setPlacement] = useState<"above" | "below">("above");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -168,6 +169,9 @@ export function ModelPicker({
     closeTimer.current = window.setTimeout(() => { setOpen(false); setClosing(false); }, CLOSE_MS);
   }, []);
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+  useEffect(() => {
+    if (open) searchRef.current?.focus({ preventScroll: true });
+  }, [open]);
 
   const openPanel = () => {
     if (!models.length) return;
@@ -200,7 +204,18 @@ export function ModelPicker({
   }, [closePanel, open, place]);
 
   useEffect(() => {
-    if (open) listRef.current?.querySelector<HTMLElement>(`[data-row="${active}"]`)?.scrollIntoView?.({ block: "nearest" });
+    // 只在键盘上下选择时把这一行滚进右栏可见范围;只滚右栏自己,不用 scrollIntoView(它会连外面的页面一起滚,
+    // 打开面板时页面会跳一下)。鼠标移动不滚。
+    if (!open || !keyboardMove.current) return;
+    keyboardMove.current = false;
+    const list = listRef.current;
+    const row = list?.querySelector<HTMLElement>(`[data-row="${active}"]`);
+    if (!list || !row) return;
+    const header = list.querySelector<HTMLElement>("h4")?.offsetHeight ?? 0;
+    if (row.offsetTop - header < list.scrollTop) list.scrollTop = row.offsetTop - header;
+    else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
+    }
   }, [active, listRef, open]);
 
   const choose = (id: string) => {
@@ -240,12 +255,19 @@ export function ModelPicker({
           <div className="model-panel-top">
             <label className="model-search">
               <Search size={14} />
-              <input ref={searchRef} autoFocus value={query} placeholder="搜索模型、系列、渠道号或描述"
+              <input ref={searchRef} value={query} placeholder="搜索模型、系列、渠道号或描述"
                 aria-label="搜索模型"
                 onChange={(event) => { setQuery(event.target.value); setActive(0); }}
                 onKeyDown={(event) => {
-                  if (event.key === "ArrowDown") { event.preventDefault(); setActive((index) => Math.min(rows.length - 1, index + 1)); }
-                  else if (event.key === "ArrowUp") { event.preventDefault(); setActive((index) => Math.max(0, index - 1)); }
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    keyboardMove.current = true;
+                    setActive((index) => Math.min(rows.length - 1, index + 1));
+                  } else if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    keyboardMove.current = true;
+                    setActive((index) => Math.max(0, index - 1));
+                  }
                   else if (event.key === "Enter" && rows[active]) { event.preventDefault(); choose(rows[active].id); }
                 }} />
               {query && <button type="button" className="model-search-clear" aria-label="清空搜索"
