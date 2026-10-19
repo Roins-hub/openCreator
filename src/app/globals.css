@@ -1896,3 +1896,77 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .prompt-cat-children > div { min-height: 0; overflow: hidden; }
 .prompt-cat-item.is-child { margin-left: 14px; }
 .prompt-cat-empty { margin: 0 0 6px 30px; color: var(--faint); font-size: 11px; line-height: 1.5; }
+
+/* ---------- 放大编辑提示词:输入框飞到屏幕中间,可拖边角调整大小 ---------- */
+.composer-corner { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; margin: 2px -4px 0 -8px; }
+.composer-corner .composer-clear { margin: 0; }
+.composer-backdrop {
+  position: fixed; inset: 0; z-index: 69; background: oklch(18% .01 80 / .26); backdrop-filter: blur(3px);
+  animation: composer-backdrop-in .32s ease both;
+}
+.composer-backdrop.is-closing { animation: composer-backdrop-out .26s ease both; }
+@keyframes composer-backdrop-in { from { opacity: 0; } }
+@keyframes composer-backdrop-out { to { opacity: 0; } }
+.composer.is-expanded {
+  z-index: 70; display: flex; flex-direction: column; padding: 0 18px 12px; border-radius: 20px;
+  border-color: var(--line-strong);
+  box-shadow: 0 30px 90px oklch(20% .02 80 / .26), 0 2px 8px oklch(20% .02 80 / .08);
+}
+.composer-expand-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px; margin: 0 -8px 6px -2px; padding: 12px 0 8px 2px;
+  border-bottom: 1px dashed var(--line); cursor: grab; user-select: none; touch-action: none;
+}
+.composer-expand-head strong { flex: 0 0 auto; font-size: 14px; }
+.composer-expand-head > span {
+  flex: 1; min-width: 0; overflow: hidden; color: var(--faint); font-size: 11px; white-space: nowrap; text-overflow: ellipsis;
+}
+.composer-expand-clear {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px;
+  border-radius: 8px; color: var(--muted); font-size: 12px;
+}
+.composer-expand-clear:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.composer.is-expanded .composer-body { flex: 1; min-height: 0; flex-direction: column; align-items: stretch; gap: 12px; }
+.composer.is-expanded .composer-corner { display: none; }
+.composer.is-expanded .composer-editor {
+  flex: 1; min-height: 0; max-height: none; padding: 6px 4px 12px; font-size: 16px; line-height: 1.75;
+}
+.composer.is-expanded .reference-tile { align-self: flex-start; margin: 4px 0 0 4px; }
+/* 放大后素材整排摊开、尺寸放大,序号和删除按钮一直显示 */
+.composer.is-expanded .attachment-stack {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 12px; width: auto; height: auto; max-height: 38%;
+  margin: 0; padding: 8px 8px 4px 2px; overflow-y: auto;
+}
+.composer.is-expanded .attachment-stack::before, .composer.is-expanded .stack-count { display: none; }
+.composer.is-expanded .attachment-stack .stack-card, .composer.is-expanded .attachment-stack .stack-add {
+  position: relative; flex: 0 0 auto; width: 88px; height: 104px; transform: none; opacity: 1; pointer-events: auto;
+  transition: box-shadow .2s ease, border-color .16s;
+}
+.composer.is-expanded .attachment-stack .stack-card:hover { box-shadow: 0 8px 22px oklch(20% .02 80 / .2); }
+.composer.is-expanded .attachment-stack .stack-card-index,
+.composer.is-expanded .attachment-stack .stack-card-remove { opacity: 1; transform: none; pointer-events: auto; }
+.composer.is-expanded .attachment-stack .stack-card-index { font-size: 10px; }
+.composer-region:has(.composer.is-expanded) .drop-overlay { display: none; }
+.drag-active .composer.is-expanded { border-style: dashed; border-color: var(--focus); }
+/* 四条边、四个角的拖动区 */
+.panel-resize { position: absolute; z-index: 6; touch-action: none; }
+.panel-resize[data-edge="n"], .panel-resize[data-edge="s"] { left: 16px; right: 16px; height: 10px; cursor: ns-resize; }
+.panel-resize[data-edge="n"] { top: -5px; }
+.panel-resize[data-edge="s"] { bottom: -5px; }
+.panel-resize[data-edge="e"], .panel-resize[data-edge="w"] { top: 16px; bottom: 16px; width: 10px; cursor: ew-resize; }
+.panel-resize[data-edge="e"] { right: -5px; }
+.panel-resize[data-edge="w"] { left: -5px; }
+.panel-resize[data-edge="ne"], .panel-resize[data-edge="nw"],
+.panel-resize[data-edge="se"], .panel-resize[data-edge="sw"] { width: 20px; height: 20px; }
+.panel-resize[data-edge="ne"] { top: -6px; right: -6px; cursor: nesw-resize; }
+.panel-resize[data-edge="sw"] { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.panel-resize[data-edge="nw"] { top: -6px; left: -6px; cursor: nwse-resize; }
+.panel-resize[data-edge="se"] { bottom: -6px; right: -6px; cursor: nwse-resize; }
+/* 右下角的小抓手,提示可以拖 */
+.panel-resize[data-edge="se"]::after {
+  content: ""; position: absolute; right: 11px; bottom: 11px; width: 9px; height: 9px;
+  border-right: 2px solid var(--line-strong); border-bottom: 2px solid var(--line-strong); border-radius: 0 0 4px 0;
+}
+.panel-resize[data-edge="se"]:hover::after { border-color: var(--muted); }
+@media (prefers-reduced-motion: reduce) {
+  .composer-backdrop, .composer-backdrop.is-closing { animation: none; }
+}

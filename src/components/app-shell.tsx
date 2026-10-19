@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, AtSign, BookOpen, Clapperboard, Image as ImageIcon, ImagePlus, Images, KeyRound, Loader2, Menu, MessageSquare,
-  PanelLeftClose, Plus, Search as SearchIcon, Settings, Sparkles, Undo2, X, BookMarked, Pencil, Trash2,
+  ArrowUp, AtSign, BookOpen, Clapperboard, Image as ImageIcon, ImagePlus, Images, KeyRound, Loader2, Maximize2, Menu,
+  MessageSquare, Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Settings, Sparkles, Undo2, X, BookMarked, Pencil, Trash2,
 } from "lucide-react";
 import type { Conversation, GenerationMeta, ImageOptions, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
 import type { Asset } from "@/lib/asset-store";
@@ -43,6 +43,7 @@ import { fitDuration, type PromptTemplate } from "@/lib/prompt-library";
 import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-layout";
 import { MediaThumb } from "@/components/media-thumb";
 import { MediaPreview } from "@/components/media-preview";
+import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
 
 type PickerAsset = { id: string; kind: MediaKind; path: string; name: string; mimeType: string };
 /** /api/models 返回的视频模型和生图模型 */
@@ -162,7 +163,13 @@ export function AppShell() {
   const referenceAnchorRef = useRef<DOMRect | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  // 放大编辑:输入框整个飞到屏幕中间,可拖边角调整大小
   const composerRef = useRef<HTMLDivElement>(null);
+  const composerHolderRef = useRef<HTMLDivElement>(null);
+  const composerPanel = useExpandablePanel({
+    panelRef: composerRef, holderRef: composerHolderRef, storageKey: "mote.composerPanelSize",
+    onOpened: () => focusEditorEnd(), onClosed: () => focusEditorEnd(),
+  });
   const conversationRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
@@ -327,6 +334,13 @@ export function AppShell() {
     const composerRect = composer.getBoundingClientRect();
     const pickerWidth = Math.min(430, window.innerWidth - 32);
     const left = Math.max(8, Math.min(markerRect.left - 14, window.innerWidth - pickerWidth - 8));
+    // 放大编辑时贴着光标下方弹出(放不下就放上方)
+    if (composer.classList.contains("is-expanded")) {
+      const below = markerRect.bottom + 10;
+      setReferencePickerPosition(window.innerHeight - below > 300
+        ? { left, top: below } : { left, bottom: window.innerHeight - markerRect.top + 10 });
+      return;
+    }
     // 贴着输入框上沿弹出(用 bottom 锚定,内容多少都不会悬空);上方空间不够时改到输入框下方。
     setReferencePickerPosition(composerRect.top > 240
       ? { left, bottom: window.innerHeight - composerRect.top + 10 }
@@ -422,12 +436,20 @@ export function AppShell() {
     setAttachments([]);
   };
 
+  /** 清空提示词:用编辑命令删除,误点了可以 Ctrl / ⌘ + Z 撤销 */
   const clearPrompt = () => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.innerHTML = "";
-    setDraft("");
     editor.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    if (!document.execCommand("delete")) editor.innerHTML = "";
+    if (!editor.textContent && !editor.querySelector(`.${REFERENCE_CARD_CLASS}`)) editor.innerHTML = "";
+    setDraft("");
+    setBeforeOptimize(undefined);
   };
 
   const create = async () => {
@@ -577,6 +599,7 @@ export function AppShell() {
       setError("素材还在上传，请稍候再发送");
       return;
     }
+    composerPanel.close();
     return submit(prompt, attachments.map(toMediaRef), { clearComposer: true });
   };
 
@@ -1124,7 +1147,28 @@ export function AppShell() {
             onSaveCustom={saveCustomPrompt} onDeleteCustom={deleteCustomPrompts}
             layout={promptLayout} onLayoutChange={changePromptLayout} />
           {error && <div className="inline-error">{readableError(error)}<button onClick={() => setError("")}><X size={13} /></button></div>}
-          <div className="composer" ref={composerRef}>
+          {composerPanel.expanded && (
+            <div className={`composer-backdrop ${composerPanel.closing ? "is-closing" : ""}`} onClick={composerPanel.close}
+              aria-hidden="true" />
+          )}
+          <div className="composer-holder" ref={composerHolderRef} style={composerPanel.holderStyle}>
+          <div className={`composer ${composerPanel.expanded ? "is-expanded" : ""} ${composerPanel.closing ? "is-closing" : ""}`}
+            ref={composerRef} style={composerPanel.panelStyle}
+            role={composerPanel.expanded ? "dialog" : undefined} aria-label={composerPanel.expanded ? "放大编辑提示词" : undefined}>
+            {composerPanel.expanded && <>
+              <div className="composer-expand-head" onPointerDown={composerPanel.startMove}>
+                <strong>编辑提示词</strong>
+                <span>{[...draft.trim()].length} 字 · Enter 换行 · Ctrl / ⌘ + Enter 发送 · Esc 收起</span>
+                {draft.trim() && <button type="button" className="composer-expand-clear" onClick={clearPrompt}
+                  title="清空提示词（Ctrl / ⌘ + Z 可撤销）"><X size={13} />清空</button>}
+                <button type="button" className="icon-button" onClick={composerPanel.close} aria-label="收起" title="收起（Esc）">
+                  <Minimize2 size={15} />
+                </button>
+              </div>
+              {PANEL_EDGES.map((edge) => (
+                <span key={edge} className="panel-resize" data-edge={edge} onPointerDown={composerPanel.startResize(edge)} aria-hidden="true" />
+              ))}
+            </>}
             <div className="composer-body">
               {attachments.length > 0 && (
                 <div className="attachment-stack" aria-label={`${attachments.length} 个参考素材`}
@@ -1185,7 +1229,13 @@ export function AppShell() {
                     void openReferencePicker();
                     return;
                   }
-                  if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
+                  if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                  // 放大编辑时 Enter 换行、Ctrl / ⌘ + Enter 发送;平时 Enter 发送、Shift + Enter 换行
+                  if (composerPanel.expanded && !event.ctrlKey && !event.metaKey) {
+                    if (!event.shiftKey) { event.preventDefault(); document.execCommand("insertLineBreak"); }
+                    return;
+                  }
+                  if (!event.shiftKey) { event.preventDefault(); send(); }
                 }}
                 onInput={(event) => {
                   const editor = event.currentTarget;
@@ -1194,8 +1244,12 @@ export function AppShell() {
                   setDraft(editor.innerText);
                   setBeforeOptimize(undefined);
                 }} />
-              {draft.trim() && <button type="button" className="composer-clear" onClick={clearPrompt}
-                aria-label="清空提示词" title="清空提示词"><X size={15} /></button>}
+              <div className="composer-corner">
+                {draft.trim() && <button type="button" className="composer-clear" onClick={clearPrompt}
+                  aria-label="清空提示词" title="清空提示词（Ctrl / ⌘ + Z 可撤销）"><X size={15} /></button>}
+                {!composerPanel.expanded && <button type="button" className="composer-clear composer-expand"
+                  onClick={composerPanel.open} aria-label="放大编辑提示词" title="放大编辑"><Maximize2 size={14} /></button>}
+              </div>
             </div>
             <div className="composer-tools">
               <input ref={fileRef} type="file" accept={acceptAttribute(allowedKinds)} multiple hidden
@@ -1212,7 +1266,11 @@ export function AppShell() {
               </button>
               {selected && (
                 <button type="button" className={`icon-button prompt-library-trigger ${libraryOpen ? "active" : ""}`}
-                  data-prompt-library-trigger onClick={() => setLibraryOpen((open) => !open)}
+                  data-prompt-library-trigger onClick={() => {
+                    // 提示词库贴在原输入框上方:放大编辑时先收起
+                    if (composerPanel.expanded) composerPanel.close();
+                    setLibraryOpen((open) => !open);
+                  }}
                   aria-label="提示词库" aria-expanded={libraryOpen} title="提示词库">
                   <BookMarked size={18} />
                 </button>
@@ -1287,6 +1345,7 @@ export function AppShell() {
                   </button>;
                 })}</div>}
             </div>}
+          </div>
           </div>
           <p className="composer-note">由 {relayHost || `${TANGZHI_PROVIDER_NAME} `}中转站生成 · Enter 发送，Shift + Enter 换行</p>
         </div>

@@ -972,3 +972,196 @@ html[data-mote-theme] {
 .ws-manage-actions > button.is-danger { border-color: var(--destructive); color: var(--background); background: var(--destructive); font-weight: 700; }
 .ws-manage-actions button:disabled { opacity: .4; }
 .ws-empty { margin: 10px; color: var(--ws-faint); font-size: 12px; line-height: 1.6; }
+
+/* ---------- 放大编辑提示词:输入框飞到屏幕中间,可拖边角调整大小 ---------- */
+/* 底部输入区是 sticky(自成层叠上下文),放大时整体抬高,面板才能盖住页面其他部分 */
+.aui-thread-viewport-footer:has(.composer-expanded) {
+  z-index: 60;
+}
+
+.composer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 69;
+  background: color-mix(in oklab, var(--foreground) 22%, transparent);
+  backdrop-filter: blur(3px);
+  animation: composer-backdrop-in 0.32s ease both;
+}
+
+.composer-backdrop.is-closing {
+  animation: composer-backdrop-out 0.26s ease both;
+}
+
+@keyframes composer-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes composer-backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.composer-shell.composer-expanded {
+  z-index: 70;
+  gap: 10px;
+  padding: 0 16px 12px;
+  border-color: var(--border);
+  background: var(--background);
+  box-shadow:
+    0 30px 90px color-mix(in oklab, var(--foreground) 24%, transparent),
+    0 2px 8px color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+
+.composer-expand-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0 -8px 0 -2px;
+  padding: 12px 0 8px 4px;
+  border-bottom: 1px dashed var(--border);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.composer-expand-head strong {
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.composer-expand-head > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-expand-clear {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.composer-expand-clear:hover {
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+
+.composer-expanded .aui-composer-attachments {
+  flex-wrap: wrap;
+  max-height: 38%;
+  overflow-y: auto;
+  padding-top: 6px;
+}
+
+.composer-expanded .aui-composer-input {
+  font-size: 15px;
+}
+
+.panel-resize {
+  position: absolute;
+  z-index: 40;
+  touch-action: none;
+}
+
+.panel-resize[data-edge="n"],
+.panel-resize[data-edge="s"] {
+  left: 18px;
+  right: 18px;
+  height: 10px;
+  cursor: ns-resize;
+}
+
+.panel-resize[data-edge="n"] {
+  top: -5px;
+}
+
+.panel-resize[data-edge="s"] {
+  bottom: -5px;
+}
+
+.panel-resize[data-edge="e"],
+.panel-resize[data-edge="w"] {
+  top: 18px;
+  bottom: 18px;
+  width: 10px;
+  cursor: ew-resize;
+}
+
+.panel-resize[data-edge="e"] {
+  right: -5px;
+}
+
+.panel-resize[data-edge="w"] {
+  left: -5px;
+}
+
+.panel-resize[data-edge="ne"],
+.panel-resize[data-edge="nw"],
+.panel-resize[data-edge="se"],
+.panel-resize[data-edge="sw"] {
+  width: 22px;
+  height: 22px;
+}
+
+.panel-resize[data-edge="ne"] {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+
+.panel-resize[data-edge="sw"] {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+
+.panel-resize[data-edge="nw"] {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
+}
+
+.panel-resize[data-edge="se"] {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
+}
+
+/* 右下角的小抓手,提示可以拖 */
+.panel-resize[data-edge="se"]::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  border-radius: 0 0 4px 0;
+}
+
+.panel-resize[data-edge="se"]:hover::after {
+  border-color: var(--muted-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-backdrop,
+  .composer-backdrop.is-closing {
+    animation: none;
+  }
+}
