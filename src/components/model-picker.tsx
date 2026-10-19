@@ -69,6 +69,29 @@ function rowChips(model: PickerModel) {
   return chips;
 }
 
+/** 模型名:放得下就正常显示,太长时自动来回滚动显示完整名字 */
+function ScrollingName({ text }: { text: string }) {
+  const boxRef = useRef<HTMLSpanElement>(null);
+  const [shift, setShift] = useState(0);
+  useEffect(() => {
+    const box = boxRef.current;
+    const inner = box?.firstElementChild as HTMLElement | null;
+    if (!box || !inner) return;
+    // ResizeObserver 开始观察时会先回调一次,不用在这里同步量
+    const observer = new ResizeObserver(() => setShift(Math.max(0, Math.ceil(inner.scrollWidth - box.clientWidth))));
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [text]);
+  const style = shift > 0
+    ? { "--shift": `-${shift}px`, "--scroll-duration": `${Math.min(14, 3 + shift / 30).toFixed(1)}s` } as CSSProperties
+    : undefined;
+  return (
+    <span ref={boxRef} className={`pick-row-name ${shift > 0 ? "is-scrolling" : ""}`} style={style} title={text}>
+      <span>{text}</span>
+    </span>
+  );
+}
+
 /**
  * 模型选择面板:左栏按厂商 → 系列分组(最上面是「常用」:加星的和最近用过的),右栏列出该系列的模型,
  * 同系列按价格从低到高。顶部可以搜索(模型名、系列、渠道号、描述)和筛选(分辨率、可真人、计费方式)。
@@ -327,7 +350,7 @@ export function ModelPicker({
                         onMouseEnter={() => setActive(index)}>
                         <button type="button" className="pick-row-main" onClick={() => choose(model.id)}
                           title={model.description || model.id}>
-                          <span className="pick-row-name">{model.id}</span>
+                          <ScrollingName text={model.id} />
                           <span className="pick-row-chips">{rowChips(model).map((label) => (
                             <em key={label} className={label === channelOf(model.id, model.tag) ? "is-channel" : undefined}>{label}</em>
                           ))}</span>
