@@ -85,7 +85,7 @@ export const writeChatKey = (value: string) => writeStored(CHAT_KEY_STORAGE, val
 export const readAssistKey = () => readStored(ASSIST_KEY_STORAGE);
 export const writeAssistKey = (value: string) => writeStored(ASSIST_KEY_STORAGE, value);
 
-/** 提示词优化实际用的 Key:单独填了就用它,否则用视频 / 图片的 Key */
+/** 提示词优化实际用的 Key:单独填了就用它,否则用聊天的 Key,聊天也没填再用视频 / 图片的 Key */
 export const effectiveAssistKey = () => readAssistKey() || readChatKey() || readApiKey();
 export const assistKeyHeaders = () => apiKeyHeaders(effectiveAssistKey());
 

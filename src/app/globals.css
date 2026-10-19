@@ -1873,6 +1873,7 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .key-field-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
 .key-field-head span { color: var(--faint); font-size: 12px; }
 .key-field .key-help { margin: 0 0 10px; }
+.key-help.is-warning { color: var(--danger); }
 .key-field .assist-setting { margin: 6px 0 4px; padding-top: 14px; border-top: 1px dashed var(--line); }
 .assist-label { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .assist-label em { color: var(--faint); font-size: 11px; font-style: normal; font-weight: 500; }

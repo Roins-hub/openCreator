@@ -86,7 +86,8 @@ export function SettingsForm() {
   const [imageModels, setImageModels] = useState<ImageModel[]>([]);
   // 提示词优化模型:"" = 自动
   const [assistModel, setAssistModel] = useState("");
-  const [assistOptions, setAssistOptions] = useState<{ models: string[]; auto?: string }>();
+  // source:这份选项是用哪个 Key + 中转站读的;和当前不一致时视为还在加载
+  const [assistLoaded, setAssistLoaded] = useState<{ source: string; models: string[]; auto?: string }>();
   const [assistSaved, setAssistSaved] = useState(false);
   // 中转站地址:空字符串 = 内置的默认中转站
   const [customMode, setCustomMode] = useState(false);
@@ -105,10 +106,22 @@ export function SettingsForm() {
       setModels(list.filter((model): model is VideoModel => model.type === "video"));
       setImageModels(list.filter((model): model is ImageModel => model.type === "image"));
     }).catch((cause) => setError((cause as Error).message));
-    fetch("/api/prompt-assist", { headers: apiKeyHeaders("", relayBase) })
-      .then(async (response) => setAssistOptions(response.ok ? await response.json() : { models: [] }))
-      .catch(() => setAssistOptions({ models: [] }));
   };
+
+  // 优化模型的选项按提示词优化实际用的 Key 列出(Key 所在分组决定能用哪些模型);保存了别的 Key 后重新读取
+  const [ready, setReady] = useState(false);
+  const assistKeyInUse = savedAssistKey || savedChatKey || saved;
+  const assistSource = `${savedBase}|${assistKeyInUse}`;
+  const assistOptions = assistLoaded?.source === assistSource ? assistLoaded : undefined;
+  useEffect(() => {
+    if (!ready) return;
+    const controller = new AbortController();
+    const source = `${savedBase}|${assistKeyInUse}`;
+    fetch("/api/prompt-assist", { headers: apiKeyHeaders(assistKeyInUse, savedBase), signal: controller.signal })
+      .then(async (response) => setAssistLoaded({ source, ...(response.ok ? await response.json() : { models: [] }) }))
+      .catch(() => { if (!controller.signal.aborted) setAssistLoaded({ source, models: [] }); });
+    return () => controller.abort();
+  }, [ready, assistKeyInUse, savedBase]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -125,6 +138,7 @@ export function SettingsForm() {
       setCustomMode(Boolean(relayBase));
       setAssistModel(readAssistModel());
       loadModels(relayBase);
+      setReady(true);
     }, 0);
     return () => clearTimeout(timer);
   }, []);
@@ -269,8 +283,13 @@ export function SettingsForm() {
                       writeAssistModel(next);
                       setAssistSaved(true);
                     }} />
+                  {assistOptions && !assistOptions.models.length && (
+                    <p className="key-help is-warning">
+                      当前用的 Key 没有可用的对话模型（Key 所在分组里没有）。给提示词优化或聊天填一个能用对话模型的 Key 并保存后，这里就能选了。
+                    </p>
+                  )}
                   <p className="key-help">
-                    输入框的 ✨ 按钮用它扩写提示词。「自动」会先用轻量便宜的模型（名字带 luna、mini、flash 等），某个模型暂时不可用时自动换下一个；
+                    输入框的 ✨ 按钮用它扩写提示词，可选的模型就是这个 Key 能用的对话模型。「自动」会先用轻量便宜的模型（名字带 luna、mini、flash 等），某个模型暂时不可用时自动换下一个；
                     选了具体模型后只用它，它不可用时会直接提示。费用按中转站的文本模型价格从这个 Key 扣除。
                   </p>
                 </div>

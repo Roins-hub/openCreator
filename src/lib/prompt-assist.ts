@@ -13,13 +13,13 @@ interface PricingEntry {
 
 const NON_CHAT = new Set(["openai-video", "image-generation"]);
 
-/** /api/pricing 里能走 Chat Completions 的纯文本模型 */
-export function toTextModels(payload: unknown, group = "default"): string[] {
+/** /api/pricing 里能走 Chat Completions 的纯文本模型;group 为 null 时不看分组(具体能用哪些由 Key 决定) */
+export function toTextModels(payload: unknown, group: string | null = "default"): string[] {
   const data = (payload as { data?: PricingEntry[] }) || {};
   return (data.data || [])
     .filter((entry) => entry.model_name && entry.supported_endpoint_types?.includes("openai") &&
       !entry.supported_endpoint_types.some((type) => NON_CHAT.has(type)) && !isChatImageModel(entry) &&
-      (!entry.enable_groups || entry.enable_groups.includes(group)))
+      (!group || !entry.enable_groups || entry.enable_groups.includes(group)))
     .map((entry) => entry.model_name as string)
     .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
 }

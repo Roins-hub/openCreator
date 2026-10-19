@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { failure, ok } from "@/lib/http";
-import { requireUser } from "@/lib/identity";
+import { API_KEY_HEADER, requireUser } from "@/lib/identity";
 import { relayOf } from "@/lib/relay";
 import { assistModelOptions, assistPrompt } from "@/lib/tangzhi-server";
 
@@ -11,9 +11,10 @@ const inputSchema = z.object({
   model: z.string().trim().max(200).optional(),
 });
 
-/** 设置页用:可选的对话模型,以及「自动」现在会先用哪个 */
+/** 设置页用:提示词优化 Key 能用的对话模型,以及「自动」现在会先用哪个 */
 export async function GET(request: Request) {
-  try { return ok(await assistModelOptions(relayOf(request))); }
+  const apiKey = request.headers.get(API_KEY_HEADER)?.trim() || undefined;
+  try { return ok(await assistModelOptions(relayOf(request), apiKey)); }
   catch (error) { return failure(error, 502); }
 }
 

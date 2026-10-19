@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { toVideoModels, type VideoModel } from "./tangzhi";
 import { toImageModels, type ImageModel } from "./image-models";
 import { assistCandidates, assistSystemPrompt, cleanAssistOutput, toTextModels, type AssistKind } from "./prompt-assist";
@@ -23,7 +24,8 @@ async function catalog(relay: Relay) {
     const rate = await rechargeRate(relay);
     const entry = {
       at: Date.now(), videos: toVideoModels(payload, "default", rate), images: toImageModels(payload, "default", rate),
-      texts: toTextModels(payload),
+      // 文本模型不看分组:Key 在哪个分组就能用哪些,见 textModelsFor
+      texts: toTextModels(payload, null),
     };
     if (!entry.videos.length && !entry.images.length) throw new Error("中转站暂无可用的视频或生图模型");
     if (catalogs.size >= MAX_CATALOGS && !catalogs.has(relay.base)) catalogs.delete(catalogs.keys().next().value as string);
@@ -283,9 +285,36 @@ export async function editImage(apiKey: string, form: FormData, relay: Relay = D
 const workingAssistModel = new Map<string, string>();
 const MAX_ASSIST_ATTEMPTS = 6;
 
-/** 设置页「提示词优化模型」的选项:全部对话模型,以及「自动」现在会先用哪个 */
-export async function assistModelOptions(relay: Relay = DEFAULT_RELAY) {
+// 每个 Key 能用的模型(中转站 /v1/models 按 Key 所在分组返回),1 分钟缓存
+const keyModels = new Map<string, { at: number; ids: Set<string> }>();
+
+async function keyModelIds(apiKey: string, relay: Relay) {
+  const cacheKey = `${relay.base}|${createHash("sha256").update(apiKey).digest("hex")}`;
+  const cached = keyModels.get(cacheKey);
+  if (cached && Date.now() - cached.at < CATALOG_TTL) return cached.ids;
+  try {
+    const data = await call(relay, apiKey, "/v1/models", { signal: AbortSignal.timeout(15_000) });
+    const list = Array.isArray(data.data) ? data.data as Array<{ id?: unknown }> : [];
+    const ids = new Set(list.map((item) => item.id).filter((id): id is string => typeof id === "string"));
+    if (keyModels.size >= MAX_CATALOGS * 4 && !keyModels.has(cacheKey)) keyModels.delete(keyModels.keys().next().value as string);
+    keyModels.set(cacheKey, { at: Date.now(), ids });
+    return ids;
+  } catch {
+    // Key 无效等情况由真正调用时报错,这里先列出全部
+    return cached?.ids;
+  }
+}
+
+/** 这个 Key 能用的对话模型;没给 Key 或中转站读不到 Key 的模型列表时,列出全部对话模型 */
+async function textModelsFor(relay: Relay, apiKey?: string) {
   const texts = (await catalog(relay)).texts;
+  const ids = apiKey ? await keyModelIds(apiKey, relay) : undefined;
+  return ids ? texts.filter((id) => ids.has(id)) : texts;
+}
+
+/** 设置页「提示词优化模型」的选项:这个 Key 能用的对话模型,以及「自动」现在会先用哪个 */
+export async function assistModelOptions(relay: Relay = DEFAULT_RELAY, apiKey?: string) {
+  const texts = await textModelsFor(relay, apiKey);
   const remembered = workingAssistModel.get(relay.base);
   return {
     models: texts,
@@ -318,9 +347,11 @@ const fatal = (error: unknown) => error instanceof Error && /API Key 无效|余�
 export async function assistPrompt(
   apiKey: string, prompt: string, kind: AssistKind, relay: Relay = DEFAULT_RELAY, chosen?: string,
 ) {
-  const texts = (await catalog(relay)).texts;
+  const texts = await textModelsFor(relay, apiKey);
   if (chosen) {
-    if (!texts.includes(chosen)) throw new Error(`设置里选的优化模型 ${chosen} 已下线，请到「设置」换一个或改回「自动」`);
+    if (!texts.includes(chosen)) {
+      throw new Error(`设置里选的优化模型 ${chosen} 已下线或这个 Key 用不了，请到「设置」换一个或改回「自动」`);
+    }
     try {
       return { prompt: await completeOnce(apiKey, relay, chosen, prompt, kind), model: chosen };
     } catch (error) {
@@ -329,7 +360,9 @@ export async function assistPrompt(
     }
   }
   const candidates = assistCandidates(texts);
-  if (!candidates.length) throw new Error("中转站暂无可用的对话模型，无法优化提示词");
+  if (!candidates.length) {
+    throw new Error("这个 Key 没有可用的对话模型，无法优化提示词。可以在「设置」里给提示词优化单独填一个能用对话模型的 Key");
+  }
   const remembered = workingAssistModel.get(relay.base);
   const order = remembered && candidates.includes(remembered)
     ? [remembered, ...candidates.filter((id) => id !== remembered)] : candidates;
