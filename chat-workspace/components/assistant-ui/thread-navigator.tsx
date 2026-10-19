@@ -1,0 +1,181 @@
+"use client";
+
+import { useAuiState } from "@assistant-ui/react";
+import { SearchIcon, XIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+/**
+ * 聊天右侧的提示词导航(和视频工作台一致):右边一列短横线对应自己发过的每条消息,
+ * 鼠标移上去展开卡片,可以搜索本对话的提示词,点击跳到那条消息。消息不到 3 条时不显示。
+ */
+interface NavNode {
+  id: string;
+  preview: string;
+  text: string;
+}
+
+const MIN_NODES = 3;
+const WINDOW = 7;
+
+export const messageAnchorId = (id: string) => `chat-msg-${id}`;
+
+type Part = { type: string; text?: string };
+type ThreadMessageLike = { id: string; role: string; content: readonly Part[]; attachments?: readonly unknown[] };
+
+function navNodes(messages: readonly ThreadMessageLike[]): NavNode[] {
+  return messages
+    .filter((message) => message.role === "user")
+    .map((message) => {
+      const text = message.content
+        .map((part) => (part.type === "text" ? part.text || "" : ""))
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const fallback = message.attachments?.length ? "附件消息" : "空消息";
+      const full = text || fallback;
+      return { id: message.id, text: full, preview: full.length > 72 ? `${full.slice(0, 72)}…` : full };
+    });
+}
+
+function windowAround(nodes: NavNode[], activeIndex: number) {
+  if (nodes.length <= WINDOW) return nodes;
+  const start = Math.min(Math.max(0, activeIndex - Math.floor(WINDOW / 2)), nodes.length - WINDOW);
+  return nodes.slice(start, start + WINDOW);
+}
+
+/** 包含全部关键词(空格分隔,不分大小写) */
+function search(nodes: NavNode[], query: string) {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return nodes;
+  return nodes.filter((node) => words.every((word) => node.text.toLowerCase().includes(word)));
+}
+
+const viewport = () => document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]');
+
+export function ThreadNavigator() {
+  const messages = useAuiState((s) => s.thread.messages) as unknown as readonly ThreadMessageLike[];
+  const nodes = useMemo(() => navNodes(messages), [messages]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searching = query.trim().length > 0;
+  const matches = useMemo(() => search(nodes, query), [nodes, query]);
+  const expanded = hovered || focused || searching;
+  const enough = nodes.length >= MIN_NODES;
+
+  // 滚动时高亮当前读到的那条(视口上方约 1/3 处)
+  useEffect(() => {
+    const root = viewport();
+    if (!root || !enough) return;
+    const update = () => {
+      const rect = root.getBoundingClientRect();
+      const readingLine = rect.top + rect.height * 0.32;
+      let next = 0;
+      nodes.forEach((node, index) => {
+        const element = document.getElementById(messageAnchorId(node.id));
+        if (element && element.getBoundingClientRect().top <= readingLine) next = index;
+      });
+      setActiveIndex(next);
+    };
+    update();
+    root.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      root.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [enough, nodes]);
+
+  if (!enough) return null;
+
+  const jump = (id: string) =>
+    document.getElementById(messageAnchorId(id))?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const indexOf = (id: string) => nodes.findIndex((node) => node.id === id);
+  const visible = windowAround(nodes, activeIndex);
+  const list = searching ? matches : visible;
+
+  return (
+    <nav
+      className={`thread-navigator ${expanded ? "expanded" : ""}`}
+      aria-label="对话快速导航"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+      }}
+    >
+      {expanded && (
+        <div className={`thread-map-card ${searching ? "searching" : ""}`}>
+          <label className="thread-map-search">
+            <SearchIcon className="size-3.5" />
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              placeholder={`搜索本对话的 ${nodes.length} 条提示词`}
+              aria-label="搜索本对话的提示词"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  setQuery("");
+                }
+                if (event.key === "Enter" && matches[0]) jump(matches[0].id);
+              }}
+            />
+            {searching && (
+              <button
+                type="button"
+                className="thread-map-clear"
+                aria-label="清空搜索"
+                onClick={() => {
+                  setQuery("");
+                  searchRef.current?.focus();
+                }}
+              >
+                <XIcon className="size-3.5" />
+              </button>
+            )}
+          </label>
+          {searching && (
+            <p className="thread-map-count">{matches.length ? `找到 ${matches.length} 条` : "没有匹配的提示词"}</p>
+          )}
+          <div className="thread-map-list">
+            {list.map((node) => {
+              const index = indexOf(node.id);
+              return (
+                <button
+                  type="button"
+                  key={node.id}
+                  className={index === activeIndex ? "active" : ""}
+                  onClick={() => jump(node.id)}
+                  title={node.text}
+                >
+                  {searching && <em>{index + 1}</em>}
+                  {node.preview}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <div className="thread-map-rail">
+        {visible.map((node) => {
+          const index = indexOf(node.id);
+          return (
+            <button
+              type="button"
+              key={node.id}
+              className={index === activeIndex ? "active" : ""}
+              onClick={() => jump(node.id)}
+              aria-label={`跳转到：${node.preview}`}
+            />
+          );
+        })}
+      </div>
+    </nav>
+  );
+}

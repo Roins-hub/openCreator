@@ -32,6 +32,7 @@ import { ModelSelect } from "@/components/model-select";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
+import { messageAnchorId, ThreadNavigator } from "@/components/assistant-ui/thread-navigator";
 import { copyTextToClipboard } from "@/lib/browser-actions";
 import {
   ActionBarMorePrimitive,
@@ -105,7 +106,7 @@ export const Thread: FC = () => {
 
   return (
     <ThreadPrimitive.Root
-      className="aui-root aui-thread-root bg-background @container flex h-full flex-col"
+      className="aui-root aui-thread-root bg-background @container relative flex h-full flex-col"
       style={{
         ["--thread-max-width" as string]: "44rem",
         ["--composer-bg" as string]:
@@ -147,6 +148,7 @@ export const Thread: FC = () => {
           </AuiIf>
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
+      <ThreadNavigator />
       <SelectionToolbar />
     </ThreadPrimitive.Root>
   );
@@ -1353,9 +1355,11 @@ const AssistantActionBar: FC = () => {
 
 const UserMessage: FC = () => {
   const allCommands = useSlashCommands();
+  const messageId = useAuiState((s) => s.message.id);
 
   return (
     <MessagePrimitive.Root
+      id={messageAnchorId(messageId)}
       data-slot="aui_user-message-root"
       className="fade-in slide-in-from-bottom-1 animate-in mx-auto grid w-full max-w-(--thread-max-width) auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
       data-role="user"
