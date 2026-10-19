@@ -89,6 +89,31 @@ export async function putObject(key: string, body: Uint8Array, contentType: stri
   if (!response.ok) throw new Error(`云存储写入失败（${response.status}）`);
 }
 
+/**
+ * 浏览器直传用的限时上传地址(只有云存储时才有)。浏览器离对象存储近,不再经过本站服务器中转,
+ * 上传快很多;桶上要配好允许本站域名 PUT 的跨域规则(见 scripts/setup-storage-cors.mjs)。
+ */
+export async function signedUploadUrl(key: string, expiresIn = 900) {
+  assertKey(key);
+  const config = store();
+  if (!config) return undefined;
+  const url = config.objectUrl(key);
+  url.searchParams.set("X-Amz-Expires", String(expiresIn));
+  const signed = await config.client.sign(new Request(url, { method: "PUT" }), { aws: { signQuery: true } });
+  return signed.url;
+}
+
+/** 对象的大小;不存在时返回 undefined */
+export async function objectSize(key: string) {
+  assertKey(key);
+  const config = store();
+  if (!config) return undefined;
+  const response = await config.client.fetch(config.objectUrl(key), { method: "HEAD" });
+  if (response.status === 404) return undefined;
+  if (!response.ok) throw new Error(`云存储读取失败（${response.status}）`);
+  return Number(response.headers.get("content-length") || 0);
+}
+
 export async function deleteObject(key: string) {
   assertKey(key);
   const config = store();

@@ -1295,6 +1295,12 @@ body { transition: background-color .2s ease, color .2s ease; }
   border: 2px solid oklch(100% 0 0 / .4); border-top-color: oklch(100% 0 0); border-radius: 50%;
   animation: spin .8s linear infinite;
 }
+/* 上传进度条:贴在卡片底部 */
+.stack-card-progress {
+  position: absolute; left: 5px; right: 5px; bottom: 5px; height: 3px; overflow: hidden;
+  border-radius: 2px; background: oklch(100% 0 0 / .35);
+}
+.stack-card-progress i { display: block; height: 100%; border-radius: inherit; background: oklch(100% 0 0); transition: width .2s ease; }
 
 /* ---------- 下拉框(替代原生 select) ---------- */
 .dropdown { position: relative; min-width: 0; }

@@ -15,6 +15,48 @@ const MEDIA_PATH = "/api/media/";
 const mediaUrl = (path: string) =>
   `${window.location.origin}${MEDIA_PATH}${path.split("/").map(encodeURIComponent).join("/")}`;
 
+const postJson = async <T,>(url: string, body: unknown): Promise<T> => {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { ...moteHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = (await response.json().catch(() => null)) as (T & { error?: string }) | null;
+  if (!response.ok || !data) throw new Error(data?.error || "图片上传失败，请稍后重试");
+  return data;
+};
+
+/**
+ * 浏览器直传工作台的对象存储(不经过服务器中转,快得多):先要限时上传地址,PUT 上去,再请服务器核对。
+ * 对象存储不可用或直传失败时返回 undefined,改走服务器上传。
+ */
+async function uploadDirect(file: File): Promise<string | undefined> {
+  const name = file.name || "image.png";
+  const sign = await postJson<{ direct: boolean; path?: string; url?: string }>("/api/uploads/direct", {
+    step: "sign", name, type: file.type, size: file.size,
+  });
+  if (!sign.direct || !sign.url || !sign.path) return undefined;
+  const sent = await fetch(sign.url, { method: "PUT", body: file, headers: { "Content-Type": file.type } })
+    .then((response) => response.ok, () => false);
+  if (!sent) return undefined;
+  const ref = await postJson<{ path: string }>("/api/uploads/direct", {
+    step: "complete", name, type: file.type, path: sign.path,
+  });
+  return ref.path;
+}
+
+async function uploadViaServer(file: File) {
+  const form = new FormData();
+  form.append("files", file, file.name || "image.png");
+  const response = await fetch("/api/uploads", { method: "POST", body: form, headers: moteHeaders() });
+  const data = (await response.json().catch(() => null)) as Array<{ path?: string }> | { error?: string } | null;
+  const path = Array.isArray(data) ? data[0]?.path : undefined;
+  if (!response.ok || !path) {
+    throw new Error((data && !Array.isArray(data) && data.error) || "图片上传失败，请稍后重试");
+  }
+  return path;
+}
+
 export class MoteImageAttachmentAdapter implements AttachmentAdapter {
   accept = "image/*";
   private inline = new SimpleImageAttachmentAdapter();
@@ -26,14 +68,7 @@ export class MoteImageAttachmentAdapter implements AttachmentAdapter {
   async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
     // GIF 等工作台存储不收的格式,仍按原来的方式内嵌
     if (!UPLOADABLE.has(attachment.file.type)) return this.inline.send(attachment);
-    const form = new FormData();
-    form.append("files", attachment.file, attachment.file.name || "image.png");
-    const response = await fetch("/api/uploads", { method: "POST", body: form, headers: moteHeaders() });
-    const data = (await response.json().catch(() => null)) as Array<{ path?: string }> | { error?: string } | null;
-    const path = Array.isArray(data) ? data[0]?.path : undefined;
-    if (!response.ok || !path) {
-      throw new Error((data && !Array.isArray(data) && data.error) || "图片上传失败，请稍后重试");
-    }
+    const path = (await uploadDirect(attachment.file)) ?? (await uploadViaServer(attachment.file));
     return {
       ...attachment,
       status: { type: "complete" },

@@ -44,12 +44,13 @@ import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-
 import { MediaThumb } from "@/components/media-thumb";
 import { MediaPreview } from "@/components/media-preview";
 import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
+import { uploadMedia } from "@/lib/direct-upload";
 
 type PickerAsset = { id: string; kind: MediaKind; path: string; name: string; mimeType: string };
 /** /api/models 返回的视频模型和生图模型 */
 type CatalogModel = VideoModel | ImageModel;
 /** 输入框里的素材:上传完成前用本地 blob 预览,上传完成后换成服务器路径(仍保留 blob 预览避免闪烁)。 */
-type ComposerAttachment = MediaRef & { previewUrl?: string; uploading?: boolean };
+type ComposerAttachment = MediaRef & { previewUrl?: string; uploading?: boolean; progress?: number };
 
 const toMediaRef = (item: ComposerAttachment): MediaRef => ({
   kind: item.kind, path: item.path, name: item.name,
@@ -290,8 +291,10 @@ export function AppShell() {
     const editor = editorRef.current;
     if (!editor) return;
     editor.style.height = "auto";
+    // 放大编辑时编辑区由面板撑开;按内容算高度只用于普通输入框(否则会把面板的高度带回来)
+    if (composerPanel.expanded) return;
     editor.style.height = `${Math.min(Math.max(editor.scrollHeight, 84), 280)}px`;
-  }, [draft]);
+  }, [draft, composerPanel.expanded]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -556,7 +559,7 @@ export function AppShell() {
     if (selection.error) setError(selection.error);
     else setError("");
     if (!selection.accepted.length) return;
-    // 逐个上传:视频素材较大,单次请求不超过站点的上传上限
+    // 每个文件单独上传(同时进行):优先直传对象存储,单次请求也不会超过站点的上传上限
     const pending = selection.accepted.map(({ file, kind }) => ({
       file,
       item: {
@@ -566,10 +569,15 @@ export function AppShell() {
     }));
     setAttachments((items) => [...items, ...pending.map((entry) => entry.item)]);
     await Promise.all(pending.map(async ({ file, item: placeholder }) => {
-      const form = new FormData();
-      form.append("files", file);
+      // 进度只在变化超过 2% 时更新,避免频繁重渲染
+      let shown = 0;
+      const progress = (fraction: number) => {
+        if (fraction - shown < 0.02 && fraction < 1) return;
+        shown = fraction;
+        setAttachments((items) => items.map((item) => item.path === placeholder.path ? { ...item, progress: fraction } : item));
+      };
       try {
-        const [uploaded] = await request<MediaRef[]>("/api/uploads", { method: "POST", body: form });
+        const uploaded = await uploadMedia(file, request, progress);
         setAttachments((items) => items.map((item) =>
           item.path === placeholder.path ? { ...uploaded, previewUrl: item.previewUrl } : item));
       } catch (cause) {
@@ -1183,6 +1191,11 @@ export function AppShell() {
                       style={{ "--i": index, "--r": `${stackTilt(index)}deg` } as React.CSSProperties}>
                       <MediaThumb media={item} src={attachmentSrc(item)} alt={item.name} />
                       {item.uploading && <span className="stack-card-spinner" aria-label="上传中" />}
+                      {item.uploading && item.progress !== undefined && (
+                        <span className="stack-card-progress" aria-label={`已上传 ${Math.round(item.progress * 100)}%`}>
+                          <i style={{ width: `${Math.round(item.progress * 100)}%` }} />
+                        </span>
+                      )}
                       <span className="stack-card-index">{labels[index]}</span>
                       <button type="button" className="stack-card-remove" onClick={() => {
                         revokePreview(item);
