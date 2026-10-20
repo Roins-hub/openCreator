@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
-  ChevronLeft, ChevronRight, Clapperboard, Copy, Download, FolderOpen, ImagePlus, Info,
-  MoreHorizontal, Pencil, RefreshCw, Star, Trash2, X,
+  Clapperboard, Copy, Download, FolderOpen, ImagePlus, Info,
+  MoreHorizontal, Pencil, RefreshCw, Star, Trash2,
 } from "lucide-react";
 import type { MediaRef, Message } from "@/lib/types";
 import { fitImageOptions, imageOptionsSummary } from "@/lib/image-models";
@@ -14,6 +13,8 @@ import { unfinishedTaskIds } from "@/lib/generation-stop";
 import { MediaThumb } from "@/components/media-thumb";
 import { MediaPreview, mediaPreviewItem } from "@/components/media-preview";
 import { formatTime, StatusBadge, TaskTimes } from "@/components/video-task-card";
+import { ResultViewer } from "@/components/result-viewer";
+import { formatBytes } from "@/components/generation-info";
 
 type Props = {
   prompt: string;
@@ -29,6 +30,8 @@ type Props = {
   onMakeVideo: (image: MediaRef) => void;
   /** 留在生图模型,把这张图作为参考图继续修改 */
   onUseAsReference: (image: MediaRef) => void;
+  /** 旧记录的文件大小(从资产列表查到的);新记录的大小记在 media.size 上 */
+  sizes?: Record<string, number>;
 };
 
 const downloadUrl = (image: MediaRef) => `/api/media/${image.path}?download=${encodeURIComponent(image.name)}`;
@@ -36,7 +39,7 @@ const downloadUrl = (image: MediaRef) => `/api/media/${image.path}?download=${en
 /** 生图记录:提示词、参考图、生成的图片网格;每张图可以下载、做成视频或作为参考图继续改。 */
 export function ImageTaskCard({
   prompt, references, message, fallbackModelName, favorite,
-  onReedit, onRegenerate, onToggleFavorite, onDelete, onMakeVideo, onUseAsReference,
+  onReedit, onRegenerate, onToggleFavorite, onDelete, onMakeVideo, onUseAsReference, sizes,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -44,6 +47,8 @@ export function ImageTaskCard({
   const [viewer, setViewer] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const images = (message.media || []).filter((item) => item.kind === "image");
+  const sizeOf = (media: MediaRef) => media.size ?? sizes?.[media.path];
+  const totalSize = images.reduce((sum, item) => sum + (sizeOf(item) || 0), 0);
   const options = message.generation?.imageOptions ? fitImageOptions(message.generation.imageOptions) : undefined;
   const pending = message.status === "processing" ? unfinishedTaskIds(message).length : 0;
   const labels = referenceLabels(references);
@@ -178,6 +183,8 @@ export function ImageTaskCard({
           {message.status === "failed" && <span className="task-error">{message.error || "图片生成失败"}</span>}
           {message.status === "complete" && message.error && <span className="task-error">部分失败：{message.error}</span>}
           <TaskTimes message={message} durationTitle="从提交到出图的用时" />
+          {totalSize > 0 && <span className="task-note task-size" title={images.length > 1 ? `${images.length} 张图片合计` : "图片文件大小"}>
+            大小 {formatBytes(totalSize)}</span>}
           <span className="task-meta">
             {meta.join(" | ")}
             <span className="task-info" tabIndex={0} aria-label="任务详情">
@@ -193,46 +200,10 @@ export function ImageTaskCard({
       </div>
 
       {viewer !== null && images[viewer] && (
-        <ImageViewer images={images} index={viewer} prompt={prompt}
+        <ResultViewer items={images} index={viewer} prompt={prompt} message={message} references={references}
+          fallbackModelName={fallbackModelName} sizeOf={sizeOf}
           onIndex={setViewer} onClose={() => setViewer(null)} />
       )}
     </article>
-  );
-}
-
-function ImageViewer({ images, index, prompt, onIndex, onClose }: {
-  images: MediaRef[]; index: number; prompt: string;
-  onIndex: (index: number) => void; onClose: () => void;
-}) {
-  const current = images[index];
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-      if (event.key === "ArrowLeft" && index > 0) onIndex(index - 1);
-      if (event.key === "ArrowRight" && index < images.length - 1) onIndex(index + 1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [index, images.length, onClose, onIndex]);
-
-  // 挂到 body 上:放在卡片里时,卡片的动画 / 变换会让 position: fixed 不再相对整个窗口
-  return createPortal(
-    <div className="video-viewer" role="dialog" aria-modal="true" aria-label="图片预览" onClick={onClose}>
-      <div className="video-viewer-body" onClick={(event) => event.stopPropagation()}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="image-viewer-img" key={current.path} src={`/api/media/${current.path}`} alt={current.name} />
-        <div className="video-viewer-bar">
-          <p title={prompt}>{prompt || current.name}</p>
-          {images.length > 1 && <span>{index + 1} / {images.length}</span>}
-          <a href={downloadUrl(current)} download={current.name}><Download size={15} />下载</a>
-        </div>
-      </div>
-      {index > 0 && <button type="button" className="video-viewer-nav prev" aria-label="上一张"
-        onClick={(event) => { event.stopPropagation(); onIndex(index - 1); }}><ChevronLeft size={22} /></button>}
-      {index < images.length - 1 && <button type="button" className="video-viewer-nav next" aria-label="下一张"
-        onClick={(event) => { event.stopPropagation(); onIndex(index + 1); }}><ChevronRight size={22} /></button>}
-      <button type="button" className="video-viewer-close" onClick={onClose} aria-label="关闭"><X size={20} /></button>
-    </div>,
-    document.body,
   );
 }

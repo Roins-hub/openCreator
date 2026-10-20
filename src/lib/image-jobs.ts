@@ -82,7 +82,7 @@ async function runImageJob(job: ImageJob) {
     const format = /webp/.test(result.mimeType) ? "webp" : /jpe?g/.test(result.mimeType) ? "jpeg" : result.mimeType ? "png" : job.options.format;
     const name = `tz-${new Date().toISOString().slice(0, 10)}-${job.taskId.slice(-8)}.${EXTENSION[format]}`;
     const mimeType = `image/${format}`;
-    media = { kind: "image", path: mediaKey(job.userId, "images", name), name, mimeType };
+    media = { kind: "image", path: mediaKey(job.userId, "images", name), name, mimeType, size: result.bytes.byteLength };
     await putObject(media.path, result.bytes, mimeType);
     size = result.bytes.byteLength;
   } catch (cause) {

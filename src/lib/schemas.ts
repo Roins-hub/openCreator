@@ -7,6 +7,7 @@ export const mediaRefSchema = z.object({
   name: z.string().min(1),
   mimeType: z.string().optional(),
   dataUrl: z.string().optional(),
+  size: z.number().int().nonnegative().optional(),
 });
 
 const generationMetaSchema = z.object({

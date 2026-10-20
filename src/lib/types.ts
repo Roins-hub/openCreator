@@ -5,6 +5,8 @@ export interface MediaRef {
   name: string;
   mimeType?: string;
   dataUrl?: string;
+  /** 文件大小(字节);生成结果保存时记下,旧记录没有 */
+  size?: number;
 }
 
 export interface Message {

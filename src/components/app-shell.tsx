@@ -49,6 +49,8 @@ import { ModelPicker } from "@/components/model-picker";
 import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
 import { uploadMedia } from "@/lib/direct-upload";
 import { downloadFiles } from "@/lib/download-files";
+import { applyPromptPreset } from "@/lib/prompt-preset";
+import { PromptPresetButton, usePromptPreset } from "@/components/prompt-preset";
 
 type PickerAsset = { id: string; kind: MediaKind; path: string; name: string; mimeType: string };
 /** /api/models 返回的视频模型和生图模型 */
@@ -144,9 +146,13 @@ export function AppShell() {
   const [draggingImages, setDraggingImages] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   // 批量管理生成记录:只对开始管理时的那个对话有效,换对话就自动退出
-  const [turnSelection, setTurnSelection] = useState<{ conversationId?: string; ids: Set<string>; confirming: boolean }>(
+  const [turnSelection, setTurnSelection] = useState<{ conversationId?: string; ids: Set<string>; confirming: boolean; closing?: boolean }>(
     () => ({ ids: new Set(), confirming: false }));
   const lastPickedRef = useRef<string | null>(null);
+  const { preset: promptPreset, save: savePromptPreset } = usePromptPreset();
+  // 旧生成记录没有记下文件大小:从资产列表(带大小)查一次
+  const [assetSizes, setAssetSizes] = useState<Record<string, number>>({});
+  const assetSizesLoaded = useRef(false);
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   // 输入框里已添加的素材放大查看(第几个)
   const [attachmentPreview, setAttachmentPreview] = useState<number | null>(null);
@@ -266,13 +272,24 @@ export function AppShell() {
     const timer = window.setTimeout(() => setSidebarOpen(false), 0);
     return () => clearTimeout(timer);
   }, []);
+  const activeMessages = conversations.find((item) => item.id === activeId)?.messages;
+  const needsSizes = Boolean(activeMessages?.some((message) => message.role === "assistant" &&
+    (message.media || []).some((media) => media.size === undefined)));
+  useEffect(() => {
+    if (!needsSizes || assetSizesLoaded.current || !readApiKey()) return;
+    assetSizesLoaded.current = true;
+    request<Asset[]>("/api/assets")
+      .then((assets) => setAssetSizes(Object.fromEntries(assets.map((asset) => [asset.path, asset.size]))))
+      .catch(() => { assetSizesLoaded.current = false; });
+  }, [needsSizes]);
   useEffect(() => {
     if (turnSelection.conversationId === undefined) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const typing = (event.target as HTMLElement | null)?.closest("input, textarea, [contenteditable=true], [contenteditable='']");
       if (event.key === "Escape" && !event.defaultPrevented) {
         lastPickedRef.current = null;
-        setTurnSelection({ ids: new Set(), confirming: false });
+        setTurnSelection((current) => ({ ...current, closing: true }));
+        window.setTimeout(() => setTurnSelection((current) => current.closing ? { ids: new Set(), confirming: false } : current), 180);
       } else if (!typing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
         const ids = [...document.querySelectorAll<HTMLElement>("[data-turn-id]")].map((element) => element.dataset.turnId as string);
@@ -644,9 +661,10 @@ export function AppShell() {
 
   const send = () => {
     if (!selected || (!draft.trim() && !attachments.length)) return;
-    const prompt = editorRef.current
+    const typed = editorRef.current
       ? serializePrompt(editorRef.current, attachments)
       : draft.trim();
+    const prompt = applyPromptPreset(typed, promptPreset);
     if (uploading) {
       setError("素材还在上传，请稍候再发送");
       return;
@@ -1055,9 +1073,11 @@ export function AppShell() {
     lastPickedRef.current = null;
     setTurnSelection({ conversationId: active?.id, ids: new Set(), confirming: false });
   };
+  /** 退出:先播放收起动画再真正退出 */
   const stopManaging = () => {
     lastPickedRef.current = null;
-    setTurnSelection({ ids: new Set(), confirming: false });
+    setTurnSelection((current) => ({ ...current, closing: true }));
+    window.setTimeout(() => setTurnSelection((current) => current.closing ? { ids: new Set(), confirming: false } : current), 180);
   };
   /** 点选;按住 Shift 从上次点的那张连选到这张 */
   const togglePick = (id: string, range: boolean) => {
@@ -1158,7 +1178,7 @@ export function AppShell() {
           </span>}
           {!apiKey && <Link className="key-missing" href="/settings"><KeyRound size={13} />填写 API Key</Link>}
           {/* 顶栏右侧,和左边的模型规格条同一行 */}
-          {(managing || taskTurns.length > 0) && <button type="button" className={`topbar-manage ${managing ? "active" : ""}`}
+          {(managing || taskTurns.length > 0) && <button type="button" className={`topbar-manage ${managing && !turnSelection.closing ? "active" : ""}`}
             onClick={managing ? stopManaging : startManaging} title={managing ? "退出批量管理（Esc）" : "批量选择、下载、删除生成记录"}>
             <ListChecks size={14} />{managing ? "完成" : "批量管理"}
           </button>}
@@ -1213,12 +1233,13 @@ export function AppShell() {
                     }),
                     onToggleFavorite: () => void toggleFavorite(mediaPaths, !favorite),
                     onDelete: () => deleteTurn(message.id, userMessage?.id),
+                    sizes: assetSizes,
                   };
                   const picked = managing && turnSelection.ids.has(message.id);
                   return (
                     <div key={message.id}>
                       {showDate && <div className="task-date">{date}</div>}
-                      <div className={`task-pick ${managing ? "is-managing" : ""} ${picked ? "is-picked" : ""}`} data-turn-id={message.id}>
+                      <div className={`task-pick ${managing ? "is-managing" : ""} ${picked ? "is-picked" : ""} ${turnSelection.closing ? "is-closing" : ""}`} data-turn-id={message.id}>
                         {managing && <button type="button" className={`task-check ${picked ? "is-on" : ""}`}
                           aria-pressed={picked} aria-label={picked ? "取消选择这条记录" : "选择这条记录"}
                           onClick={(event) => togglePick(message.id, event.shiftKey)}>
@@ -1243,7 +1264,7 @@ export function AppShell() {
         </div>
         <ConversationNavigator messages={active?.messages || []} scrollRootRef={conversationRef} />
 
-        <div className={`composer-region ${draggingImages ? "drag-active" : ""} ${managing ? "is-managing" : ""}`}
+        <div className={`composer-region ${draggingImages ? "drag-active" : ""} ${managing && !turnSelection.closing ? "is-managing" : ""} ${turnSelection.closing ? "is-returning" : ""}`}
           onDragEnter={(event) => {
             if (!event.dataTransfer.types.includes("Files")) return;
             event.preventDefault();
@@ -1420,6 +1441,7 @@ export function AppShell() {
                   {optimizing ? <Loader2 size={18} className="spin" /> : <Sparkles size={18} />}
                 </button>
               )}
+              {selected && <PromptPresetButton preset={promptPreset} onChange={savePromptPreset} sample={draft} />}
               {beforeOptimize && !optimizing && (
                 <button type="button" className="optimize-undo" onClick={undoOptimize} title="恢复优化前的提示词">
                   <Undo2 size={13} />撤销优化
@@ -1472,7 +1494,7 @@ export function AppShell() {
           <p className="composer-note">由 {relayHost || `${TANGZHI_PROVIDER_NAME} `}中转站生成 · Enter 发送，Shift + Enter 换行</p>
         </div>
         {/* 批量管理时暂时代替输入框(输入框里写了一半的内容保留着) */}
-        {managing && <div className="task-selection-bar" role="toolbar" aria-label="批量管理生成记录">
+        {managing && <div className={`task-selection-bar ${turnSelection.closing ? "is-closing" : ""}`} role="toolbar" aria-label="批量管理生成记录">
           <span className="task-selection-count">
             {pickedTurns.length ? <>已选 <b>{pickedTurns.length}</b> 条</> : "点卡片选择 · Shift 连选"}
           </span>

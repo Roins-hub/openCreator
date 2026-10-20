@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
-  AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Copy, Download, Info, Loader2,
-  MoreHorizontal, PauseCircle, Pencil, Play, RefreshCw, Star, Trash2, X, FolderOpen,
+  AlertCircle, CheckCircle2, Copy, Download, Info, Loader2,
+  MoreHorizontal, PauseCircle, Pencil, Play, RefreshCw, Star, Trash2, FolderOpen,
 } from "lucide-react";
 import type { MediaRef, Message, VideoOptions } from "@/lib/types";
 import { findReference, referenceLabels, splitPromptReferences } from "@/lib/prompt-references";
 import { MediaThumb } from "@/components/media-thumb";
 import { MediaPreview, mediaPreviewItem } from "@/components/media-preview";
+import { ResultViewer } from "@/components/result-viewer";
+import { formatBytes } from "@/components/generation-info";
 
 const modeLabels: Record<VideoOptions["referenceMode"], string> = {
   text: "文生视频", first: "首帧", first_last: "首尾帧", references: "参考生成",
@@ -27,6 +28,8 @@ type Props = {
   onRegenerate: () => void;
   onToggleFavorite: () => void;
   onDelete: () => void;
+  /** 旧记录的文件大小(从资产列表查到的);新记录的大小记在 media.size 上 */
+  sizes?: Record<string, number>;
 };
 
 function formatElapsed(ms: number) {
@@ -112,7 +115,7 @@ export function StatusBadge({ status }: { status: Message["status"] }) {
 }
 
 export function VideoTaskCard({
-  prompt, references, message, fallbackModelName, favorite, onReedit, onRegenerate, onToggleFavorite, onDelete,
+  prompt, references, message, fallbackModelName, favorite, onReedit, onRegenerate, onToggleFavorite, onDelete, sizes,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -120,6 +123,8 @@ export function VideoTaskCard({
   const [viewer, setViewer] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const videos = (message.media || []).filter((item) => item.kind === "video");
+  const sizeOf = (media: MediaRef) => media.size ?? sizes?.[media.path];
+  const totalSize = videos.reduce((sum, item) => sum + (sizeOf(item) || 0), 0);
   const options = message.generation?.videoOptions;
   const taskId = message.taskIds?.[0] || message.taskId;
   const labels = referenceLabels(references);
@@ -236,6 +241,8 @@ export function VideoTaskCard({
           {message.status === "stopped" && <span className="task-note">
             {message.taskIds?.length || message.taskId ? "正在重新获取云端结果…" : message.error || "已停止"}</span>}
           <TaskTimes message={message} durationTitle="中转站从受理任务到出结果的用时" />
+          {totalSize > 0 && <span className="task-note task-size" title={videos.length > 1 ? `${videos.length} 条视频合计` : "视频文件大小"}>
+            大小 {formatBytes(totalSize)}</span>}
           <span className="task-meta">
             {meta.join(" | ")}
             <span className="task-info" tabIndex={0} aria-label="任务详情">
@@ -271,45 +278,10 @@ export function VideoTaskCard({
       </div>
 
       {viewer !== null && videos[viewer] && (
-        <VideoViewer videos={videos} index={viewer} prompt={prompt}
+        <ResultViewer items={videos} index={viewer} prompt={prompt} message={message} references={references}
+          fallbackModelName={fallbackModelName} sizeOf={sizeOf}
           onIndex={setViewer} onClose={() => setViewer(null)} />
       )}
     </article>
-  );
-}
-
-function VideoViewer({ videos, index, prompt, onIndex, onClose }: {
-  videos: MediaRef[]; index: number; prompt: string;
-  onIndex: (index: number) => void; onClose: () => void;
-}) {
-  const current = videos[index];
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-      if (event.key === "ArrowLeft" && index > 0) onIndex(index - 1);
-      if (event.key === "ArrowRight" && index < videos.length - 1) onIndex(index + 1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [index, videos.length, onClose, onIndex]);
-
-  // 挂到 body 上:放在卡片里时,卡片的动画 / 变换会让 position: fixed 不再相对整个窗口
-  return createPortal(
-    <div className="video-viewer" role="dialog" aria-modal="true" aria-label="视频预览" onClick={onClose}>
-      <div className="video-viewer-body" onClick={(event) => event.stopPropagation()}>
-        <video key={current.path} src={`/api/media/${current.path}`} controls autoPlay playsInline />
-        <div className="video-viewer-bar">
-          <p title={prompt}>{prompt || current.name}</p>
-          {videos.length > 1 && <span>{index + 1} / {videos.length}</span>}
-          <a href={`/api/media/${current.path}?download=${encodeURIComponent(current.name)}`} download={current.name}><Download size={15} />下载</a>
-        </div>
-      </div>
-      {index > 0 && <button type="button" className="video-viewer-nav prev" aria-label="上一个"
-        onClick={(event) => { event.stopPropagation(); onIndex(index - 1); }}><ChevronLeft size={22} /></button>}
-      {index < videos.length - 1 && <button type="button" className="video-viewer-nav next" aria-label="下一个"
-        onClick={(event) => { event.stopPropagation(); onIndex(index + 1); }}><ChevronRight size={22} /></button>}
-      <button type="button" className="video-viewer-close" onClick={onClose} aria-label="关闭"><X size={20} /></button>
-    </div>,
-    document.body,
   );
 }

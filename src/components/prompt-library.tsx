@@ -243,9 +243,11 @@ export function PromptLibrary({
   };
 
   // ---------- 新建 / 编辑自己的提示词 ----------
-  const startCreate = () => {
+  const startCreate = () => startCreateIn(activeCategory === "all" || activeCategory === "hidden" ? MY_PROMPTS.id : activeCategory);
+  /** 直接在某个分类 / 分组下新建(左侧每个分类旁边的 +) */
+  const startCreateIn = (categoryId: string) => {
     setFormError("");
-    setEditingCategory(activeCategory === "all" || activeCategory === "hidden" ? MY_PROMPTS.id : activeCategory);
+    setEditingCategory(categoryId);
     setEditing(emptyDraft(currentPrompt.trim()));
   };
   const startEdit = (template: PromptTemplate) => {
@@ -487,21 +489,23 @@ export function PromptLibrary({
           <em>{item.name}</em><span>{counts[item.id] || 0}</span>
         </button>
       )}
-      {!renaming && removable && (
+      {!renaming && (
         <span className="prompt-cat-tools">
-          {parent && (
+          <button type="button" onClick={() => startCreateIn(item.id)}
+            title={`在「${item.name}」里新建提示词`} aria-label={`在 ${item.name} 里新建提示词`}><Plus size={12} /></button>
+          {removable && parent && (
             <button type="button" onClick={() => onLayoutChange(nestCategories(layout, [item.id], undefined))}
               title="移出分组" aria-label={`把 ${item.name} 移出分组`}><CornerUpLeft size={11} /></button>
           )}
-          {item.kind === "group" && (
+          {removable && item.kind === "group" && (
             <button type="button" onClick={() => setRenaming({ id: item.id, name: item.name })}
               title="重命名" aria-label={`重命名分组 ${item.name}`}><Pencil size={11} /></button>
           )}
-          <button type="button" className={confirm === `category:${item.id}` ? "confirm" : ""}
+          {removable && <button type="button" className={`is-delete ${confirm === `category:${item.id}` ? "confirm" : ""}`}
             onClick={() => removeCategoryList([item.id])}
             title={item.kind === "group" ? (confirm === `category:${item.id}` ? "再点一次确认删除" : "删除分组（提示词回到原分类）")
               : "删除分类（可在已隐藏中恢复）"}
-            aria-label={`删除分类 ${item.name}`}><Trash2 size={11} /></button>
+            aria-label={`删除分类 ${item.name}`}><Trash2 size={11} /></button>}
         </span>
       )}
     </>;

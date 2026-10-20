@@ -61,6 +61,7 @@ export function AssetLibrary() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [selecting, setSelecting] = useState(false);
+  const [selectionClosing, setSelectionClosing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -106,11 +107,16 @@ export function AssetLibrary() {
   const allChosen = visible.length > 0 && chosen.length === visible.length;
   const inTrash = filter === "trash";
 
+  /** 退出选择:操作栏先播放收起动画 */
   const exitSelecting = () => {
-    setSelecting(false);
-    setSelected(new Set());
+    setSelectionClosing(true);
     setConfirmingDelete(false);
     lastClicked.current = null;
+    window.setTimeout(() => {
+      setSelecting(false);
+      setSelected(new Set());
+      setSelectionClosing(false);
+    }, 180);
   };
 
   useEffect(() => {
@@ -118,9 +124,13 @@ export function AssetLibrary() {
     const onKeyDown = (event: KeyboardEvent) => {
       const typing = (event.target as HTMLElement | null)?.closest("input, textarea, [contenteditable=true]");
       if (event.key === "Escape" && !event.defaultPrevented) {
-        setSelecting(false);
-        setSelected(new Set());
+        setSelectionClosing(true);
         setConfirmingDelete(false);
+        window.setTimeout(() => {
+          setSelecting(false);
+          setSelected(new Set());
+          setSelectionClosing(false);
+        }, 180);
       } else if (!typing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
         setSelected(new Set(visible.map((asset) => asset.path)));
@@ -389,7 +399,7 @@ export function AssetLibrary() {
         {source === "upload" || (!query && filter === "all")
           ? <button type="button" onClick={() => fileInputRef.current?.click()}>上传素材</button>
           : <Link href="/">开始创作</Link>}
-      </div> : <div className={`asset-grid ${selecting ? "is-selecting" : ""}`}>
+      </div> : <div className={`asset-grid ${selecting && !selectionClosing ? "is-selecting" : ""}`}>
         {visible.map((asset) => {
           const isSelected = selected.has(asset.path);
           const uploaded = asset.source === "upload";
@@ -440,7 +450,7 @@ export function AssetLibrary() {
         })}
       </div>}
     </div>
-    {selecting && <div className="asset-selection-bar" role="toolbar" aria-label="批量操作">
+    {selecting && <div className={`asset-selection-bar ${selectionClosing ? "is-closing" : ""}`} role="toolbar" aria-label="批量操作">
       <span className="asset-selection-count">
         {chosen.length ? <>已选 <b>{chosen.length}</b> 项</> : "点击卡片选择 · Shift 连选"}
       </span>
