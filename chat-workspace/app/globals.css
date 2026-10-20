@@ -1436,3 +1436,7 @@ html[data-mote-theme] {
   .chat-group-popover { animation: none; }
   .chat-back-to-top { transition: opacity .2s; }
 }
+
+/* 分组展开后不再裁切(为了「…」菜单),但宽度要锁在侧栏内:否则长标题按全文撑宽,伸出侧栏 */
+.ws-group-body { grid-template-columns: minmax(0, 1fr); }
+.ws-group-body > div { min-width: 0; }

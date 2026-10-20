@@ -2796,3 +2796,7 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .generation-info dd { color: var(--ink); }
 .generation-info-prompt p { color: var(--ink); background: var(--warm); border: 1px solid var(--line); }
 .generation-info-refs > span { background: var(--warm); border: 1px solid var(--line); }
+
+/* 分组展开后不再裁切(为了「…」菜单),但宽度要锁在侧栏内:否则长标题按全文撑宽,伸出侧栏、也不显示省略号 */
+.group-body { grid-template-columns: minmax(0, 1fr); }
+.group-body-inner { min-width: 0; }
