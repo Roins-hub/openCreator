@@ -21,14 +21,20 @@ export function taggedGroup(tags?: string | null) {
 
 // 不属于系列名的片段:渠道号、分辨率、日期、渠道后缀、生成方式
 const NOISE = [
-  /^ch\d+$/i, /^\d{3,4}p$/i, /^[1-8]k$/i, /^\d{6,8}$/, /^(?:cf|no|latest|generate|generation|video|t2v|i2v|r2v|s2v|it2v)$/i,
+  /^ch\d+$/i, /^\d{3,4}p$/i, /^[1-8]k$/i, /^\d{3,8}$/,
+  /^(?:cf|no|latest|generate|generation|video|t2v|i2v|r2v|s2v|it2v|water|count)$/i,
 ];
+// 中转站自己加在开头的线路代号(sd16-、mm4-、gv4-、zy-、yx-、FT-、bb2.5 的 bb),后面还有内容时去掉
+const CHANNEL_PREFIX = /^(?:(?:sd|mm|gv)\d+|zy|yx|ft|bb|bd)$/i;
+// 名字里的营销词,不算系列
+const MARKETING = /特价|满血|官渠|\(?过真人\)?|超分/g;
 // 模型名开头的厂商前缀(后面还有内容时去掉)
 const VENDOR_PREFIX = /^(?:doubao|bytedance|google|openai|minimax|kwai|kuaishou|alibaba|aliyun|tencent|baidu)$/i;
 const CASING: Record<string, string> = {
   sd: "Seedance", seedance: "Seedance", seedream: "Seedream", gpt: "GPT", veo: "Veo", sora: "Sora",
   kling: "Kling", hailuo: "Hailuo", wan: "Wan", vidu: "Vidu", flux: "FLUX", imagen: "Imagen", dall: "DALL", e: "E",
-  nano: "Nano", banana: "Banana", gemini: "Gemini", midjourney: "Midjourney", mj: "MJ", jimeng: "即梦",
+  nano: "Nano", banana: "Banana", gemini: "Gemini", midjourney: "Midjourney", mj: "MJ", jimeng: "即梦", minimax: "MiniMax",
+  grok: "Grok", omni: "Omni", 豆包: "豆包",
   pixverse: "PixVerse", runway: "Runway", luma: "Luma", pika: "Pika", hunyuan: "Hunyuan", qwen: "Qwen",
 };
 
@@ -41,15 +47,24 @@ const tidy = (token: string) => {
 
 /** 从模型名识别系列(不看标签) */
 export function seriesFromName(id: string) {
-  const tokens = id.trim()
-    .split(/[\s_-]+/)
-    .filter((token) => token && !NOISE.some((pattern) => pattern.test(token)))
-    // 名字和版本号粘在一起的(veo3、wan2.5)拆开;v2 这种版本号不拆
+  const raw = id.trim().replace(MARKETING, "").replace(/^FT(?=[A-Z])/, "FT-").split(/[\s_()-]+/).filter(Boolean);
+  while (raw.length > 1 && CHANNEL_PREFIX.test(raw[0])) raw.shift();
+  const tokens = raw
+    .filter((token) => !NOISE.some((pattern) => pattern.test(token)))
+    // 名字和版本号粘在一起的(veo3、wan2.5、豆包900)拆开、版本号和后缀粘在一起的(2.0fast)也拆开;v2 这种版本号不拆
     .flatMap((token) => {
-      const glued = /^([a-z]{2,})(\d[\d.]*)$/i.exec(token);
-      return glued ? [glued[1], glued[2]] : [token];
-    });
-  while (tokens.length > 1 && VENDOR_PREFIX.test(tokens[0])) tokens.shift();
+      const glued = /^([a-z]{2,}|[\u4e00-\u9fa5]+)(\d[\d.]*)$/i.exec(token);
+      if (glued) return [glued[1], glued[2]];
+      const suffix = /^(\d+(?:\.\d+)?)([a-z]{2,})$/i.exec(token);
+      return suffix ? [suffix[1], suffix[2]] : [token];
+    })
+    .filter((token) => !NOISE.some((pattern) => pattern.test(token)));
+  // 代号和版本号粘在一起的(bb2.5)拆开后再去一次代号
+  while (tokens.length > 1 && CHANNEL_PREFIX.test(tokens[0])) tokens.shift();
+  // 厂商前缀去掉;但后面只是 h3、v2 这种短代号时保留(minimax-h3 → MiniMax H3)
+  while (tokens.length > 1 && VENDOR_PREFIX.test(tokens[0]) && !/^[a-z]\d+$/i.test(tokens[1])) tokens.shift();
+  // 版本号后面单独的一位数是线路序号(seedance-2.0-2),不算系列
+  if (tokens.length > 2 && /^\d$/.test(tokens.at(-1) as string) && /\d\.\d/.test(tokens.at(-2) as string)) tokens.pop();
   // 相邻的短数字是版本号:2-0 → 2.0、v2-1 → v2.1
   const merged: string[] = [];
   for (const token of tokens) {
@@ -85,10 +100,11 @@ export function vendorFromName(id: string) {
 /** 模型的厂商和系列:标签 > 中转站后台的供应商 > 模型名 */
 export function classifyModel(id: string, tags?: string | null, vendorName?: string | null) {
   const tagged = taggedGroup(tags);
-  return {
-    vendor: tagged.vendor || vendorName?.trim() || vendorFromName(id),
-    series: tagged.series || seriesFromName(id),
-  };
+  const vendor = tagged.vendor || vendorName?.trim() || vendorFromName(id);
+  let series = tagged.series || seriesFromName(id);
+  // 名字里只剩版本号(bb2.5 → 2.5)时,前面补上厂商名:Seedance 2.5
+  if (!tagged.series && /^\d/.test(series) && vendor !== "其他") series = `${vendor} ${series}`;
+  return { vendor, series };
 }
 
 /** /api/pricing 里的 vendors 列表:id → 名称 */

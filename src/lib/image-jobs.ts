@@ -44,6 +44,8 @@ export function imageRequestFields(model: ImageModel, prompt: string, options: I
     background: options.background,
     output_format: options.format,
     n: 1,
+    // 按 quality 分档的模型(Gemini 生图等):档位要单独传,只给尺寸会按 1K 出图计费
+    ...(model.qualityParam ? { quality: options.resolution } : {}),
   };
 }
 

@@ -1,6 +1,7 @@
 import type { MediaRef, VideoOptions } from "./types";
 import { classifyModel, vendorNames } from "./model-catalog";
 import { specClauses, specDurations, specFace, specMedia, specRatios, specResolutions } from "./model-spec";
+import { evaluateExpr, parseExpr } from "./billing-expr";
 
 /** 唯一内置的中转站。用户只需要在这里创建 API Key。 */
 export const TANGZHI_BASE_URL = "https://new.tangzhi.org";
@@ -39,7 +40,10 @@ export interface VideoModel {
   /** 人脸策略:可真人 / 过人脸 / 卡人脸 */
   face: string;
   billing: "per_second" | "per_request";
+  /** 默认分辨率下的单价(人民币,按秒或按条);0 表示拿不到价格 */
   price: number;
+  /** 不同分辨率价格不同时,每档的单价 */
+  prices?: Partial<Record<VideoResolution, number>>;
   promptMin: number;
   promptMax: number;
   /**
@@ -125,6 +129,44 @@ interface PricingEntry {
   billing_mode?: string;
   billing_expr?: string;
   model_price?: number;
+  quota_type?: number;
+}
+
+/**
+ * 视频价格。中转站有三种写法:
+ * - 计费表达式按秒:tier("base", u("seconds") * 0.53)
+ * - 计费表达式按条:tier("base", u("videos") * 5.52)
+ * - 按分辨率分档:u("resolution") == "720p" ? tier("720p", u("seconds") * 0.1455) : …
+ * - 按次固定价:quota_type 1 + model_price
+ * 表达式直接代入计算(每个分辨率、1 秒和 2 秒各算一次),不靠猜写法;结果是美元。
+ */
+export function videoPricing(entry: PricingEntry, resolutions: readonly VideoResolution[]) {
+  if (entry.billing_mode === "tiered_expr" && entry.billing_expr) {
+    try {
+      const root = parseExpr(entry.billing_expr);
+      // fixed() 给的是微美元,u() 乘出来的是美元
+      const usd = (value: number) => (value > 1000 ? value / 1e6 : value);
+      const at = (resolution: string, seconds: number) => usd(evaluateExpr(root, {
+        vars: { "u:seconds": seconds, "u:duration": seconds, "u:videos": 1, "u:count": 1, n: 1 },
+        params: { "u:resolution": resolution, resolution },
+      }).micros);
+      let perSecond = false;
+      const prices: Partial<Record<VideoResolution, number>> = {};
+      for (const resolution of resolutions) {
+        const one = at(resolution, 1);
+        if (at(resolution, 2) > one * 1.5) perSecond = true;
+        if (one > 0) prices[resolution] = one;
+      }
+      if (Object.keys(prices).length) return { billing: perSecond ? "per_second" as const : "per_request" as const, prices };
+    } catch {
+      // 看不懂的表达式退回下面的固定价
+    }
+  }
+  const fixed = Number(entry.model_price || 0);
+  return {
+    billing: "per_request" as const,
+    prices: fixed > 0 ? Object.fromEntries(resolutions.map((resolution) => [resolution, fixed])) as Partial<Record<VideoResolution, number>> : {},
+  };
 }
 
 /** 豆包/Dola 这一路走 new-api 的方舟插件,请求格式和统一 /v1/videos 不同。 */
@@ -178,8 +220,10 @@ export function toVideoModels(payload: unknown, group = "default", rechargeRate 
     const tag = (String(entry.tags || "").split(",")[0] || "").trim().toUpperCase();
     const defaults = TAG_DEFAULTS[tag] || FALLBACK_DEFAULTS;
     const spec = videoSpec(entry.model_name, entry.description || "", tag);
-    const perSecond = entry.billing_mode === "tiered_expr" && /u\("seconds"\)/.test(entry.billing_expr || "");
-    const perSecondPrice = entry.billing_expr?.match(/u\("seconds"\)\s*\*\s*([\d.]+)/)?.[1];
+    const pricing = videoPricing(entry, spec.resolutions);
+    const scale = groupRatio * rechargeRate;
+    const prices = Object.fromEntries(Object.entries(pricing.prices).map(([resolution, usd]) => [resolution, Number(usd) * scale]));
+    const distinct = new Set(Object.values(prices)).size > 1;
     models.push({
       type: "video",
       id: entry.model_name,
@@ -187,8 +231,9 @@ export function toVideoModels(payload: unknown, group = "default", rechargeRate 
       protocol: arkProtocol(tag, entry.model_name) ? "ark" : "videos",
       description: entry.description || "",
       ...spec,
-      billing: perSecond ? "per_second" : "per_request",
-      price: Number(perSecond && perSecondPrice ? perSecondPrice : entry.model_price || 0) * groupRatio * rechargeRate,
+      billing: pricing.billing,
+      price: prices[spec.resolution] ?? Object.values(prices)[0] ?? 0,
+      ...(distinct ? { prices } : {}),
       promptMin: 1,
       promptMax: defaults.promptMax,
       ...classifyModel(entry.model_name, entry.tags, vendors.get(entry.vendor_id ?? -1)),
@@ -198,9 +243,11 @@ export function toVideoModels(payload: unknown, group = "default", rechargeRate 
   return models.sort((a, b) => order(a.id).localeCompare(order(b.id), "en", { numeric: true }));
 }
 
-export function formatPrice(model: Pick<VideoModel, "billing" | "price" | "generic">) {
-  if (model.generic) return "价格未知";
-  return `¥${model.price.toFixed(2)}/${model.billing === "per_second" ? "秒" : "次"}`;
+/** 价格文字;传了分辨率且这档单独定价时按这档显示 */
+export function formatPrice(model: Pick<VideoModel, "billing" | "price" | "generic" | "prices">, resolution?: VideoResolution) {
+  const price = (resolution && model.prices?.[resolution]) || model.price;
+  if (model.generic || !(price > 0)) return "价格未知";
+  return `¥${price.toFixed(2)}/${model.billing === "per_second" ? "秒" : "条"}`;
 }
 
 /**

@@ -1169,7 +1169,7 @@ export function AppShell() {
             <span>{videoModel.resolutions.map((item) => item.toUpperCase()).join(" / ")}</span>
             <span>{durationSummary(videoModel.durations)}</span>
             <span>{videoModel.limits.images}图 · {videoModel.limits.videos}视频 · {videoModel.limits.audios}音频 · 合计≤{videoModel.limits.total}</span>
-            <span>{formatPrice(videoModel)}</span>
+            <span>{formatPrice(videoModel, videoOptions.resolution)}</span>
           </span>}
           {imageModel && <span className="model-spec" title={imageModel.description}>
             <b>{imageModel.id}</b>

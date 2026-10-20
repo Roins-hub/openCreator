@@ -188,7 +188,8 @@ export function evaluateExpr(source: string | Node, env: ExprEnv = {}): ExprResu
           case "max": return Math.max(...args.map(num));
           case "min": return Math.min(...args.map(num));
           // u("seconds") 等按用量取值的函数:没给就按 0
-          case "u": return env.vars?.[`u:${String(args[0])}`] ?? 0;
+          // 文字型的用量(如 u("resolution") == "720p")放在 params 里
+          case "u": return env.vars?.[`u:${String(args[0])}`] ?? env.params?.[`u:${String(args[0])}`] ?? 0;
           default: throw new Error(`不支持的函数：${node.name}`);
         }
       }

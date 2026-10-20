@@ -37,6 +37,8 @@ export interface ImageModel {
   excludedRatios: string[];
   /** 写死像素尺寸的模型:比例 → [宽, 高] */
   sizes?: Record<string, [number, number]>;
+  /** 分辨率档位用 quality 参数指定(1k / 2k / 4k),而不是只看尺寸 */
+  qualityParam?: boolean;
   promptMax: number;
   /** 模型选择面板的分组:厂商 → 系列 */
   vendor: string;
@@ -222,7 +224,7 @@ export function imagePricing(entry: PricingEntry, context: PriceContext): ImageP
       const root = parseExpr(entry.billing_expr);
       const tiers: { name: string; price: number }[] = [];
       for (const [label, size] of PROBE_SIZES) {
-        const result = evaluateExpr(root, { vars: { image_count: 1, n: 1 }, params: { size } });
+        const result = evaluateExpr(root, { vars: { image_count: 1, n: 1 }, params: { size, quality: label.toLowerCase() } });
         if (result.micros <= 0) continue;
         const name = result.tier && result.tier !== "standard" ? result.tier : label;
         const price = scale(result.micros / 1e6);
@@ -349,6 +351,8 @@ export function toImageModels(payload: unknown, group = "default", rechargeRate 
       priceDetail: priceDetail(price),
       promptMax: PROMPT_MAX,
       ...imageSpec(entry.description || "", chat),
+      ...(/param\("quality"\)/.test(entry.billing_expr || "") || /quality\s*(?:指定|1k|\()/i.test(entry.description || "")
+        ? { qualityParam: true } : {}),
       ...classifyModel(entry.model_name, entry.tags, vendors.get(entry.vendor_id ?? -1)),
     });
   }

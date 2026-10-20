@@ -25,6 +25,19 @@ describe("model catalog grouping", () => {
     expect(seriesFromName("some-new-model")).toBe("Some New Model");
   });
 
+  it("ignores relay line codes, marketing words and line numbers", () => {
+    expect(seriesFromName("sd16-seedance-2.0-fast")).toBe("Seedance 2.0 Fast");
+    expect(seriesFromName("sd17-seedance-2.5-2")).toBe("Seedance 2.5");
+    expect(seriesFromName("mm4-minimax-h3-2k")).toBe("MiniMax H3");
+    expect(seriesFromName("FT特价MiniMax H3-768p")).toBe("MiniMax H3");
+    expect(seriesFromName("gv4-grok-imagine-video-1.5")).toBe("Grok Imagine 1.5");
+    expect(seriesFromName("yx-seedance2.5-count-720")).toBe("Seedance 2.5");
+    expect(seriesFromName("zy-2.0fast-900")).toBe("2.0 Fast");
+    expect(seriesFromName("omni-fast-no-water")).toBe("Omni Fast");
+    expect(classifyModel("bb2.5", "", "Seedance")).toEqual({ vendor: "Seedance", series: "Seedance 2.5" });
+    expect(classifyModel("FT-官渠特价2.0-903", "", "Seedance").series).toBe("Seedance 2.0");
+  });
+
   it("prefers tags, then the relay vendor, then the name", () => {
     expect(classifyModel("x-1", "CH01,系列:Seedance 3.0,厂商：字节")).toEqual({ vendor: "字节", series: "Seedance 3.0" });
     expect(classifyModel("ch0101-sd-2.0-480p", "CH01", "Doubao")).toEqual({ vendor: "Doubao", series: "Seedance 2.0" });

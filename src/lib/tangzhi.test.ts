@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildVideoRequest, expandDurations, fitVideoOptions, parseVideoDescription, remainingMedia, smartVideoRatio,
-  toVideoModels, videoRequestError, type VideoModel,
+  formatPrice, toVideoModels, videoPricing, videoRequestError, type VideoModel,
 } from "./tangzhi";
 import type { MediaRef, VideoOptions } from "./types";
 
@@ -255,5 +255,23 @@ describe("smartVideoRatio", () => {
     expect(smartVideoRatio(all, "一只猫")).toBe("16:9");
     // 模型没有 21:9 时就近取 16:9
     expect(smartVideoRatio(["16:9", "9:16"], "超宽画幅")).toBe("16:9");
+  });
+});
+
+describe("video prices from the relay's billing expressions", () => {
+  const entry = (billing_expr: string) => ({ billing_mode: "tiered_expr", billing_expr });
+  it("reads per-video, per-second and per-resolution prices", () => {
+    expect(videoPricing(entry('tier("base", u("videos") * 5.52)'), ["720p"])).toEqual({ billing: "per_request", prices: { "720p": 5.52 } });
+    expect(videoPricing(entry('tier("base", u("seconds") * 0.53)'), ["480p"])).toEqual({ billing: "per_second", prices: { "480p": 0.53 } });
+    expect(videoPricing(entry('u("resolution") == "720p" ? tier("720p", u("seconds") * 0.1455) : tier("480p", u("seconds") * 0.1058)'),
+      ["480p", "720p"])).toEqual({ billing: "per_second", prices: { "480p": 0.1058, "720p": 0.1455 } });
+    expect(videoPricing({ quota_type: 1, model_price: 6.9 }, ["720p"])).toEqual({ billing: "per_request", prices: { "720p": 6.9 } });
+    expect(videoPricing({}, ["720p"]).prices).toEqual({});
+  });
+
+  it("shows the price for the chosen resolution, or 价格未知", () => {
+    const model = { billing: "per_second" as const, price: 0.1058, prices: { "480p": 0.1058, "720p": 0.1455 } };
+    expect(formatPrice(model, "720p")).toBe("¥0.15/秒");
+    expect(formatPrice({ billing: "per_request", price: 0 })).toBe("价格未知");
   });
 });
