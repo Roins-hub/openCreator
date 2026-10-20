@@ -9,12 +9,13 @@ import {
   MAX_RATIO_SPAN, parseRatio, tierPrice, yuan, type ImageModel,
 } from "@/lib/image-models";
 import {
-  durationSummary, normalizeReferenceMode, type ReferenceMode, type VideoModel,
+  durationSummary, normalizeReferenceMode, VIDEO_RESOLUTIONS, type ReferenceMode, type VideoModel,
 } from "@/lib/tangzhi";
 
 const videoRatios: VideoOptions["ratio"][] = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"];
 const ratioLabel = (ratio: VideoOptions["ratio"]) => ratio === "adaptive" ? "智能" : ratio;
-const resolutions: VideoOptions["resolution"][] = ["480p", "720p", "1080p", "4k"];
+// 常见的几档一直列出(模型不支持的置灰),模型自己特有的档位(768P、2K)只在支持时出现
+const COMMON_RESOLUTIONS: VideoOptions["resolution"][] = ["480p", "720p", "1080p", "4k"];
 const durationPresets = [3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30];
 const UNSUPPORTED = "当前模型不支持";
 
@@ -105,9 +106,9 @@ export function VideoControls({
         <small>上传素材后的生成方式 · 不上传素材即为文生视频</small>
         {([
           ["references", "参考生成", `用素材控制主体、动作、风格或声音；最多 ${media}，合计不超过 ${limits.total} 个`],
-          ["first_last", "首尾帧", "上传两张图片，分别作为视频的开头和结尾画面"],
+          ["first_last", "首尾帧", model.frames ? "上传两张图片，分别作为视频的开头和结尾画面" : "当前模型不支持首尾帧"],
         ] as const).map(([item, title, note]) => <button type="button" key={item}
-          className={mode === item ? "selected" : ""}
+          className={mode === item ? "selected" : ""} disabled={item === "first_last" && !model.frames}
           onClick={() => { onChange({ ...value, referenceMode: item }); setModeOpen(false); }}>
           <span><b>{title}</b><small>{note}</small></span>
           {mode === item && <Check size={15} />}
@@ -136,10 +137,12 @@ export function VideoControls({
             })}
           </div>
         </section>
-        <section><h3>分辨率<small>由所选模型决定</small></h3>
-          <Segmented values={resolutions} value={value.resolution}
+        <section><h3>分辨率<small>{model.resolutions.length > 1
+          ? `当前模型可选 ${model.resolutions.map((item) => item.toUpperCase()).join(" / ")}` : "由所选模型决定"}</small></h3>
+          <Segmented values={VIDEO_RESOLUTIONS.filter((item) => COMMON_RESOLUTIONS.includes(item) || model.resolutions.includes(item))}
+            value={value.resolution}
             format={(resolution) => resolution.toUpperCase()}
-            isDisabled={(resolution) => resolution !== model.resolution}
+            isDisabled={(resolution) => !model.resolutions.includes(resolution)}
             onChange={(resolution) => onChange({ ...value, resolution })} />
         </section>
         <section><h3>视频时长<small>{durationSummary(durations)}</small></h3>
@@ -184,13 +187,16 @@ export function ImageControls({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
-  const { width, height } = imageSize(value.ratio, value.resolution);
+  const { width, height } = imageSize(value.ratio, value.resolution, model.sizes);
+  // 模型描述里锁定的比例 / 档位;没写的不限制
+  const ratioAllowed = (ratio: string) => (!model.ratios?.length || model.ratios.includes(ratio)) && !model.excludedRatios.includes(ratio);
+  const presetRatios = [...IMAGE_RATIOS, ...(model.ratios || []).filter((ratio) => !isPresetRatio(ratio))];
   // 自定义比例:输入框里的草稿,合法时才写回参数
   const [customOpen, setCustomOpen] = useState(false);
   const { containerRef: ratioSliderRef, indicator: ratioIndicator } = useSlidingIndicator<HTMLDivElement>();
   const current = parseRatio(value.ratio) || [1, 1];
   const [draft, setDraft] = useState<[string, string]>([String(current[0]), String(current[1])]);
-  const custom = customOpen || !isPresetRatio(value.ratio);
+  const custom = !model.ratios?.length && (customOpen || !isPresetRatio(value.ratio));
   const draftRatio = `${draft[0]}:${draft[1]}`;
   const draftValid = Boolean(parseRatio(draftRatio));
   const changeDraft = (next: [string, string]) => {
@@ -215,20 +221,22 @@ export function ImageControls({
           : `按 ${width} × ${height} 请求，实际尺寸以中转站返回为准`}</small></h3>
           <div className="ratio-grid image-ratios has-slider" ref={ratioSliderRef}>
             {ratioIndicator}
-            {IMAGE_RATIOS.map((ratio) => <button type="button" key={ratio}
-              className={value.ratio === ratio && !custom ? "selected" : ""}
+            {presetRatios.map((ratio) => <button type="button" key={ratio}
+              className={value.ratio === ratio && !custom ? "selected" : ""} disabled={!ratioAllowed(ratio)}
+              title={ratioAllowed(ratio) ? undefined : "当前模型不支持这个比例"}
               onClick={() => { setCustomOpen(false); onChange({ ...value, ratio }); }}>
               <span className={`ratio-shape ratio-${ratio.replace(":", "-")}`} /><b>{ratio}</b>
             </button>)}
-            <button type="button" className={custom ? "selected" : ""}
+            {!model.ratios?.length && <button type="button" className={custom ? "selected" : ""}
               onClick={() => {
                 setCustomOpen(true);
                 const [w, h] = parseRatio(value.ratio) || [1, 1];
                 setDraft([String(w), String(h)]);
               }}>
               <span className="ratio-shape ratio-adaptive" /><b>自定义</b>
-            </button>
+            </button>}
           </div>
+          {model.ratios?.length ? <p className="parameter-note">当前模型只支持 {model.ratios.join(" / ")}</p> : null}
           {custom && <div className="custom-size custom-ratio">
             <label>宽<input type="number" min={1} max={999} value={draft[0]} aria-label="自定义比例的宽"
               onChange={(event) => changeDraft([event.target.value, draft[1]])} /></label>
@@ -240,9 +248,14 @@ export function ImageControls({
             {model.id} 只支持固定比例，会按最接近的 {chatRatio} 生成</p>}
           {custom && !draftValid && <p className="parameter-note parameter-error">
             请填 1~999 的整数，长边不超过短边的 {MAX_RATIO_SPAN} 倍（当前仍按 {value.ratio}）</p>}
+          {custom && draftValid && model.excludedRatios.includes(draftRatio) && <p className="parameter-note parameter-error">
+            当前模型不支持 {draftRatio}</p>}
         </section>
-        <section><h3>分辨率<small>{priced ? "价格与中转站阶梯计价同步" : "2K / 4K 耗时更长"}</small></h3>
+        <section><h3>分辨率<small>{model.resolutions.length < IMAGE_RESOLUTIONS.length
+          ? `当前模型只支持 ${model.resolutions.map((item) => item.toUpperCase()).join(" / ")}`
+          : priced ? "价格与中转站阶梯计价同步" : "2K / 4K 耗时更长"}</small></h3>
           <Segmented values={IMAGE_RESOLUTIONS} value={value.resolution}
+            isDisabled={(resolution) => !model.resolutions.includes(resolution)}
             format={(resolution) => {
               const price = priced ? tierPrice(model.price, resolution) : undefined;
               return price === undefined ? resolution.toUpperCase() : `${resolution.toUpperCase()} · ${yuan(price)}`;
@@ -268,7 +281,8 @@ export function ImageControls({
           <Segmented values={[1, 2, 3, 4] as const} value={value.count}
             onChange={(count) => onChange({ ...value, count })} />
         </section>
-        <p className="parameter-note">最多 {model.maxReferences} 张参考图；有参考图时按图修改。</p>
+        <p className="parameter-note">{model.maxReferences
+          ? `最多 ${model.maxReferences} 张参考图；有参考图时按图修改。` : "当前模型只支持文生图，不能加参考图。"}</p>
       </div>}
     </div>
   </div>;

@@ -1,6 +1,7 @@
 import { evaluateExpr, parseExpr } from "./billing-expr";
 import type { ImageOptions, MediaRef } from "./types";
 import { classifyModel, vendorNames } from "./model-catalog";
+import { specClauses, specMedia, specRatios, specResolutions, specSizes } from "./model-spec";
 
 export type ImagePrice =
   | { kind: "per_image"; tiers: { name: string; price: number }[]; current: number }
@@ -26,8 +27,16 @@ export interface ImageModel {
   priceLabel: string;
   /** 完整价格,阶梯价逐档列出,如「1K ¥0.12 · 2K ¥0.24 · 4K ¥0.36（每张）」 */
   priceDetail: string;
-  /** 参考图上限(图生图) */
+  /** 参考图上限(图生图);描述写了「仅文生图」时为 0 */
   maxReferences: number;
+  /** 可选分辨率档位(描述里写了 1K / 2K / 4K 的按描述,没写不限制) */
+  resolutions: ImageResolution[];
+  /** 可选比例;undefined 表示不限制(包括自定义比例) */
+  ratios?: string[];
+  /** 明确不支持的比例(如 1:4 / 4:1) */
+  excludedRatios: string[];
+  /** 写死像素尺寸的模型:比例 → [宽, 高] */
+  sizes?: Record<string, [number, number]>;
   promptMax: number;
   /** 模型选择面板的分组:厂商 → 系列 */
   vendor: string;
@@ -86,7 +95,9 @@ const SIZES_1K: Record<string, [number, number]> = {
   "1:1": [1024, 1024], "4:3": [960, 720], "3:4": [720, 960], "16:9": [1280, 720], "9:16": [720, 1280],
 };
 
-export function imageSize(ratio: ImageRatio, resolution: ImageResolution = "1k") {
+export function imageSize(ratio: ImageRatio, resolution: ImageResolution = "1k", sizes?: Record<string, [number, number]>) {
+  const fixed = sizes?.[ratio];
+  if (fixed) return { width: fixed[0], height: fixed[1] };
   if (resolution === "1k" && SIZES_1K[ratio]) {
     const [width, height] = SIZES_1K[ratio];
     return { width, height };
@@ -124,12 +135,43 @@ export function fitImageOptions(options?: Partial<ImageOptions> | null): ImageOp
   };
 }
 
+const ratioLog = (ratio: string) => {
+  const [w, h] = parseRatio(ratio) || [1, 1];
+  return Math.log(w / h);
+};
+
+/** 最接近的比例(按宽高比的对数距离) */
+export function nearestRatio(ratio: string, candidates: readonly string[]) {
+  const target = ratioLog(ratio);
+  return candidates.reduce((best, item) =>
+    Math.abs(ratioLog(item) - target) < Math.abs(ratioLog(best) - target) ? item : best, candidates[0]);
+}
+
+/** 把参数收到这个模型支持的范围里(切换模型、读旧记录时调用) */
+export function fitImageToModel(model: Pick<ImageModel, "resolutions" | "ratios" | "excludedRatios">, options: ImageOptions): ImageOptions {
+  const resolution = model.resolutions.includes(options.resolution) ? options.resolution
+    // 不支持当前档位时,取最接近的那档
+    : [...model.resolutions].sort((a, b) =>
+      Math.abs(IMAGE_RESOLUTIONS.indexOf(a) - IMAGE_RESOLUTIONS.indexOf(options.resolution)) -
+      Math.abs(IMAGE_RESOLUTIONS.indexOf(b) - IMAGE_RESOLUTIONS.indexOf(options.resolution)))[0] || options.resolution;
+  let ratio = options.ratio;
+  if (model.ratios?.length && !model.ratios.includes(ratio)) ratio = nearestRatio(ratio, model.ratios);
+  if (model.excludedRatios.includes(ratio)) ratio = imageDefaults.ratio;
+  return { ...options, resolution, ratio };
+}
+
 export function imageRequestError(model: ImageModel, prompt: string, options: ImageOptions, attachments: readonly Pick<MediaRef, "kind">[]) {
   const length = [...prompt.trim()].length;
   if (!length) return "请先填写提示词";
   if (length > model.promptMax) return `提示词最多 ${model.promptMax} 个字`;
   if (attachments.some((item) => item.kind !== "image")) return "生图只能用图片作为参考";
+  if (!model.maxReferences && attachments.length) return "当前模型只支持文生图，不能加参考图";
   if (attachments.length > model.maxReferences) return `最多 ${model.maxReferences} 张参考图`;
+  if (!model.resolutions.includes(options.resolution)) {
+    return `当前模型支持的分辨率为 ${model.resolutions.map((item) => item.toUpperCase()).join(" / ")}`;
+  }
+  if (model.ratios?.length && !model.ratios.includes(options.ratio)) return `当前模型支持的比例为 ${model.ratios.join(" / ")}`;
+  if (model.excludedRatios.includes(options.ratio)) return `当前模型不支持 ${options.ratio}`;
   // 对话式生图不支持选背景和格式,不拦
   if (model.api === "images" && options.background === "transparent" && options.format === "jpeg") return "透明背景需要 PNG 或 WebP 格式";
   return "";
@@ -243,6 +285,48 @@ export function isChatImageModel(entry: PricingEntry) {
   return CHAT_IMAGE_NAME.test(entry.model_name) || /\bimage_count\b/.test(entry.billing_expr || "");
 }
 
+/** 按尺寸找最接近的预设比例名(1792x1024 → 16:9) */
+function sizeRatio(width: number, height: number) {
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+  const divisor = gcd(width, height);
+  const exact = `${width / divisor}:${height / divisor}`;
+  return isPresetRatio(exact) ? exact : nearestRatio(exact, IMAGE_RATIOS);
+}
+
+/**
+ * 按模型描述锁定可选参数:分辨率档位、比例、写死的尺寸、参考图上限。没写到的不限制。
+ * 例:「1K / 2K」只开放 1K、2K;「无2k-4k」只剩 1K;「size 1024x1024 / 1792x1024 / 1024x1792」只开放 1:1 / 16:9 / 9:16;
+ * 「不支持 1:4 / 4:1」排除这两个比例;「仅文生图」不能加参考图。
+ */
+export function imageSpec(description: string, chat: boolean) {
+  const clauses = specClauses(description);
+  const tiers = specResolutions(clauses);
+  const listed = IMAGE_RESOLUTIONS.filter((item) => tiers.allowed.includes(item));
+  const open = IMAGE_RESOLUTIONS.filter((item) => !tiers.excluded.includes(item));
+  const pixelSizes = specSizes(clauses);
+  let sizes: Record<string, [number, number]> | undefined;
+  for (const [width, height] of pixelSizes) {
+    const ratio = sizeRatio(width, height);
+    sizes ??= {};
+    sizes[ratio] ??= [width, height];
+  }
+  const ratios = specRatios(clauses);
+  const listedRatios = ratios.allowed.filter((ratio) => parseRatio(ratio));
+  const sizeEdge = pixelSizes.length ? Math.max(...pixelSizes[0]) : 0;
+  const resolutions: ImageResolution[] = listed.length ? listed
+    : sizes ? [sizeEdge > 3000 ? "4k" : sizeEdge > 1600 ? "2k" : "1k"]
+      : open.length ? open : ["1k"];
+  const media = specMedia(clauses);
+  const limit = chat ? MAX_CHAT_IMAGE_REFERENCES : MAX_IMAGE_REFERENCES;
+  return {
+    resolutions,
+    ratios: sizes ? Object.keys(sizes) : listedRatios.length ? listedRatios : undefined,
+    excludedRatios: ratios.excluded,
+    ...(sizes ? { sizes } : {}),
+    maxReferences: Math.min(limit, media.images ?? limit),
+  };
+}
+
 /** 从 /api/pricing 里挑出生图模型 */
 export function toImageModels(payload: unknown, group = "default", rechargeRate = 1): ImageModel[] {
   const data = (payload as { data?: PricingEntry[]; group_ratio?: Record<string, number> }) || {};
@@ -263,8 +347,8 @@ export function toImageModels(payload: unknown, group = "default", rechargeRate 
       price,
       priceLabel: priceLabel(price),
       priceDetail: priceDetail(price),
-      maxReferences: chat ? MAX_CHAT_IMAGE_REFERENCES : MAX_IMAGE_REFERENCES,
       promptMax: PROMPT_MAX,
+      ...imageSpec(entry.description || "", chat),
       ...classifyModel(entry.model_name, entry.tags, vendors.get(entry.vendor_id ?? -1)),
     });
   }
@@ -282,6 +366,7 @@ export function genericImageModel(id: string, chatOnly = false): ImageModel {
     type: "image", id, api: chat ? "chat" : "images", tag: "", description: "", price,
     priceLabel: "价格未知", priceDetail: "价格未知",
     maxReferences: chat ? MAX_CHAT_IMAGE_REFERENCES : MAX_IMAGE_REFERENCES, promptMax: PROMPT_MAX,
+    resolutions: IMAGE_RESOLUTIONS, excludedRatios: [],
     ...classifyModel(id), generic: true,
   };
 }

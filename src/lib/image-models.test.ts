@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   fitImageOptions, imageDefaults, imageOptionsSummary, imageRequestError, imageSize, nearestChatRatio, tierPrice, toImageModels,
-  withComposition,
+  fitImageToModel, imageSpec, withComposition,
   type ImageModel,
 } from "./image-models";
 
 const model: ImageModel = {
   type: "image", id: "gpt-image-2", api: "images", tag: "", description: "", price: { kind: "unknown" }, priceLabel: "按量计费", priceDetail: "按量计费", maxReferences: 4, promptMax: 6000,
-  vendor: "OpenAI", series: "GPT Image 2",
+  vendor: "OpenAI", series: "GPT Image 2", resolutions: ["1k", "2k", "4k"], excludedRatios: [],
 };
 
 describe("image sizes", () => {
@@ -129,5 +129,29 @@ describe("toImageModels", () => {
   it("uses flat per-image prices and applies the recharge rate", () => {
     expect(byId()["flat-image"].priceLabel).toBe("¥0.30/张");
     expect(byId(7)["ch5-gpt-image-2"].priceDetail).toBe("1K ¥0.84 · 2K ¥1.68 · 4K ¥2.52（每张）");
+  });
+});
+
+describe("image limits from relay descriptions", () => {
+  it("locks tiers, ratios, fixed sizes and references", () => {
+    expect(imageSpec("适合用途：Seedream 图片创作与参考编辑；1K / 2K，一次 1 张，最多 10 张参考图；通过比例或宽高选择画幅。", false))
+      .toMatchObject({ resolutions: ["1k", "2k"], ratios: undefined, maxReferences: 10 });
+    expect(imageSpec("无2k-4k", false).resolutions).toEqual(["1k"]);
+    expect(imageSpec("Nano Banana 2 4K 固定档位，文生图 / 图生图，按张计费。", false).resolutions).toEqual(["4k"]);
+    const grok = imageSpec("仅文生图。size 1024x1024 / 1792x1024 / 1024x1792。", false);
+    expect(grok).toMatchObject({ resolutions: ["1k"], ratios: ["1:1", "16:9", "9:16"], maxReferences: 0 });
+    expect(imageSize("16:9", "1k", grok.sizes)).toEqual({ width: 1792, height: 1024 });
+    const banana = imageSpec("1K / 2K / 4K（quality 指定）；最多 14 张参考图。使用注意：不支持蒙版或 1:4 / 4:1 / 1:8 / 8:1；省略 size 为 1:1", true);
+    expect(banana).toMatchObject({ resolutions: ["1k", "2k", "4k"], excludedRatios: ["1:4", "4:1", "1:8", "8:1"], maxReferences: 14 });
+    expect(imageSpec("", false)).toMatchObject({ resolutions: ["1k", "2k", "4k"], ratios: undefined, maxReferences: 20 });
+  });
+
+  it("fits options to the model and rejects what it can't do", () => {
+    const grok = { ...model, ...imageSpec("仅文生图。size 1024x1024 / 1792x1024 / 1024x1792。", false) };
+    expect(fitImageToModel(grok, { ...imageDefaults, ratio: "21:9", resolution: "4k" })).toMatchObject({ ratio: "16:9", resolution: "1k" });
+    expect(imageRequestError(grok, "猫", { ...imageDefaults, ratio: "4:3" }, [])).toMatch(/1:1 \/ 16:9 \/ 9:16/);
+    expect(imageRequestError(grok, "猫", imageDefaults, [{ kind: "image" }])).toMatch(/只支持文生图/);
+    const twoTiers = { ...model, ...imageSpec("1K / 2K", false) };
+    expect(fitImageToModel(twoTiers, { ...imageDefaults, resolution: "4k" }).resolution).toBe("2k");
   });
 });

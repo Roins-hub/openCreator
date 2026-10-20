@@ -36,7 +36,7 @@ import {
 import { VideoTaskCard } from "@/components/video-task-card";
 import { ImageTaskCard } from "@/components/image-task-card";
 import {
-  fitImageOptions, imageDefaults, imageRequestError, parseRatio, type ImageModel,
+  fitImageOptions, fitImageToModel, imageDefaults, imageRequestError, parseRatio, type ImageModel,
 } from "@/lib/image-models";
 import { LogoMark } from "@/components/logo-mark";
 import { useSlidingIndicator } from "@/components/sliding-indicator";
@@ -127,7 +127,8 @@ function withModel(conversation: Conversation, model: CatalogModel): Conversatio
   return {
     ...conversation, providerId: TANGZHI_PROVIDER_ID, modelId: model.id,
     videoOptions: model.type === "video" ? fitVideoOptions(model, conversation.videoOptions || videoDefaults) : conversation.videoOptions,
-    imageOptions: fitImageOptions(conversation.imageOptions),
+    imageOptions: model.type === "image" ? fitImageToModel(model, fitImageOptions(conversation.imageOptions))
+      : fitImageOptions(conversation.imageOptions),
   };
 }
 
@@ -200,7 +201,7 @@ export function AppShell() {
   const imageModel = selected?.type === "image" ? selected : undefined;
   // 当前模型可用的参数:模型不支持的比例/分辨率/时长自动收回到可用值
   const videoOptions = videoModel ? fitVideoOptions(videoModel, active?.videoOptions || videoDefaults) : videoDefaults;
-  const imageOptions = fitImageOptions(active?.imageOptions);
+  const imageOptions = imageModel ? fitImageToModel(imageModel, fitImageOptions(active?.imageOptions)) : fitImageOptions(active?.imageOptions);
   // 生图只有「参考图」一种方式
   const mode = imageModel ? "references" : normalizeReferenceMode(videoOptions.referenceMode);
   const remainingFor = (kind: MediaKind, current: readonly Pick<MediaRef, "kind">[]) =>
@@ -1165,7 +1166,7 @@ export function AppShell() {
           </button>}
           {videoModel && <span className="model-spec" title={videoModel.description}>
             <b>{videoModel.id}</b>
-            <span>{videoModel.resolution.toUpperCase()}</span>
+            <span>{videoModel.resolutions.map((item) => item.toUpperCase()).join(" / ")}</span>
             <span>{durationSummary(videoModel.durations)}</span>
             <span>{videoModel.limits.images}图 · {videoModel.limits.videos}视频 · {videoModel.limits.audios}音频 · 合计≤{videoModel.limits.total}</span>
             <span>{formatPrice(videoModel)}</span>
@@ -1173,7 +1174,8 @@ export function AppShell() {
           {imageModel && <span className="model-spec" title={imageModel.description}>
             <b>{imageModel.id}</b>
             <span>生图</span>
-            <span>最多 {imageModel.maxReferences} 张参考图</span>
+            {imageModel.resolutions.length < 3 && <span>{imageModel.resolutions.map((item) => item.toUpperCase()).join(" / ")}</span>}
+            <span>{imageModel.maxReferences ? `最多 ${imageModel.maxReferences} 张参考图` : "仅文生图"}</span>
             <span title="价格与中转站后台同步">{imageModel.priceDetail}</span>
           </span>}
           {!apiKey && <Link className="key-missing" href="/settings"><KeyRound size={13} />填写 API Key</Link>}

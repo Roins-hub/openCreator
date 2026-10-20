@@ -7,7 +7,7 @@ import {
 import { mediaPrefixes, requireUser } from "@/lib/identity";
 import { externalMediaUrl } from "@/lib/object-store";
 import { encodeTaskId, findModel, publicOrigin, submitVideoTask } from "@/lib/tangzhi-server";
-import { fitImageOptions, imageRequestError, type ImageModel } from "@/lib/image-models";
+import { fitImageOptions, fitImageToModel, imageRequestError, type ImageModel } from "@/lib/image-models";
 import { newImageTaskId, startImageJob } from "@/lib/image-jobs";
 import type { Relay } from "@/lib/relay";
 import type { Conversation, MediaRef, Message } from "@/lib/types";
@@ -32,7 +32,7 @@ async function generateImages(
   conversation: Conversation, model: ImageModel,
   input: { prompt: string; attachments: MediaRef[]; userMessageId?: string; imageOptions?: unknown },
 ) {
-  const options = fitImageOptions(input.imageOptions as never);
+  const options = fitImageToModel(model, fitImageOptions(input.imageOptions as never));
   const invalid = imageRequestError(model, input.prompt, options, input.attachments);
   if (invalid) throw new Error(invalid);
   await recordUserMessage(userId, conversation.id, input.userMessageId, input.prompt, input.attachments, "图片生成");

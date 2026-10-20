@@ -1,5 +1,6 @@
 import type { MediaRef, VideoOptions } from "./types";
 import { classifyModel, vendorNames } from "./model-catalog";
+import { specClauses, specDurations, specFace, specMedia, specRatios, specResolutions } from "./model-spec";
 
 /** 唯一内置的中转站。用户只需要在这里创建 API Key。 */
 export const TANGZHI_BASE_URL = "https://new.tangzhi.org";
@@ -25,7 +26,12 @@ export interface VideoModel {
   id: string;
   tag: string;
   description: string;
+  /** 默认分辨率(描述里写了「默认」的那个,否则是可选的第一个) */
   resolution: VideoResolution;
+  /** 可选分辨率(从描述里读出;只写了一个就只有一个) */
+  resolutions: VideoResolution[];
+  /** 是否支持首尾帧(描述写了「不支持 / 不接首尾帧」「仅参考素材模式」时为 false) */
+  frames: boolean;
   /** 允许的整数秒数(范围型描述已展开) */
   durations: number[];
   ratios: VideoRatio[];
@@ -50,7 +56,13 @@ export interface VideoModel {
 }
 
 const ALL_RATIOS: VideoRatio[] = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
-const RESOLUTIONS: VideoResolution[] = ["480p", "720p", "1080p", "4k"];
+/** 从低到高;界面按这个顺序列出 */
+export const VIDEO_RESOLUTIONS: VideoResolution[] = ["480p", "720p", "768p", "1080p", "2k", "4k"];
+const RESOLUTIONS = VIDEO_RESOLUTIONS;
+const isResolution = (value: string): value is VideoResolution => (RESOLUTIONS as string[]).includes(value);
+const isRatio = (value: string): value is VideoRatio => (ALL_RATIOS as string[]).includes(value);
+/** 描述里一点时长信息都没有时给的可选时长 */
+const DEFAULT_DURATIONS = [5, 10, 15];
 
 // 定价接口里没有的字段,按渠道标签补齐(与 docs.tangzhi.org 的 models.js 保持一致)。
 const TAG_DEFAULTS: Record<string, { promptMax: number; ratios: VideoRatio[] }> = {
@@ -78,7 +90,7 @@ export function parseVideoDescription(description: string) {
   const audios = number(/(\d+)音频/);
   const videos = number(/(\d+)视频/);
   const total = number(/合计≤(\d+)/);
-  const resolution = (text.match(/(480p|720p|1080p|4k)/i)?.[1] || "").toLowerCase() as VideoResolution | "";
+  const resolution = (text.match(/(480p|720p|768p|1080p|2k|4k)/i)?.[1] || "").toLowerCase() as VideoResolution | "";
   const durationText = text.match(/(\d+s(?:-\d+s|(?:\/\d+s)+)?)(?=，|,|$)/)?.[1] || "";
   const face = text.match(/(可真人|过人脸|卡人脸)/)?.[1] || "";
   return {
@@ -120,7 +132,40 @@ export function arkProtocol(tag: string, modelId: string) {
   return tag === "DOLA" || /^doubao-seedance/i.test(modelId);
 }
 
-/** 把 /api/pricing 的返回整理成可选的视频模型(描述不完整的模型不开放选择)。 */
+/**
+ * 按模型描述锁定可选参数:分辨率、时长、比例、参考素材、首尾帧。
+ * 描述里没提到的就不限制(比例用渠道默认,素材用通用上限);分辨率、时长都没写时按名字或通用值兜底。
+ */
+export function videoSpec(id: string, description: string, tag = "") {
+  const clauses = specClauses(description);
+  const listed = specResolutions(clauses).allowed.filter(isResolution);
+  const named = (id.match(/(480p|720p|768p|1080p|2k|4k)/i)?.[1] || "").toLowerCase();
+  const resolutions = listed.length ? RESOLUTIONS.filter((item) => listed.includes(item))
+    : isResolution(named) ? [named] : ["720p" as VideoResolution];
+  const preferred = /默认\s*(\d{3,4}p|[24]k)/i.exec(description)?.[1]?.toLowerCase() || "";
+  const resolution = isResolution(preferred) && resolutions.includes(preferred) ? preferred : resolutions[0];
+  const durations = specDurations(clauses);
+  const ratios = specRatios(clauses);
+  const defaults = TAG_DEFAULTS[tag] || FALLBACK_DEFAULTS;
+  const listedRatios = ratios.allowed.filter(isRatio);
+  const media = specMedia(clauses);
+  const limits: MediaLimits = media.mentioned
+    ? { images: media.images ?? 0, audios: media.audios ?? 0, videos: media.videos ?? 0, total: 0 }
+    : { images: 9, audios: 3, videos: 3, total: 0 };
+  limits.total = media.total ?? limits.images + limits.audios + limits.videos;
+  return {
+    resolution,
+    resolutions,
+    durations: durations.length ? durations : DEFAULT_DURATIONS,
+    ratios: (listedRatios.length ? listedRatios : defaults.ratios).filter((ratio) => !ratios.excluded.includes(ratio)),
+    limits,
+    // 首尾帧要两张图:只收 1 张参考图的模型也做不了
+    frames: media.frames && limits.images >= 2,
+    face: specFace(description),
+  };
+}
+
+/** 把 /api/pricing 的返回整理成可选的视频模型,参数限制按模型描述锁定(见 videoSpec)。 */
 /** rechargeRate:中转站充值汇率(元/美元),价格换算成用户实际支付的人民币 */
 export function toVideoModels(payload: unknown, group = "default", rechargeRate = 1): VideoModel[] {
   const data = (payload as { data?: PricingEntry[]; group_ratio?: Record<string, number> }) || {};
@@ -130,10 +175,9 @@ export function toVideoModels(payload: unknown, group = "default", rechargeRate 
   for (const entry of data.data || []) {
     if (!entry.model_name || !entry.supported_endpoint_types?.includes("openai-video")) continue;
     if (entry.enable_groups && !entry.enable_groups.includes(group)) continue;
-    const info = parseVideoDescription(entry.description || "");
-    if (!info.resolution || !info.durations.length) continue;
     const tag = (String(entry.tags || "").split(",")[0] || "").trim().toUpperCase();
     const defaults = TAG_DEFAULTS[tag] || FALLBACK_DEFAULTS;
+    const spec = videoSpec(entry.model_name, entry.description || "", tag);
     const perSecond = entry.billing_mode === "tiered_expr" && /u\("seconds"\)/.test(entry.billing_expr || "");
     const perSecondPrice = entry.billing_expr?.match(/u\("seconds"\)\s*\*\s*([\d.]+)/)?.[1];
     models.push({
@@ -142,11 +186,7 @@ export function toVideoModels(payload: unknown, group = "default", rechargeRate 
       tag,
       protocol: arkProtocol(tag, entry.model_name) ? "ark" : "videos",
       description: entry.description || "",
-      resolution: info.resolution,
-      durations: info.durations,
-      ratios: defaults.ratios,
-      limits: { images: info.images, audios: info.audios, videos: info.videos, total: info.total },
-      face: info.face,
+      ...spec,
       billing: perSecond ? "per_second" : "per_request",
       price: Number(perSecond && perSecondPrice ? perSecondPrice : entry.model_price || 0) * groupRatio * rechargeRate,
       promptMin: 1,
@@ -168,9 +208,10 @@ export function formatPrice(model: Pick<VideoModel, "billing" | "price" | "gener
  * 分辨率取名字里写的(没有就 720p),实际能不能用以中转站的返回为准。
  */
 export function genericVideoModel(id: string): VideoModel {
-  const resolution = (id.match(/(480p|720p|1080p|4k)/i)?.[1] || "720p").toLowerCase() as VideoResolution;
+  const resolution = (id.match(/(480p|720p|768p|1080p|2k|4k)/i)?.[1] || "720p").toLowerCase() as VideoResolution;
   return {
-    type: "video", id, tag: "", description: "", resolution, durations: [5, 10], ratios: ALL_RATIOS,
+    type: "video", id, tag: "", description: "", resolution, resolutions: [resolution], frames: true,
+    durations: [5, 10], ratios: ALL_RATIOS,
     limits: { images: 9, audios: 3, videos: 3, total: 12 }, face: "", billing: "per_request", price: 0,
     promptMin: 1, promptMax: FALLBACK_DEFAULTS.promptMax, protocol: arkProtocol("", id) ? "ark" : "videos",
     ...classifyModel(id), generic: true,
@@ -216,7 +257,7 @@ export function countMedia(attachments: readonly Pick<MediaRef, "kind">[]) {
 export function remainingMedia(
   model: VideoModel, mode: VideoOptions["referenceMode"], attachments: readonly Pick<MediaRef, "kind">[], kind: MediaKind,
 ) {
-  const normalized = normalizeReferenceMode(mode);
+  const normalized = model.frames ? normalizeReferenceMode(mode) : "references";
   const counts = countMedia(attachments);
   if (normalized === "first_last") return kind === "image" ? Math.max(0, 2 - counts.images) : 0;
   const perKind = kind === "image" ? model.limits.images - counts.images :
@@ -235,8 +276,10 @@ export function fitVideoOptions(model: VideoModel, options: VideoOptions): Video
     model.ratios.includes(options.ratio) ? options.ratio : model.ratios[0];
   return {
     ...options,
-    referenceMode: normalizeReferenceMode(options.referenceMode),
-    resolution: model.resolution,
+    // 不支持首尾帧的模型回到参考生成
+    referenceMode: model.frames ? normalizeReferenceMode(options.referenceMode) : "references",
+    // 选过的分辨率这个模型也有就保留,否则用模型的默认分辨率
+    resolution: model.resolutions.includes(options.resolution) ? options.resolution : model.resolution,
     duration,
     ratio,
   };
@@ -278,7 +321,9 @@ export function videoRequestError(
   const length = [...prompt.trim()].length;
   if (!length) return "请先填写提示词";
   if (length > model.promptMax) return `提示词最多 ${model.promptMax} 个字`;
-  if (options.resolution !== model.resolution) return `当前模型只支持 ${model.resolution.toUpperCase()}`;
+  if (!model.resolutions.includes(options.resolution)) {
+    return `当前模型支持的分辨率为 ${model.resolutions.map((item) => item.toUpperCase()).join(" / ")}`;
+  }
   if (!model.durations.includes(options.duration)) return `当前模型支持的时长为 ${durationSummary(model.durations)}`;
   if (options.ratio === "adaptive" || !model.ratios.includes(options.ratio)) {
     return `当前模型支持的比例为 ${model.ratios.join(" / ")}`;
@@ -287,6 +332,7 @@ export function videoRequestError(
   const mode = effectiveReferenceMode(options.referenceMode, attachments.length);
   if (mode === "text") return "";
   if (mode === "first_last") {
+    if (!model.frames) return "当前模型不支持首尾帧，请改用参考生成";
     if (counts.audios || counts.videos) return "首尾帧模式只能使用图片";
     return counts.images === 2 ? "" : "首尾帧模式需要两张图片（首帧、尾帧）";
   }

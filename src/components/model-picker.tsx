@@ -55,7 +55,7 @@ function rowChips(model: PickerModel) {
   if (channel) chips.push(channel);
   if (model.generic) return [...chips, "参数未知"];
   if (model.type === "video") {
-    chips.push(model.resolution.toUpperCase());
+    chips.push(model.resolutions.map((item) => item.toUpperCase()).join("/"));
     if (model.face) chips.push(model.face);
     const { images, audios, videos } = model.limits;
     const limits = [images && `${images}图`, audios && `${audios}音`, videos && `${videos}视`].filter(Boolean).join("");
@@ -64,7 +64,9 @@ function rowChips(model: PickerModel) {
     if (model.billing === "per_request") chips.push("按次");
   } else {
     if (/-cf$/i.test(model.id)) chips.push("超分 4K");
-    if (/no-2k-4k/i.test(model.id)) chips.push("无 2K/4K");
+    if (model.resolutions.length < 3) chips.push(model.resolutions.map((item) => item.toUpperCase()).join("/"));
+    if (model.ratios?.length && model.ratios.length <= 4) chips.push(model.ratios.join(" "));
+    if (!model.maxReferences) chips.push("仅文生图");
   }
   return chips;
 }
@@ -131,14 +133,14 @@ export function ModelPicker({
   // 先按筛选条件过滤,再分组
   const filtered = useMemo(() => models.filter((model) => {
     if (model.type !== "video") return !resolutionFilter && !faceOnly && !billingFilter;
-    if (resolutionFilter && (model.generic || model.resolution !== resolutionFilter)) return false;
+    if (resolutionFilter && (model.generic || !model.resolutions.includes(resolutionFilter as never))) return false;
     if (faceOnly && model.face !== "可真人") return false;
     if (billingFilter && (model.generic || model.billing !== billingFilter)) return false;
     return true;
   }), [billingFilter, faceOnly, models, resolutionFilter]);
   const groups = useMemo(() => groupModels(filtered), [filtered]);
   const resolutions = useMemo(() => [...new Set(models.flatMap((model) =>
-    model.type === "video" && !model.generic ? [model.resolution] : []))]
+    model.type === "video" && !model.generic ? model.resolutions : []))]
     .sort((a, b) => parseInt(a) - parseInt(b) || a.localeCompare(b)), [models]);
   const common = useMemo(() => {
     const ids = [...favorites, ...recents.filter((id) => !favorites.includes(id))];

@@ -54,10 +54,40 @@ describe("parseVideoDescription", () => {
 describe("toVideoModels", () => {
   const models = toVideoModels(pricing);
 
-  it("keeps only video models with a complete description", () => {
+  it("lists every video model; ones without a description get open defaults", () => {
     expect(models.map((model) => model.id)).toEqual([
-      "ch8-sd-2.0-u2-720p", "ch0101-sd-2.0-720p", "ch1310-sd-2.5-720p", "doubao-seedance-2-5-260628",
+      "ch8-sd-2.0-u2-720p", "ch0101-sd-2.0-720p", "ch1310-sd-2.5-720p", "doubao-seedance-2-5-260628", "no-desc",
     ]);
+    expect(byId("no-desc")).toMatchObject({ resolutions: ["720p"], durations: [5, 10, 15], frames: true });
+  });
+
+  it("locks resolutions, durations, ratios, media and frames from the description", () => {
+    const [mini, ft] = toVideoModels({
+      data: [
+        {
+          model_name: "sd16-seedance-2.0-mini", supported_endpoint_types: ["openai-video"],
+          description: "适合用途：Mini 档首尾帧；4–15 秒；480p / 720p 同价，按次计费；最多 9 张参考图 / 3 段参考音频 / 3 段参考视频。默认 480p，不提供 1080p / 4K。",
+        },
+        {
+          model_name: "zz-ft-2.5", supported_endpoint_types: ["openai-video"],
+          description: "满血720p，仅支持15秒30秒选择；最多9张参考图，不支持视频/音频参考；比例16:9/9:16/1:1；不支持首尾帧",
+        },
+      ],
+    });
+    expect(mini).toMatchObject({ resolution: "480p", resolutions: ["480p", "720p"], frames: true });
+    expect(mini.durations).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(ft).toMatchObject({
+      resolutions: ["720p"], durations: [15, 30], ratios: ["16:9", "9:16", "1:1"], frames: false,
+      limits: { images: 9, audios: 0, videos: 0, total: 9 },
+    });
+    // 换到不支持首尾帧的模型时回到参考生成;选过的分辨率模型也有就保留
+    expect(fitVideoOptions(ft, options({ referenceMode: "first_last", duration: 20 })))
+      .toMatchObject({ referenceMode: "references", duration: 15 });
+    expect(fitVideoOptions(mini, options({ resolution: "720p" })).resolution).toBe("720p");
+    expect(fitVideoOptions(mini, options({ resolution: "1080p" })).resolution).toBe("480p");
+    expect(videoRequestError(mini, "一只猫", options({ resolution: "1080p", duration: 5 }), [])).toMatch(/480P \/ 720P/);
+    expect(videoRequestError(ft, "一只猫", options({ referenceMode: "first_last", duration: 15 }),
+      [media("image", "a.png"), media("image", "b.png")])).toMatch(/不支持首尾帧/);
   });
 
   it("uses the per-second price from the billing expression", () => {

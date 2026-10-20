@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Wand2 } from "lucide-react";
 import { EMPTY_PRESET, parsePromptPreset, PROMPT_PRESET_KEY, presetActive, type PromptPreset } from "@/lib/prompt-preset";
 
 /** 预设提示词保存在当前浏览器;第一次渲染后再读,避免和服务端渲染的结果对不上 */
@@ -87,8 +87,10 @@ export function PromptPresetBar({ preset, onChange }: { preset: PromptPreset; on
   const hasAny = Boolean(preset.prefix.trim() || preset.suffix.trim());
   return <div className={`preset-bar ${hasAny && !preset.enabled ? "is-paused" : ""} ${presetActive(preset) ? "is-active" : ""}`}
     aria-label="预设提示词">
-    <span className="preset-bar-title">预设</span>
+    <span className="preset-bar-title"><Wand2 size={12} />预设</span>
     <PresetChip part="prefix" value={preset.prefix} onSave={(prefix) => onChange({ ...preset, prefix })} />
+    {/* 发送时的拼接顺序:前缀 + 你输入的提示词 + 后缀 */}
+    <span className="preset-bar-flow" aria-hidden="true">+ 你的提示词 +</span>
     <PresetChip part="suffix" value={preset.suffix} onSave={(suffix) => onChange({ ...preset, suffix })} />
     {hasAny && <label className="preset-switch" title={preset.enabled ? "发送时会自动加上前缀和后缀" : "已暂停，发送时不加"}>
       <input type="checkbox" checked={preset.enabled} onChange={(event) => onChange({ ...preset, enabled: event.target.checked })} />

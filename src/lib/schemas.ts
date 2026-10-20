@@ -50,7 +50,7 @@ export const imageOptionsSchema = z.object({
 export const videoOptionsSchema = z.object({
   referenceMode: z.enum(["text", "first", "first_last", "references"]),
   ratio: z.enum(["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]),
-  resolution: z.enum(["480p", "720p", "1080p", "4k"]),
+  resolution: z.enum(["480p", "720p", "768p", "1080p", "2k", "4k"]),
   duration: z.number().int().min(3).max(60),
   count: z.number().int().min(1).max(4),
   audio: z.boolean(),

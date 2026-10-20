@@ -313,7 +313,7 @@ export function SettingsForm() {
               {models?.map((model) => (
                 <div className="catalog-row" role="row" key={model.id} title={model.description}>
                   <span><b>{model.id}</b>{model.face && <em>{model.face}</em>}</span>
-                  <span>{model.resolution.toUpperCase()}</span>
+                  <span>{model.resolutions.map((item) => item.toUpperCase()).join(" / ")}</span>
                   <span>{durationSummary(model.durations)}</span>
                   <span>{mediaSummary(model.limits)}</span>
                   <span>{formatPrice(model)}</span>
