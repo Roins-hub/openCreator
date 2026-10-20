@@ -3,34 +3,37 @@
 import { useEffect, useState, type RefObject } from "react";
 import { ArrowUpToLine } from "lucide-react";
 
-/** 往下翻过一屏左右后,顶部正中出现「回到顶部」 */
+/** 往下翻过一屏左右后,顶栏右侧出现「回到顶部」 */
 const SHOW_AFTER = 480;
 
 export function BackToTop({ scrollRootRef, resetKey }: {
-  scrollRootRef: RefObject<HTMLElement | null>;
+  /** 滚动的容器;不传时跟随整个页面(设置页这类整页滚动的页面) */
+  scrollRootRef?: RefObject<HTMLElement | null>;
   /** 换对话等内容整体替换时,重新判断一次是否显示 */
   resetKey?: string;
 }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    const root = scrollRootRef.current;
-    if (!root) return;
+    const root = scrollRootRef ? scrollRootRef.current : null;
+    if (scrollRootRef && !root) return;
+    const target: HTMLElement | Window = root ?? window;
     let frame = 0;
     const check = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => setVisible(root.scrollTop > SHOW_AFTER));
+      frame = requestAnimationFrame(() => setVisible((root ? root.scrollTop : window.scrollY) > SHOW_AFTER));
     };
     check();
-    root.addEventListener("scroll", check, { passive: true });
+    target.addEventListener("scroll", check, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
-      root.removeEventListener("scroll", check);
+      target.removeEventListener("scroll", check);
     };
   }, [scrollRootRef, resetKey]);
 
   const scrollTop = () => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    scrollRootRef.current?.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+    const root = scrollRootRef ? scrollRootRef.current : window;
+    root?.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
   };
 
   return <button type="button" className={`back-to-top ${visible ? "is-visible" : ""}`} onClick={scrollTop}

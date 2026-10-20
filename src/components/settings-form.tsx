@@ -14,6 +14,7 @@ import {
   durationSummary, formatPrice, mediaSummary, TANGZHI_BASE_URL, TANGZHI_KEY_PAGE, type VideoModel,
 } from "@/lib/tangzhi";
 import { ThemePicker } from "@/components/theme-picker";
+import { BackToTop } from "@/components/back-to-top";
 import { readableError } from "@/lib/network-error";
 import type { ImageModel } from "@/lib/image-models";
 
@@ -199,6 +200,8 @@ export function SettingsForm() {
       <header className="settings-top">
         <Link href="/" className="back-link"><ArrowLeft size={17} /> 返回对话</Link>
         <div className="settings-actions">
+          {/* 和工作台一样在顶栏右侧;整页滚动,跟随窗口 */}
+          <BackToTop />
           {status && <span className="save-status"><Check size={14} />{status}</span>}
           <button className="primary-button" onClick={() => void save()} disabled={!dirty || saving}>
             {saving ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />} 保存
