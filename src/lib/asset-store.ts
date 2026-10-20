@@ -3,12 +3,12 @@ import { userDir } from "./identity";
 import { readJson, writeJsonAtomic } from "./json-store";
 import { assertKey, deleteObject } from "./object-store";
 import { buildTurns } from "./turns";
-import type { Conversation } from "./types";
+import type { Conversation, MediaRef } from "./types";
 
 export interface Asset {
   id: string;
-  kind: "image" | "video";
-  /** 对象存储 key:users/<用户ID>/videos/<文件名> */
+  kind: MediaRef["kind"];
+  /** 对象存储 key:users/<用户ID>/videos/<文件名>(生成的图片在 images/,上传的素材在 uploads/) */
   path: string;
   name: string;
   mimeType: string;
@@ -20,6 +20,8 @@ export interface Asset {
   prompt?: string;
   trashed?: boolean;
   favorite?: boolean;
+  /** 在资产页手动上传的素材;没有这个字段的是生成结果 */
+  source?: "upload";
 }
 
 export type AssetRecord = Omit<Asset, "id" | "conversationTitle" | "prompt" | "favorite">;
@@ -89,24 +91,52 @@ export async function listAssets(userId: string, conversations: Conversation[], 
 }
 
 export async function setAssetTrashed(userId: string, path: string, trashed: boolean) {
-  return serial(userId, () => updateTrashed(userId, path, trashed));
-}
-
-async function updateTrashed(userId: string, path: string, trashed: boolean) {
-  const records = await readIndex(userId);
-  const record = records.find((item) => item.path === path);
-  if (!record) throw new Error("资产不存在");
-  if (Boolean(record.trashed) === trashed) throw new Error(trashed ? "资产已在回收站" : "资产不在回收站");
-  await writeJsonAtomic(indexFile(userId), records.map((item) =>
-    item.path === path ? { ...item, trashed: trashed || undefined } : item));
+  const changed = await setAssetsTrashed(userId, [path], trashed);
+  if (!changed.length) throw new Error(trashed ? "资产已在回收站" : "资产不在回收站");
   return path;
 }
 
-export async function permanentlyDeleteAsset(userId: string, path: string) {
-  await serial(userId, async () => {
+/** 批量移入 / 移出回收站;已经是目标状态的跳过,返回实际改动的路径 */
+export async function setAssetsTrashed(userId: string, paths: readonly string[], trashed: boolean) {
+  const wanted = new Set(paths);
+  return serial(userId, async () => {
     const records = await readIndex(userId);
-    if (!records.some((item) => item.path === path)) throw new Error("资产不存在");
-    await deleteObject(path);
-    await writeJsonAtomic(indexFile(userId), records.filter((item) => item.path !== path));
+    if (!records.some((item) => wanted.has(item.path))) throw new Error("资产不存在");
+    const changed = records.filter((item) => wanted.has(item.path) && Boolean(item.trashed) !== trashed).map((item) => item.path);
+    if (changed.length) {
+      await writeJsonAtomic(indexFile(userId), records.map((item) =>
+        wanted.has(item.path) ? { ...item, trashed: trashed || undefined } : item));
+    }
+    return changed;
+  });
+}
+
+export async function permanentlyDeleteAsset(userId: string, path: string) {
+  const { failed } = await permanentlyDeleteAssets(userId, [path]);
+  if (failed.length) throw new Error(failed[0].error);
+}
+
+/** 批量永久删除:先删文件,删成功的才从索引里去掉;返回删掉的和失败的 */
+export async function permanentlyDeleteAssets(userId: string, paths: readonly string[]) {
+  const wanted = new Set(paths);
+  return serial(userId, async () => {
+    const records = await readIndex(userId);
+    const targets = records.filter((item) => wanted.has(item.path));
+    if (!targets.length) throw new Error("资产不存在");
+    const deleted = new Set<string>();
+    const failed: { path: string; error: string }[] = [];
+    // 每次并发删几个,数量多时也不会一下子打满对象存储
+    for (let index = 0; index < targets.length; index += 6) {
+      await Promise.all(targets.slice(index, index + 6).map(async ({ path }) => {
+        try {
+          await deleteObject(path);
+          deleted.add(path);
+        } catch (error) {
+          failed.push({ path, error: (error as Error).message });
+        }
+      }));
+    }
+    if (deleted.size) await writeJsonAtomic(indexFile(userId), records.filter((item) => !deleted.has(item.path)));
+    return { deleted: [...deleted], failed };
   });
 }

@@ -2107,3 +2107,121 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
   .model-panel, .model-panel.is-closing, .model-list-body .pick-row, .model-list-body h4,
   .pick-row-name.is-scrolling > span { animation: none; }
 }
+
+/* ---------- 资产:来源筛选、批量选择、上传 ---------- */
+.asset-content .settings-error { margin: -6px 0 18px; border-radius: 9px; }
+.asset-toolbar-row { margin-bottom: 12px; }
+.asset-subbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 24px; }
+.asset-source-filter { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--warm); }
+.asset-source-filter button {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 7px;
+  color: var(--muted); background: transparent; font-size: 11px; transition: color .15s, background .15s, box-shadow .15s;
+}
+.asset-source-filter button:hover { color: var(--ink); }
+.asset-source-filter button.active { color: var(--ink); background: var(--paper); box-shadow: 0 1px 3px oklch(20% 0.01 80 / .1); }
+.asset-source-filter button span { color: var(--faint); font-size: 9px; }
+.asset-subbar-actions { display: flex; align-items: center; gap: 8px; }
+.asset-select-toggle, .asset-upload-button {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 13px; border-radius: 9px; font-size: 12px; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.asset-select-toggle { border: 1px solid var(--line); color: var(--muted); background: transparent; }
+.asset-select-toggle:hover:not(:disabled), .asset-select-toggle.active { color: var(--ink); border-color: var(--line-strong); background: var(--warm); }
+.asset-select-toggle:disabled { opacity: .45; cursor: default; }
+.asset-upload-button { border: 1px solid var(--ink); color: var(--paper); background: var(--ink); }
+.asset-upload-button:hover { background: color-mix(in oklch, var(--ink) 86%, var(--paper)); }
+.asset-notice { margin: -8px 0 18px; color: var(--muted); font-size: 12px; }
+.asset-empty button { margin-top: 20px; padding: 0 0 2px; border: 0; border-bottom: 1px solid var(--ink); color: var(--ink); background: none; font-size: 11px; font-weight: 600; }
+
+/* 来源标签 */
+.asset-details strong { display: inline-flex; align-items: center; gap: 6px; }
+.asset-origin {
+  padding: 1px 6px; border-radius: 999px; color: var(--muted); background: var(--warm); border: 1px solid var(--line);
+  font-size: 9px; font-style: normal; font-weight: 500; line-height: 14px;
+}
+.asset-origin.is-upload { color: var(--run); background: var(--run-soft); border-color: color-mix(in oklch, var(--run) 25%, transparent); }
+
+/* 音频卡片 */
+.asset-preview.is-audio { display: grid; place-items: center; align-content: center; gap: 14px; color: var(--faint); }
+.asset-preview.is-audio audio { width: calc(100% - 24px); height: 34px; }
+
+/* 选择 */
+.asset-check {
+  position: absolute; top: 8px; left: 8px; z-index: 3; display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
+  border: 1.5px solid oklch(100% 0 0 / .9); border-radius: 7px; color: transparent; background: oklch(15% 0.01 80 / .3);
+  backdrop-filter: blur(4px); box-shadow: 0 1px 4px oklch(0% 0 0 / .2);
+  opacity: 0; transform: scale(.9); transition: opacity .15s, transform .15s, background .15s, color .15s, border-color .15s;
+}
+.asset-card:hover .asset-check, .asset-check:focus-visible, .asset-grid.is-selecting .asset-check { opacity: 1; transform: none; }
+.asset-check:hover { background: oklch(15% 0.01 80 / .5); }
+.asset-check.is-on { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+.asset-select-overlay { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.asset-preview { transition: box-shadow .15s; }
+.asset-grid.is-selecting .asset-preview img, .asset-grid.is-selecting .asset-preview video { transition: transform .2s, opacity .2s; }
+.asset-grid.is-selecting .asset-card:not(.is-selected) .asset-preview img,
+.asset-grid.is-selecting .asset-card:not(.is-selected) .asset-preview video { opacity: .82; }
+.asset-card.is-selected .asset-preview { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink); }
+.asset-card.is-selected .asset-preview img, .asset-card.is-selected .asset-preview video { transform: scale(.96); border-radius: 9px; }
+
+/* 批量操作栏 */
+.asset-selection-bar {
+  position: fixed; left: 50%; bottom: 22px; z-index: 40; display: flex; align-items: center; gap: 4px;
+  max-width: calc(100vw - 24px); padding: 6px 6px 6px 16px; border: 1px solid var(--line-strong); border-radius: 14px;
+  color: var(--ink); background: var(--paper); box-shadow: 0 12px 34px oklch(20% 0.01 80 / .16), 0 2px 6px oklch(20% 0.01 80 / .08);
+  transform: translateX(-50%); animation: asset-bar-in .22s cubic-bezier(.2, .8, .2, 1);
+}
+@keyframes asset-bar-in { from { opacity: 0; transform: translate(-50%, 14px); } }
+.asset-selection-count { margin-right: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.asset-selection-count b { color: var(--ink); font-weight: 650; }
+.asset-selection-bar button {
+  display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 11px; border-radius: 9px;
+  color: var(--ink); background: transparent; font-size: 12px; white-space: nowrap; transition: background .15s, opacity .15s;
+}
+.asset-selection-bar button:hover:not(:disabled) { background: var(--warm); }
+.asset-selection-bar button:disabled { opacity: .4; cursor: default; }
+.asset-selection-bar button.danger-text { color: var(--danger); }
+.asset-selection-bar button.danger { color: var(--paper); background: var(--danger); }
+.asset-selection-bar button.danger:hover:not(:disabled) { background: color-mix(in oklch, var(--danger) 88%, black); }
+.asset-selection-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--line); }
+.asset-selection-warn { margin: 0 4px; color: var(--danger); font-size: 12px; white-space: nowrap; }
+.asset-selection-bar .asset-selection-close { width: 32px; padding: 0; justify-content: center; color: var(--muted); }
+/* 操作栏挡住最后一行卡片时还能滚上来 */
+.asset-page:has(.asset-selection-bar) .asset-content { padding-bottom: 140px; }
+
+/* 上传进度 */
+.asset-uploads { display: grid; gap: 6px; margin: 0 0 22px; padding: 0; list-style: none; }
+.asset-uploads li {
+  display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 12px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--warm); font-size: 12px; animation: asset-upload-in .2s ease-out;
+}
+@keyframes asset-upload-in { from { opacity: 0; transform: translateY(-4px); } }
+.asset-uploads li.is-error { border-color: color-mix(in oklch, var(--danger) 30%, var(--line)); background: color-mix(in oklch, var(--danger) 5%, var(--paper)); }
+.asset-upload-kind { flex: 0 0 auto; padding: 1px 6px; border-radius: 5px; color: var(--muted); background: var(--paper); font-size: 10px; }
+.asset-upload-name { flex: 0 1 260px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.asset-upload-bar { position: relative; flex: 1; height: 4px; overflow: hidden; border-radius: 999px; background: var(--line); }
+.asset-upload-bar i { position: absolute; inset: 0; border-radius: inherit; background: var(--ink); transform-origin: left; transition: transform .2s; }
+.asset-upload-percent { flex: 0 0 34px; color: var(--faint); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+.asset-upload-error { flex: 1; min-width: 0; overflow: hidden; color: var(--danger); white-space: nowrap; text-overflow: ellipsis; }
+.asset-uploads button { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border-radius: 7px; color: var(--ink); background: transparent; font-size: 11px; }
+.asset-uploads button:hover { background: var(--hover); }
+
+/* 拖拽上传 */
+.asset-drop-hint {
+  position: fixed; inset: 14px; z-index: 50; display: grid; place-content: center; justify-items: center; gap: 8px;
+  border: 2px dashed var(--line-strong); border-radius: 20px; color: var(--ink);
+  background: color-mix(in oklch, var(--paper) 88%, transparent); backdrop-filter: blur(3px);
+  pointer-events: none; animation: asset-upload-in .15s ease-out;
+}
+.asset-drop-hint strong { font-size: 16px; }
+.asset-drop-hint span { color: var(--muted); font-size: 12px; }
+
+@media (max-width: 700px) {
+  .asset-selection-bar { left: 12px; right: 12px; bottom: 12px; flex-wrap: wrap; justify-content: center; transform: none; animation: none; padding: 6px; }
+  .asset-selection-count { width: 100%; margin: 2px 0 0; text-align: center; }
+  .asset-selection-sep { display: none; }
+  .asset-check { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .asset-selection-bar, .asset-uploads li, .asset-drop-hint { animation: none; }
+  .asset-card.is-selected .asset-preview img, .asset-card.is-selected .asset-preview video { transform: none; }
+}

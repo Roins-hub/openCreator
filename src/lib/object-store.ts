@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { AwsClient } from "aws4fetch";
 import { inside, outDir } from "./paths";
@@ -107,7 +107,7 @@ export async function signedUploadUrl(key: string, expiresIn = 900) {
 export async function objectSize(key: string) {
   assertKey(key);
   const config = store();
-  if (!config) return undefined;
+  if (!config) return stat(inside(outDir, key)).then((info) => info.size, () => undefined);
   const response = await config.client.fetch(config.objectUrl(key), { method: "HEAD" });
   if (response.status === 404) return undefined;
   if (!response.ok) throw new Error(`云存储读取失败（${response.status}）`);
