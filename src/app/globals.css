@@ -2407,7 +2407,7 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 }
 .back-to-top.is-visible { opacity: 1; pointer-events: auto; transform: none; }
 .back-to-top:hover { background: var(--warm); }
-.key-missing + .back-to-top { margin-left: 8px; }
+.key-missing + .back-to-top, .topbar-manage + .back-to-top, .key-missing + .topbar-manage { margin-left: 8px; }
 .back-to-top:hover { color: var(--ink); border-color: var(--line-strong); }
 
 /* ---------- 输入框里的项目分组 ---------- */
@@ -2467,4 +2467,72 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 }
 @media (max-width: 700px) {
   .composer { border-radius: calc(var(--r-composer) * .82); }
+}
+
+/* 资产页筛选:选中底色滑动过去(sliding-indicator),按钮本身不再画选中底 */
+.asset-toolbar.has-slider > .active, .asset-source-filter.has-slider > .active {
+  border-color: transparent; background: transparent; box-shadow: none;
+}
+.asset-toolbar > .slide-indicator { background: var(--warm); box-shadow: none; }
+.asset-source-filter > .slide-indicator { border-color: transparent; border-radius: 7px; }
+.asset-toolbar > button, .asset-source-filter > button { transition: color .2s ease; }
+
+/* ---------- 主页面:批量管理生成记录 ---------- */
+.topbar-manage {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; margin-left: auto;
+  height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px;
+  color: var(--muted); background: var(--paper); font-size: 12px; font-weight: 600; white-space: nowrap;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.topbar-manage:hover { color: var(--ink); border-color: var(--line-strong); background: var(--warm); }
+.topbar-manage.active { color: var(--paper); border-color: var(--ink); background: var(--ink); }
+.task-pick { position: relative; }
+.task-pick > .task-card { transition: transform .2s cubic-bezier(.16, 1, .3, 1), opacity .2s, box-shadow .2s, border-color .2s; }
+.task-pick.is-managing > .task-card { opacity: .82; }
+.task-pick.is-managing:hover > .task-card { opacity: 1; border-color: var(--line-strong); }
+.task-pick.is-picked > .task-card { opacity: 1; border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); transform: scale(.992); }
+.task-pick-overlay {
+  position: absolute; inset: 0 0 14px; z-index: 5; width: 100%; padding: 0; border: 0;
+  border-radius: var(--r-card); background: transparent; cursor: pointer;
+}
+.task-check {
+  position: absolute; z-index: 6; top: 16px; left: -38px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
+  border: 1.5px solid var(--line-strong); border-radius: 7px; color: transparent; background: var(--paper);
+  animation: task-check-in .2s cubic-bezier(.16, 1, .3, 1); transition: background .15s, border-color .15s, color .15s;
+}
+.task-check:hover { border-color: var(--ink); }
+.task-check.is-on { color: var(--paper); border-color: var(--ink); background: var(--ink); }
+@keyframes task-check-in { from { opacity: 0; transform: translateX(6px) scale(.9); } }
+.composer-region.is-managing { display: none; }
+.task-selection-bar {
+  position: relative; z-index: 20; display: flex; align-items: center; gap: 4px; align-self: center;
+  max-width: calc(100% - 24px); margin: 0 auto 22px; padding: 6px 6px 6px 16px;
+  border: 1px solid var(--line-strong); border-radius: 14px; color: var(--ink); background: var(--paper);
+  box-shadow: 0 12px 34px oklch(20% 0.01 80 / .14), 0 2px 6px oklch(20% 0.01 80 / .06);
+  animation: task-bar-in .22s cubic-bezier(.2, .8, .2, 1);
+}
+@keyframes task-bar-in { from { opacity: 0; transform: translateY(12px); } }
+.task-selection-count { margin-right: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.task-selection-count b { color: var(--ink); font-weight: 650; }
+.task-selection-bar button {
+  display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 11px; border-radius: 9px;
+  color: var(--ink); background: transparent; font-size: 12px; white-space: nowrap; transition: background .15s, opacity .15s;
+}
+.task-selection-bar button:hover:not(:disabled) { background: var(--warm); }
+.task-selection-bar button:disabled { opacity: .4; cursor: default; }
+.task-selection-bar button.danger-text { color: var(--danger); }
+.task-selection-bar button.danger { color: var(--paper); background: var(--danger); }
+.task-selection-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--line); }
+.task-selection-warn { margin: 0 4px; color: var(--danger); font-size: 12px; white-space: nowrap; }
+.task-selection-bar .task-selection-close { width: 32px; padding: 0; justify-content: center; color: var(--muted); }
+@media (max-width: 700px) {
+  .task-check { top: 10px; left: 10px; }
+  .task-selection-bar { flex-wrap: wrap; justify-content: center; padding: 6px; }
+  .task-selection-count { width: 100%; margin: 2px 0 0; text-align: center; }
+  .task-selection-sep { display: none; }
+  .task-selection-warn { white-space: normal; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-selection-bar, .task-check { animation: none; }
+  .task-pick.is-picked > .task-card { transform: none; }
 }

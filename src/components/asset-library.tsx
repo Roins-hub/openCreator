@@ -8,8 +8,10 @@ import {
 } from "lucide-react";
 import type { Asset } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
+import { useSlidingIndicator } from "@/components/sliding-indicator";
 import { apiKeyHeaders, openSession, readApiKey } from "@/lib/api-key";
 import { uploadMedia } from "@/lib/direct-upload";
+import { downloadFiles, mediaDownloadUrl } from "@/lib/download-files";
 import { acceptAttribute, MEDIA_KIND_LABEL, pickMediaFiles } from "@/lib/media-files";
 import { readableError } from "@/lib/network-error";
 import type { MediaRef } from "@/lib/types";
@@ -48,21 +50,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 const jsonInit = (method: string, body: unknown): RequestInit =>
   ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-const downloadUrl = (asset: Asset) => `/api/media/${asset.path}?download=${encodeURIComponent(asset.name)}`;
-
-/** 逐个触发下载(间隔一点,浏览器才不会把后面的吞掉);第一次批量下载时浏览器会问是否允许下载多个文件 */
-async function downloadAll(assets: readonly Asset[]) {
-  for (const [index, asset] of assets.entries()) {
-    if (index) await new Promise((resolve) => setTimeout(resolve, 450));
-    const link = document.createElement("a");
-    link.href = downloadUrl(asset);
-    link.download = asset.name;
-    link.rel = "noopener";
-    document.body.append(link);
-    link.click();
-    link.remove();
-  }
-}
+const downloadUrl = (asset: Asset) => mediaDownloadUrl(asset);
 
 export function AssetLibrary() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -81,6 +69,9 @@ export function AssetLibrary() {
   const lastClicked = useRef<string | null>(null);
   const dragDepth = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 筛选按钮的选中底色滑到新选项,而不是瞬间跳过去
+  const { containerRef: filterSliderRef, indicator: filterIndicator } = useSlidingIndicator<HTMLDivElement>(":scope > .active");
+  const { containerRef: sourceSliderRef, indicator: sourceIndicator } = useSlidingIndicator<HTMLDivElement>(":scope > .active");
 
   const loadAssets = async () => {
     setAssets(await request<Asset[]>("/api/assets"));
@@ -207,7 +198,7 @@ export function AssetLibrary() {
   const downloadChosen = async () => {
     if (!chosen.length) return;
     setNotice(chosen.length > 1 ? `正在下载 ${chosen.length} 个文件；浏览器询问「下载多个文件」时请选择允许` : "");
-    await downloadAll(chosen);
+    await downloadFiles(chosen);
   };
 
   // ---------- 上传 ----------
@@ -314,7 +305,8 @@ export function AssetLibrary() {
         <p>你的账号生成的图片、视频，以及你上传的素材都在这里，其他用户看不到；上传的素材在输入框里按 @ 就能引用。{retentionNote}</p>
       </div>
       <div className="asset-toolbar-row">
-        <div className="asset-toolbar" aria-label="资产筛选">
+        <div className="asset-toolbar has-slider" aria-label="资产筛选" ref={filterSliderRef}>
+          {filterIndicator}
           {([
             ["all", "全部", Images],
             ["image", "图片", ImageIcon],
@@ -347,7 +339,8 @@ export function AssetLibrary() {
         </div>
       </div>
       <div className="asset-subbar">
-        <div className="asset-source-filter" role="group" aria-label="按来源筛选">
+        <div className="asset-source-filter has-slider" role="group" aria-label="按来源筛选" ref={sourceSliderRef}>
+          {sourceIndicator}
           {([["all", "全部来源"], ["generated", "AI 生成"], ["upload", "我上传的"]] as const).map(([value, label]) =>
             <button key={value} type="button" className={source === value ? "active" : ""} aria-pressed={source === value}
               onClick={() => setSource(value)}>

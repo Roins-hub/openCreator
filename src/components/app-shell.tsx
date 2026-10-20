@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, AtSign, Clapperboard, Image as ImageIcon, ImagePlus, KeyRound, Loader2, Maximize2, Menu,
+  ArrowUp, AtSign, Check, Clapperboard, Download, Image as ImageIcon, ImagePlus, KeyRound, ListChecks, Loader2, Maximize2, Menu,
   Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Sparkles, Undo2, X, BookMarked, Pencil, Trash2,
 } from "lucide-react";
 import type { Conversation, GenerationMeta, ImageOptions, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
@@ -48,6 +48,7 @@ import { MediaPreview } from "@/components/media-preview";
 import { ModelPicker } from "@/components/model-picker";
 import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
 import { uploadMedia } from "@/lib/direct-upload";
+import { downloadFiles } from "@/lib/download-files";
 
 type PickerAsset = { id: string; kind: MediaKind; path: string; name: string; mimeType: string };
 /** /api/models 返回的视频模型和生图模型 */
@@ -142,6 +143,10 @@ export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [draggingImages, setDraggingImages] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  // 批量管理生成记录:只对开始管理时的那个对话有效,换对话就自动退出
+  const [turnSelection, setTurnSelection] = useState<{ conversationId?: string; ids: Set<string>; confirming: boolean }>(
+    () => ({ ids: new Set(), confirming: false }));
+  const lastPickedRef = useRef<string | null>(null);
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   // 输入框里已添加的素材放大查看(第几个)
   const [attachmentPreview, setAttachmentPreview] = useState<number | null>(null);
@@ -261,6 +266,22 @@ export function AppShell() {
     const timer = window.setTimeout(() => setSidebarOpen(false), 0);
     return () => clearTimeout(timer);
   }, []);
+  useEffect(() => {
+    if (turnSelection.conversationId === undefined) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const typing = (event.target as HTMLElement | null)?.closest("input, textarea, [contenteditable=true], [contenteditable='']");
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        lastPickedRef.current = null;
+        setTurnSelection({ ids: new Set(), confirming: false });
+      } else if (!typing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        const ids = [...document.querySelectorAll<HTMLElement>("[data-turn-id]")].map((element) => element.dataset.turnId as string);
+        setTurnSelection((current) => ({ ...current, confirming: false, ids: new Set(ids) }));
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [turnSelection.conversationId]);
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
@@ -744,9 +765,11 @@ export function AppShell() {
   };
 
   // 只告诉服务端删哪几条,不用浏览器里的整份副本覆盖(其他任务可能刚写入结果)
-  const deleteTurn = (messageId: string, userMessageId?: string) => {
-    if (!active) return;
-    const removed = [messageId, userMessageId].filter((id): id is string => Boolean(id));
+  const deleteTurn = (messageId: string, userMessageId?: string) =>
+    deleteMessages([messageId, userMessageId].filter((id): id is string => Boolean(id)));
+
+  const deleteMessages = (removed: string[]) => {
+    if (!active || !removed.length) return;
     removed.forEach((id) => inflightRef.current.delete(id));
     const updated = {
       ...active, updatedAt: new Date().toISOString(),
@@ -1021,6 +1044,57 @@ export function AppShell() {
     return () => clearTimeout(timer);
   }, [pendingKey, pollFailures, conversations]);
 
+  const turns = active ? buildTurns(active.messages, isGenerationTurn) : [];
+  const taskTurns = turns.filter((turn) => turn.kind !== "message");
+  const managing = Boolean(active) && turnSelection.conversationId === active?.id;
+  const pickedTurns = managing ? taskTurns.filter((turn) => turnSelection.ids.has(turn.message.id)) : [];
+  const allPicked = taskTurns.length > 0 && pickedTurns.length === taskTurns.length;
+  const pickedProcessing = pickedTurns.some((turn) => turn.message.status === "processing");
+
+  const startManaging = () => {
+    lastPickedRef.current = null;
+    setTurnSelection({ conversationId: active?.id, ids: new Set(), confirming: false });
+  };
+  const stopManaging = () => {
+    lastPickedRef.current = null;
+    setTurnSelection({ ids: new Set(), confirming: false });
+  };
+  /** 点选;按住 Shift 从上次点的那张连选到这张 */
+  const togglePick = (id: string, range: boolean) => {
+    const order = taskTurns.map((turn) => turn.message.id);
+    const anchorId = lastPickedRef.current;
+    lastPickedRef.current = id;
+    setTurnSelection((current) => {
+      const ids = new Set(current.ids);
+      const anchor = anchorId ? order.indexOf(anchorId) : -1;
+      const target = order.indexOf(id);
+      if (range && anchor >= 0 && target >= 0) {
+        const on = !current.ids.has(id);
+        const [from, to] = anchor < target ? [anchor, target] : [target, anchor];
+        for (const item of order.slice(from, to + 1)) {
+          if (on) ids.add(item);
+          else ids.delete(item);
+        }
+      } else if (ids.has(id)) ids.delete(id);
+      else ids.add(id);
+      return { ...current, ids, confirming: false };
+    });
+  };
+  const pickAll = (on: boolean) => setTurnSelection((current) => ({
+    ...current, confirming: false, ids: on ? new Set(taskTurns.map((turn) => turn.message.id)) : new Set(),
+  }));
+  const downloadPicked = () => {
+    const files = pickedTurns.flatMap((turn) => (turn.message.media || [])
+      .filter((item) => item.kind === (isImageRecord(turn.message) ? "image" : "video")));
+    if (!files.length) { setError("选中的记录里还没有生成好的图片或视频"); return; }
+    setError("");
+    void downloadFiles(files);
+  };
+  const deletePicked = () => {
+    deleteMessages(pickedTurns.flatMap((turn) => [turn.message.id, turn.user?.id].filter((id): id is string => Boolean(id))));
+    setTurnSelection((current) => ({ ...current, ids: new Set(), confirming: false }));
+  };
+
   return (
     <main className="app-frame">
       <div className={`side-panels ${sidebarOpen ? "is-open" : ""}`}>
@@ -1084,6 +1158,10 @@ export function AppShell() {
           </span>}
           {!apiKey && <Link className="key-missing" href="/settings"><KeyRound size={13} />填写 API Key</Link>}
           {/* 顶栏右侧,和左边的模型规格条同一行 */}
+          {(managing || taskTurns.length > 0) && <button type="button" className={`topbar-manage ${managing ? "active" : ""}`}
+            onClick={managing ? stopManaging : startManaging} title={managing ? "退出批量管理（Esc）" : "批量选择、下载、删除生成记录"}>
+            <ListChecks size={14} />{managing ? "完成" : "批量管理"}
+          </button>}
           <BackToTop scrollRootRef={conversationRef} resetKey={active?.id} />
         </header>
 
@@ -1106,7 +1184,7 @@ export function AppShell() {
             <div className="message-list" key={active.id}>
               {(() => {
                 let lastDate = "";
-                return buildTurns(active.messages, isGenerationTurn).map((turn) => {
+                return turns.map((turn) => {
                   const { message } = turn;
                   if (turn.kind === "message") {
                     return message.role === "user"
@@ -1136,14 +1214,25 @@ export function AppShell() {
                     onToggleFavorite: () => void toggleFavorite(mediaPaths, !favorite),
                     onDelete: () => deleteTurn(message.id, userMessage?.id),
                   };
+                  const picked = managing && turnSelection.ids.has(message.id);
                   return (
                     <div key={message.id}>
                       {showDate && <div className="task-date">{date}</div>}
-                      {image
-                        ? <ImageTaskCard {...shared} fallbackModelName={imageModel?.id}
-                          onMakeVideo={makeVideoFrom}
-                          onUseAsReference={(media) => attachImageAsReference(media, generation)} />
-                        : <VideoTaskCard {...shared} fallbackModelName={videoModel?.id} />}
+                      <div className={`task-pick ${managing ? "is-managing" : ""} ${picked ? "is-picked" : ""}`} data-turn-id={message.id}>
+                        {managing && <button type="button" className={`task-check ${picked ? "is-on" : ""}`}
+                          aria-pressed={picked} aria-label={picked ? "取消选择这条记录" : "选择这条记录"}
+                          onClick={(event) => togglePick(message.id, event.shiftKey)}>
+                          <Check size={13} strokeWidth={3} />
+                        </button>}
+                        {image
+                          ? <ImageTaskCard {...shared} fallbackModelName={imageModel?.id}
+                            onMakeVideo={makeVideoFrom}
+                            onUseAsReference={(media) => attachImageAsReference(media, generation)} />
+                          : <VideoTaskCard {...shared} fallbackModelName={videoModel?.id} />}
+                        {/* 管理时点卡片任意位置都是选择,不会误点到播放、编辑等按钮 */}
+                        {managing && <button type="button" className="task-pick-overlay" tabIndex={-1} aria-hidden="true"
+                          onClick={(event) => togglePick(message.id, event.shiftKey)} />}
+                      </div>
                     </div>
                   );
                 });
@@ -1154,7 +1243,7 @@ export function AppShell() {
         </div>
         <ConversationNavigator messages={active?.messages || []} scrollRootRef={conversationRef} />
 
-        <div className={`composer-region ${draggingImages ? "drag-active" : ""}`}
+        <div className={`composer-region ${draggingImages ? "drag-active" : ""} ${managing ? "is-managing" : ""}`}
           onDragEnter={(event) => {
             if (!event.dataTransfer.types.includes("Files")) return;
             event.preventDefault();
@@ -1382,6 +1471,31 @@ export function AppShell() {
           </div>
           <p className="composer-note">由 {relayHost || `${TANGZHI_PROVIDER_NAME} `}中转站生成 · Enter 发送，Shift + Enter 换行</p>
         </div>
+        {/* 批量管理时暂时代替输入框(输入框里写了一半的内容保留着) */}
+        {managing && <div className="task-selection-bar" role="toolbar" aria-label="批量管理生成记录">
+          <span className="task-selection-count">
+            {pickedTurns.length ? <>已选 <b>{pickedTurns.length}</b> 条</> : "点卡片选择 · Shift 连选"}
+          </span>
+          <button type="button" onClick={() => pickAll(!allPicked)}>{allPicked ? "取消全选" : `全选 ${taskTurns.length}`}</button>
+          <span className="task-selection-sep" />
+          {turnSelection.confirming ? <>
+            <span className="task-selection-warn">
+              删除 {pickedTurns.length} 条记录？{pickedProcessing ? "生成中的任务仍会继续计费" : "生成的文件仍保留在资产里"}
+            </span>
+            <button type="button" onClick={() => setTurnSelection((current) => ({ ...current, confirming: false }))}>取消</button>
+            <button type="button" className="danger" onClick={deletePicked}><Trash2 size={14} /> 确认删除</button>
+          </> : <>
+            <button type="button" disabled={!pickedTurns.length} onClick={downloadPicked}
+              title="多个文件会逐个下载；浏览器询问「下载多个文件」时请选择允许">
+              <Download size={14} /> 下载
+            </button>
+            <button type="button" className="danger-text" disabled={!pickedTurns.length}
+              onClick={() => setTurnSelection((current) => ({ ...current, confirming: true }))}>
+              <Trash2 size={14} /> 删除记录
+            </button>
+          </>}
+          <button type="button" className="task-selection-close" aria-label="退出批量管理" onClick={stopManaging}><X size={15} /></button>
+        </div>}
       </section>
       {searchOpen && <ConversationSearch conversations={conversations}
         onClose={() => setSearchOpen(false)}
