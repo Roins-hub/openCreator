@@ -2,16 +2,17 @@
 
 import { useEffect, useState, type FC } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import { ArrowUpIcon } from "lucide-react";
+import { ArrowUpToLineIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** 往下翻过一屏左右后,对话区顶部正中出现「回到顶部」 */
+/** 往下翻过一屏左右后,顶栏右侧出现「回到顶部」(和视频工作台同样位置、同样样式) */
 const SHOW_AFTER = 480;
 const viewport = () => document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]');
 
 export const BackToTop: FC = () => {
-  // 换对话、消息增减后视口可能重新挂载,重新绑定滚动监听
+  // 换聊天、消息增减后视口可能重新挂载,重新绑定滚动监听
   const messageCount = useAuiState((s) => s.thread.messages.length);
+  const threadId = useAuiState((s) => s.threads.mainThreadId);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -28,7 +29,7 @@ export const BackToTop: FC = () => {
       cancelAnimationFrame(frame);
       root.removeEventListener("scroll", check);
     };
-  }, [messageCount]);
+  }, [messageCount, threadId]);
 
   const scrollTop = () => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -43,14 +44,9 @@ export const BackToTop: FC = () => {
       title="回到顶部"
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
-      className={cn(
-        "aui-back-to-top border-border bg-background/90 text-muted-foreground hover:text-foreground absolute top-3 left-1/2 z-20 inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium shadow-md backdrop-blur transition-[opacity,translate] duration-200 ease-out motion-reduce:transition-opacity",
-        visible
-          ? "pointer-events-auto -translate-x-1/2 translate-y-0 opacity-100"
-          : "pointer-events-none -translate-x-1/2 -translate-y-2 opacity-0",
-      )}
+      className={cn("chat-back-to-top", visible && "is-visible")}
     >
-      <ArrowUpIcon className="size-3.5" />
+      <ArrowUpToLineIcon className="size-3.5" />
       回到顶部
     </button>
   );

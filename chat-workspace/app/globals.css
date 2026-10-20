@@ -888,7 +888,7 @@ html[data-mote-theme] {
 .ws-group-head { position: relative; display: flex; align-items: center; gap: 4px; height: 34px; padding-left: 4px; }
 .ws-group-head > input[type=checkbox] { margin: 0 2px 0 6px; accent-color: var(--ws-ink); }
 .ws-group-toggle {
-  flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 6px; padding: 0 36px 0 6px;
+  flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 6px; padding: 0 62px 0 6px;
   border-radius: 8px; color: var(--ws-muted); background: transparent; font-size: 12px; font-weight: 700; text-align: left;
   transition: color .15s, background .15s;
 }
@@ -899,7 +899,7 @@ html[data-mote-theme] {
 .ws-group-toggle em { margin-left: auto; color: var(--ws-faint); font-size: 10px; font-style: normal; font-weight: 600; }
 .ws-group-toggle:hover:not(:disabled) { color: var(--ws-ink); background: var(--ws-hover); }
 .ws-group-toggle:disabled { cursor: default; }
-.ws-group-menu { position: absolute; z-index: 12; right: 4px; top: 3px; }
+.ws-group-menu { position: absolute; z-index: 12; right: 4px; top: 3px; display: flex; gap: 1px; }
 .ws-more {
   width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border-radius: 8px;
   color: var(--ws-faint); background: transparent; opacity: 0; transition: color .15s, background .15s, opacity .15s;
@@ -932,6 +932,8 @@ html[data-mote-theme] {
 }
 .ws-group-body.is-collapsed { grid-template-rows: 0fr; opacity: 0; }
 .ws-group-body > div { min-height: 0; overflow: hidden; }
+/* 展开完成后不再裁切,分组里聊天的「…」菜单才能完整露出来;展开动画期间仍裁切 */
+.ws-group-body:not(.is-collapsed) > div { overflow: visible; transition: overflow 0s linear .26s allow-discrete; }
 .ws-group-empty { margin: 0 0 6px 30px; color: var(--ws-faint); font-size: 11px; line-height: 1.5; }
 .ws-rename {
   flex: 1; min-width: 0; height: 30px; padding: 0 9px; border: 1px solid var(--ws-line-strong); border-radius: 7px;
@@ -1275,13 +1277,17 @@ html[data-mote-theme] {
 }
 
 .thread-map-list {
+  position: relative;
   display: flex;
   flex-direction: column;
-}
-
-.thread-map-card.searching .thread-map-list {
   max-height: min(360px, 50vh);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.thread-map-list > button {
+  flex: 0 0 auto;
 }
 
 .thread-map-list button {
@@ -1370,4 +1376,58 @@ html[data-mote-theme] {
   .thread-map-card {
     animation: none;
   }
+}
+
+/* ---------- 输入框里的项目分组(和视频工作台一致) ---------- */
+.chat-group-trigger {
+  color: var(--muted-foreground);
+  transition: color 160ms ease, background-color 160ms ease;
+}
+.chat-group-trigger:hover, .chat-group-trigger.is-open {
+  background: color-mix(in oklab, var(--muted) 75%, transparent);
+  color: var(--foreground);
+}
+.chat-group-trigger.has-group { color: var(--foreground); }
+.chat-group-popover {
+  position: absolute; z-index: 40; left: 0; bottom: calc(100% + 10px); width: 240px; padding: 8px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--popover); color: var(--popover-foreground);
+  box-shadow: 0 18px 50px color-mix(in oklab, var(--foreground) 14%, transparent);
+  transform-origin: 20px 100%; animation: chat-group-in .2s cubic-bezier(.16, 1, .3, 1);
+}
+@keyframes chat-group-in { from { opacity: 0; transform: translateY(6px) scale(.97); } }
+.chat-group-popover > small { display: block; padding: 6px 8px; color: var(--muted-foreground); font-size: 10px; }
+.chat-group-list { max-height: min(260px, 40vh); overflow-y: auto; }
+.chat-group-list > button {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px;
+  border-radius: 8px; color: var(--muted-foreground); font-size: 12px; text-align: left;
+}
+.chat-group-list > button:hover, .chat-group-list > button.is-selected { color: var(--foreground); background: var(--muted); }
+.chat-group-list > button span { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.chat-group-create {
+  width: 100%; display: flex; align-items: center; gap: 7px; margin-top: 4px; padding: 9px 8px 5px;
+  border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 12px; text-align: left;
+}
+.chat-group-create:hover:not(:disabled) { color: var(--foreground); }
+.chat-group-create:disabled { opacity: .4; }
+.chat-group-new { display: flex; gap: 6px; margin-top: 4px; padding: 8px 0 0; border-top: 1px solid var(--border); }
+.chat-group-new input {
+  flex: 1; min-width: 0; height: 30px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px;
+  outline: 0; background: var(--muted); font-size: 12px;
+}
+.chat-group-new button { height: 30px; padding: 0 11px; border-radius: 7px; color: var(--primary-foreground); background: var(--primary); font-size: 12px; }
+.chat-group-new button:disabled { opacity: .4; }
+
+/* ---------- 顶栏右侧的「回到顶部」(和视频工作台同样式) ---------- */
+.chat-back-to-top {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; margin-right: 6px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 10px; color: var(--muted-foreground); background: var(--background);
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+  opacity: 0; pointer-events: none; transform: translateY(-4px);
+  transition: opacity .2s ease, transform .25s cubic-bezier(.16, 1, .3, 1), color .15s, background .15s;
+}
+.chat-back-to-top.is-visible { opacity: 1; pointer-events: auto; transform: none; }
+.chat-back-to-top:hover { color: var(--foreground); background: var(--muted); }
+@media (prefers-reduced-motion: reduce) {
+  .chat-group-popover { animation: none; }
+  .chat-back-to-top { transition: opacity .2s; }
 }

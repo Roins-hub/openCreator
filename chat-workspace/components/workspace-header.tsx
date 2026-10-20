@@ -1,16 +1,17 @@
 "use client";
 
-import { Clapperboard, Home, ImageIcon, Menu, Moon, PanelLeft, Settings2, Sun } from "lucide-react";
+import { Clapperboard, Home, ImageIcon, Menu, Moon, PanelLeft, Paperclip, Settings2, Sun } from "lucide-react";
 import { useAuiState } from "@assistant-ui/react";
 import { ConnectionSettingsDialog } from "@/components/connection-settings-dialog";
 import { McpConfigDialog } from "@/components/assistant-ui/mcp-config";
 import { PluginConfigDialog } from "@/components/plugin-config-dialog";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { BackToTop } from "@/components/assistant-ui/back-to-top";
 import { useTheme } from "@/components/theme-provider";
 import { getImageWorkspaceOrigin } from "@/lib/image-workspace";
 import { HOME_URL } from "@/lib/home";
 import { VIDEO_WORKSPACE_URL } from "@/lib/video-workspace";
-import { MOTE_HOME, MOTE_MODE } from "@/lib/mote";
+import { MOTE_ATTACHMENTS, MOTE_HOME, MOTE_MODE } from "@/lib/mote";
 
 type WorkspaceHeaderProps = {
   onOpenSidebar: () => void;
@@ -51,11 +52,18 @@ export function WorkspaceHeader({
       </div>
 
       <nav className="ms-auto flex items-center gap-0.5" aria-label="工作台导航">
+        {/* 顶栏右侧,和视频工作台的「回到顶部」同位置、同样式 */}
+        <BackToTop />
         {MOTE_MODE ? (
           // 和视频、图片同一个网站:一个入口回工作台;主题在工作台设置里统一切换
-          <TooltipIconButton tooltip="视频 · 图片工作台" onClick={() => window.location.assign(MOTE_HOME)}>
-            <Clapperboard />
-          </TooltipIconButton>
+          <>
+            <TooltipIconButton tooltip="附件（聊天里上传的图片）" onClick={() => window.location.assign(MOTE_ATTACHMENTS)}>
+              <Paperclip />
+            </TooltipIconButton>
+            <TooltipIconButton tooltip="视频 · 图片工作台" onClick={() => window.location.assign(MOTE_HOME)}>
+              <Clapperboard />
+            </TooltipIconButton>
+          </>
         ) : (
           <>
             <TooltipIconButton

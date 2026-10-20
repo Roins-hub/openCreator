@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import Link from "next/link";
 import {
   ArrowDownWideNarrow, ArrowLeft, ArrowUpNarrowWide, Check, CheckSquare, Download, Image as ImageIcon, Images, Music,
-  RotateCcw, Search, Sparkles, Star, Trash2, Upload, Video, X, XCircle,
+  Paperclip, RotateCcw, Search, Sparkles, Star, Trash2, Upload, Video, X, XCircle,
 } from "lucide-react";
 import type { Asset } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
@@ -52,7 +52,12 @@ const jsonInit = (method: string, body: unknown): RequestInit =>
 
 const downloadUrl = (asset: Asset) => mediaDownloadUrl(asset);
 
-export function AssetLibrary() {
+/**
+ * 资产页(scope="assets":生成结果和资产页上传的素材)和聊天的附件页(scope="chat":聊天里上传的图片)共用这一套:
+ * 筛选、搜索、收藏、批量选择 / 下载 / 删除、回收站都一样;附件页不能上传,也不分来源。
+ */
+export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }) {
+  const chat = scope === "chat";
   const [assets, setAssets] = useState<Asset[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [source, setSource] = useState<Source>("all");
@@ -74,9 +79,10 @@ export function AssetLibrary() {
   const { containerRef: filterSliderRef, indicator: filterIndicator } = useSlidingIndicator<HTMLDivElement>(":scope > .active");
   const { containerRef: sourceSliderRef, indicator: sourceIndicator } = useSlidingIndicator<HTMLDivElement>(":scope > .active");
 
-  const loadAssets = async () => {
-    setAssets(await request<Asset[]>("/api/assets"));
-  };
+  const loadAssets = useCallback(async () => {
+    const all = await request<Asset[]>(chat ? "/api/assets?scope=chat" : "/api/assets");
+    setAssets(all.filter((asset) => chat ? asset.source === "chat" : asset.source !== "chat"));
+  }, [chat]);
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (!readApiKey()) {
@@ -86,7 +92,7 @@ export function AssetLibrary() {
       openSession().then(loadAssets).catch((cause) => setError(cause.message));
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [loadAssets]);
 
   const visible = useMemo(() => {
     const filtered = filter === "trash"
@@ -293,6 +299,10 @@ export function AssetLibrary() {
     <Trash2 size={24} />
     <h2>回收站是空的</h2>
     <p>移入回收站的资产会暂存在这里，可以恢复或永久删除。</p>
+  </> : chat ? <>
+    <Paperclip size={24} />
+    <h2>还没有附件</h2>
+    <p>在聊天里上传的图片会自动保存到这里。</p>
   </> : source === "upload" ? <>
     <Upload size={24} />
     <h2>还没有上传素材</h2>
@@ -303,16 +313,21 @@ export function AssetLibrary() {
     <p>完成一次图片或视频生成后结果会自动出现在这里，也可以直接上传素材。</p>
   </>;
 
-  return <main className={`utility-page asset-page ${dragging ? "is-dragging" : ""}`} {...dropHandlers}>
+  return <main className={`utility-page asset-page ${dragging ? "is-dragging" : ""}`} {...(chat ? {} : dropHandlers)}>
     <header className="utility-topbar">
-      <Link href="/" className="back-link"><ArrowLeft size={17} /> 返回对话</Link>
-      <span>TZ Assets</span>
+      {/* 聊天是同域名下的另一个程序,整页跳回去 */}
+      {chat
+        ? <a href="/chat" className="back-link"><ArrowLeft size={17} /> 返回聊天</a>
+        : <Link href="/" className="back-link"><ArrowLeft size={17} /> 返回对话</Link>}
+      <span>{chat ? "TZ Chat Files" : "TZ Assets"}</span>
     </header>
     <div className="asset-content">
       <div className="asset-heading">
-        <span className="eyebrow">MY LIBRARY</span>
-        <h1>资产</h1>
-        <p>你的账号生成的图片、视频，以及你上传的素材都在这里，其他用户看不到；上传的素材在输入框里按 @ 就能引用。{retentionNote}</p>
+        <span className="eyebrow">{chat ? "CHAT FILES" : "MY LIBRARY"}</span>
+        <h1>{chat ? "附件" : "资产"}</h1>
+        <p>{chat
+          ? "你在聊天里上传的图片都保存在这里，其他用户看不到；永久删除后，聊天记录里的这张图也会无法显示。"
+          : "你的账号生成的图片、视频，以及你上传的素材都在这里，其他用户看不到；上传的素材在输入框里按 @ 就能引用。"}{retentionNote}</p>
       </div>
       <div className="asset-toolbar-row">
         <div className="asset-toolbar has-slider" aria-label="资产筛选" ref={filterSliderRef}>
@@ -338,7 +353,7 @@ export function AssetLibrary() {
           <label className="asset-search">
             <Search size={14} />
             <input value={query} onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索提示词、对话标题、文件名" aria-label="搜索资产" />
+              placeholder={chat ? "搜索文件名" : "搜索提示词、对话标题、文件名"} aria-label={chat ? "搜索附件" : "搜索资产"} />
             {query && <button type="button" onClick={() => setQuery("")} aria-label="清空搜索"><X size={13} /></button>}
           </label>
           <button type="button" className="asset-sort" onClick={() => setSort((value) => value === "newest" ? "oldest" : "newest")}
@@ -349,7 +364,7 @@ export function AssetLibrary() {
         </div>
       </div>
       <div className="asset-subbar">
-        <div className="asset-source-filter has-slider" role="group" aria-label="按来源筛选" ref={sourceSliderRef}>
+        {chat ? <span /> : <div className="asset-source-filter has-slider" role="group" aria-label="按来源筛选" ref={sourceSliderRef}>
           {sourceIndicator}
           {([["all", "全部来源"], ["generated", "AI 生成"], ["upload", "我上传的"]] as const).map(([value, label]) =>
             <button key={value} type="button" className={source === value ? "active" : ""} aria-pressed={source === value}
@@ -360,20 +375,20 @@ export function AssetLibrary() {
               <span>{value === "all" ? activeAssets.length
                 : activeAssets.filter((asset) => (asset.source === "upload") === (value === "upload")).length}</span>
             </button>)}
-        </div>
+        </div>}
         <div className="asset-subbar-actions">
           <button type="button" className={`asset-select-toggle ${selecting ? "active" : ""}`} disabled={!visible.length && !selecting}
             onClick={() => (selecting ? exitSelecting() : setSelecting(true))}>
             <CheckSquare size={14} /> {selecting ? "完成" : "选择"}
           </button>
-          <button type="button" className="asset-upload-button" onClick={() => fileInputRef.current?.click()}>
+          {!chat && <button type="button" className="asset-upload-button" onClick={() => fileInputRef.current?.click()}>
             <Upload size={14} /> 上传素材
-          </button>
+          </button>}
           <input ref={fileInputRef} type="file" multiple accept={ACCEPT} hidden
             onChange={(event) => { startUploads(Array.from(event.target.files || [])); event.target.value = ""; }} />
         </div>
       </div>
-      {query && !error && <p className="asset-result-count">找到 {visible.length} 个匹配「{query.trim()}」的资产</p>}
+      {query && !error && <p className="asset-result-count">找到 {visible.length} 个匹配「{query.trim()}」的{chat ? "附件" : "资产"}</p>}
       {error && <div className="settings-error">{readableError(error)}</div>}
       {notice && <p className="asset-notice">{notice}</p>}
       {uploads.length > 0 && <ul className="asset-uploads" aria-label="上传进度">
@@ -396,13 +411,16 @@ export function AssetLibrary() {
       </ul>}
       {!error && visible.length === 0 && !uploads.length ? <div className="asset-empty">
         {emptyState}
-        {source === "upload" || (!query && filter === "all")
-          ? <button type="button" onClick={() => fileInputRef.current?.click()}>上传素材</button>
-          : <Link href="/">开始创作</Link>}
+        {chat
+          ? <a href="/chat">去聊天</a>
+          : source === "upload" || (!query && filter === "all")
+            ? <button type="button" onClick={() => fileInputRef.current?.click()}>上传素材</button>
+            : <Link href="/">开始创作</Link>}
       </div> : <div className={`asset-grid ${selecting && !selectionClosing ? "is-selecting" : ""}`}>
         {visible.map((asset) => {
           const isSelected = selected.has(asset.path);
           const uploaded = asset.source === "upload";
+          const fromChat = asset.source === "chat";
           return <article className={`asset-card ${isSelected ? "is-selected" : ""}`} key={asset.id}>
             <div className={`asset-preview ${asset.kind === "audio" ? "is-audio" : ""}`} title={asset.prompt || asset.name}>
               <button type="button" className={`asset-check ${isSelected ? "is-on" : ""}`} aria-pressed={isSelected}
@@ -428,7 +446,7 @@ export function AssetLibrary() {
               <div>
                 <strong>
                   {kindLabel(asset.kind)}
-                  <em className={`asset-origin ${uploaded ? "is-upload" : ""}`}>{uploaded ? "上传" : "AI 生成"}</em>
+                  <em className={`asset-origin ${uploaded || fromChat ? "is-upload" : ""}`}>{fromChat ? "聊天附件" : uploaded ? "上传" : "AI 生成"}</em>
                 </strong>
                 <span>{formatSize(asset.size)} · {new Date(asset.createdAt).toLocaleString("zh-CN")}</span>
               </div>
@@ -439,8 +457,8 @@ export function AssetLibrary() {
                 onRestore={() => void mutate([asset], "restore")}
                 onPermanentDelete={() => void mutate([asset], "delete")} />
             </div>
-            {uploaded
-              ? <span className="asset-source muted" title={asset.name}>手动上传 · {asset.name}</span>
+            {uploaded || fromChat
+              ? <span className="asset-source muted" title={asset.name}>{fromChat ? "聊天上传" : "手动上传"} · {asset.name}</span>
               : asset.conversationId
                 ? <Link className="asset-source" href={`/?conversation=${asset.conversationId}`}>
                   来自对话 · {asset.conversationTitle}

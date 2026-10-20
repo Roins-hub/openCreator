@@ -69,6 +69,10 @@ export class MoteImageAttachmentAdapter implements AttachmentAdapter {
     // GIF 等工作台存储不收的格式,仍按原来的方式内嵌
     if (!UPLOADABLE.has(attachment.file.type)) return this.inline.send(attachment);
     const path = (await uploadDirect(attachment.file)) ?? (await uploadViaServer(attachment.file));
+    // 记到「附件」页(和工作台资产同一个索引);登记失败不影响发送
+    void postJson("/api/assets", {
+      path, name: attachment.file.name || "image.png", mimeType: attachment.file.type, source: "chat",
+    }).catch(() => undefined);
     return {
       ...attachment,
       status: { type: "complete" },

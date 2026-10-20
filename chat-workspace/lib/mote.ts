@@ -63,6 +63,8 @@ export function onMoteSettingsChange(callback: () => void) {
 /** 工作台首页;带上提示词时打开生图模型并填好输入框(不会自动生成) */
 export const MOTE_HOME = "/";
 export const MOTE_SETTINGS = "/settings";
+/** 聊天附件管理页(在工作台那边,和资产页同一套) */
+export const MOTE_ATTACHMENTS = "/attachments";
 export const moteComposeUrl = (prompt: string, kind: "image" | "video" = "image") =>
   `/?compose=${encodeURIComponent(prompt)}&kind=${kind}`;
 

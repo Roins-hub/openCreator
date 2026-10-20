@@ -2,7 +2,7 @@
 
 import { useAuiState } from "@assistant-ui/react";
 import { SearchIcon, XIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 /**
  * 聊天右侧的提示词导航(和视频工作台一致):右边一列短横线对应自己发过的每条消息,
@@ -60,9 +60,18 @@ export function ThreadNavigator() {
   const [focused, setFocused] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const searching = query.trim().length > 0;
   const matches = useMemo(() => search(nodes, query), [nodes, query]);
   const expanded = hovered || focused || searching;
+
+  // 展开时把列表滚到当前读到的那条(只滚列表自己,不带动页面)
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!expanded || searching || !list) return;
+    const active = list.querySelector<HTMLElement>("button.active");
+    if (active) list.scrollTop = active.offsetTop - list.clientHeight / 2 + active.offsetHeight / 2;
+  }, [expanded, searching]);
   const enough = nodes.length >= MIN_NODES;
 
   // 滚动时高亮当前读到的那条(视口上方约 1/3 处)
@@ -94,7 +103,8 @@ export function ThreadNavigator() {
     document.getElementById(messageAnchorId(id))?.scrollIntoView({ behavior: "smooth", block: "start" });
   const indexOf = (id: string) => nodes.findIndex((node) => node.id === id);
   const visible = windowAround(nodes, activeIndex);
-  const list = searching ? matches : visible;
+  // 卡片里列出全部提示词(可滚动),输入关键词时只列匹配项;右侧细线只画当前位置附近的几条
+  const list = searching ? matches : nodes;
 
   return (
     <nav
@@ -143,7 +153,7 @@ export function ThreadNavigator() {
           {searching && (
             <p className="thread-map-count">{matches.length ? `找到 ${matches.length} 条` : "没有匹配的提示词"}</p>
           )}
-          <div className="thread-map-list">
+          <div className="thread-map-list" ref={listRef}>
             {list.map((node) => {
               const index = indexOf(node.id);
               return (

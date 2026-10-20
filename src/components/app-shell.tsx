@@ -50,7 +50,7 @@ import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
 import { uploadMedia } from "@/lib/direct-upload";
 import { downloadFiles } from "@/lib/download-files";
 import { applyPromptPreset } from "@/lib/prompt-preset";
-import { PromptPresetButton, usePromptPreset } from "@/components/prompt-preset";
+import { PromptPresetBar, usePromptPreset } from "@/components/prompt-preset";
 
 type PickerAsset = { id: string; kind: MediaKind; path: string; name: string; mimeType: string };
 /** /api/models 返回的视频模型和生图模型 */
@@ -1323,6 +1323,8 @@ export function AppShell() {
                 <span key={edge} className="panel-resize" data-edge={edge} onPointerDown={composerPanel.startResize(edge)} aria-hidden="true" />
               ))}
             </>}
+            {/* 输入框上方:预设的前缀、后缀,发送时自动补上 */}
+            {selected && <PromptPresetBar preset={promptPreset} onChange={savePromptPreset} />}
             <div className="composer-body">
               {attachments.length > 0 && (
                 <div className="attachment-stack" aria-label={`${attachments.length} 个参考素材`}
@@ -1441,7 +1443,6 @@ export function AppShell() {
                   {optimizing ? <Loader2 size={18} className="spin" /> : <Sparkles size={18} />}
                 </button>
               )}
-              {selected && <PromptPresetButton preset={promptPreset} onChange={savePromptPreset} sample={draft} />}
               {beforeOptimize && !optimizing && (
                 <button type="button" className="optimize-undo" onClick={undoOptimize} title="恢复优化前的提示词">
                   <Undo2 size={13} />撤销优化

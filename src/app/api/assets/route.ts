@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   listAssets, permanentlyDeleteAssets, recordAsset, setAssetsTrashed, type Asset, type AssetRecord,
 } from "@/lib/asset-store";
+import { syncChatAttachments } from "@/lib/chat-attachments";
 import { listConversations } from "@/lib/conversation-store";
 import { listFavorites, removeFavorites } from "@/lib/favorite-store";
 import { failure, ok } from "@/lib/http";
@@ -23,6 +24,8 @@ function pathsOf(input: { path?: unknown; paths?: unknown }) {
 export async function GET(request: Request) {
   try {
     const { userId } = await requireUser(request);
+    // 附件页:先把以前在聊天里上传、还没登记的图片补进来
+    if (new URL(request.url).searchParams.get("scope") === "chat") await syncChatAttachments(userId).catch(() => undefined);
     const [conversations, favorites] = await Promise.all([
       listConversations(userId), listFavorites(userDir(userId)),
     ]);
@@ -36,6 +39,8 @@ const uploadSchema = z.object({
   path: z.string().max(400),
   name: z.string().trim().min(1).max(300),
   mimeType: z.string().trim().max(100),
+  /** chat:聊天里上传的附件;不填是资产页上传的素材 */
+  source: z.enum(["upload", "chat"]).optional(),
 });
 
 /** 把在资产页上传好的素材(已经在 uploads/ 里)登记为资产,之后在输入框里用 @ 也能选到 */
@@ -54,7 +59,7 @@ export async function POST(request: Request) {
     }
     const record: AssetRecord = {
       kind, path: input.path, name: input.name, mimeType: input.mimeType || MEDIA_RULES[kind].types[0], size,
-      createdAt: new Date().toISOString(), source: "upload",
+      createdAt: new Date().toISOString(), source: input.source || "upload",
     };
     await recordAsset(userId, record);
     const asset: Asset = { ...record, id: record.path, favorite: false };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Search, X } from "lucide-react";
 import type { Message } from "@/lib/types";
 import { navigationNodes, navigationWindow, searchNavigation } from "@/lib/conversation-navigation";
@@ -18,11 +18,20 @@ export function ConversationNavigator({
   const [focused, setFocused] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const searching = query.trim().length > 0;
-  // 输入了关键词就列出全部匹配项(可滚动),否则只列当前位置附近的几条
+  // 卡片里列出全部提示词(可滚动),输入关键词时只列匹配项;右侧细线只画当前位置附近的几条
   const matches = useMemo(() => searchNavigation(nodes, query), [nodes, query]);
   const visible = navigationWindow(nodes, activeIndex);
   const expanded = hovered || focused || searching;
+
+  // 展开时把列表滚到当前读到的那条(只滚列表自己,不带动页面)
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!expanded || searching || !list) return;
+    const active = list.querySelector<HTMLElement>("button.active");
+    if (active) list.scrollTop = active.offsetTop - list.clientHeight / 2 + active.offsetHeight / 2;
+  }, [expanded, searching]);
 
   useEffect(() => {
     const root = scrollRootRef.current;
@@ -53,7 +62,7 @@ export function ConversationNavigator({
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const indexOf = (id: string) => nodes.findIndex((item) => item.id === id);
-  const list = searching ? matches : visible;
+  const list = searching ? matches : nodes;
 
   return <nav className={`conversation-navigator ${expanded ? "expanded" : ""}`}
     aria-label="对话快速导航"
@@ -77,7 +86,7 @@ export function ConversationNavigator({
           onClick={() => { setQuery(""); searchRef.current?.focus(); }}><X size={13} /></button>}
       </label>
       {searching && <p className="conversation-map-count">{matches.length ? `找到 ${matches.length} 条` : "没有匹配的提示词"}</p>}
-      <div className="conversation-map-list">
+      <div className="conversation-map-list" ref={listRef}>
         {list.map((node) => {
           const index = indexOf(node.id);
           return <button type="button" key={node.id}

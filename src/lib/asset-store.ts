@@ -20,8 +20,8 @@ export interface Asset {
   prompt?: string;
   trashed?: boolean;
   favorite?: boolean;
-  /** 在资产页手动上传的素材;没有这个字段的是生成结果 */
-  source?: "upload";
+  /** upload:在资产页手动上传的素材;chat:聊天里上传的附件;没有这个字段的是生成结果 */
+  source?: "upload" | "chat";
 }
 
 export type AssetRecord = Omit<Asset, "id" | "conversationTitle" | "prompt" | "favorite">;
@@ -60,6 +60,23 @@ export async function recordAsset(userId: string, record: AssetRecord) {
     const current = (await readIndex(userId)).filter((item) => item.path !== record.path && !isExpired(item));
     await writeJsonAtomic(indexFile(userId), [record, ...current]);
   });
+}
+
+/** 批量补记(已经有记录的跳过),返回新补上的条数 */
+export async function recordMissingAssets(userId: string, records: AssetRecord[]) {
+  if (!records.length) return 0;
+  records.forEach((record) => assertKey(record.path));
+  return serial(userId, async () => {
+    const current = await readIndex(userId);
+    const known = new Set(current.map((item) => item.path));
+    const added = records.filter((record) => !known.has(record.path) && !isExpired(record));
+    if (added.length) await writeJsonAtomic(indexFile(userId), [...added, ...current]);
+    return added.length;
+  });
+}
+
+export async function indexedAssetPaths(userId: string) {
+  return new Set((await readIndex(userId)).map((item) => item.path));
 }
 
 export function enrichAssets(records: AssetRecord[], conversations: Conversation[], favorites: string[] = []) {

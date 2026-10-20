@@ -1,10 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Brackets, X } from "lucide-react";
-import {
-  applyPromptPreset, EMPTY_PRESET, parsePromptPreset, PROMPT_PRESET_KEY, presetActive, type PromptPreset,
-} from "@/lib/prompt-preset";
+import { Pencil, Plus } from "lucide-react";
+import { EMPTY_PRESET, parsePromptPreset, PROMPT_PRESET_KEY, presetActive, type PromptPreset } from "@/lib/prompt-preset";
 
 /** 预设提示词保存在当前浏览器;第一次渲染后再读,避免和服务端渲染的结果对不上 */
 export function usePromptPreset() {
@@ -22,89 +20,80 @@ export function usePromptPreset() {
   return { preset, save };
 }
 
-const CLOSE_MS = 150;
+type Part = "prefix" | "suffix";
+const LABEL: Record<Part, string> = { prefix: "前缀", suffix: "后缀" };
+const PLACEHOLDER: Record<Part, string> = {
+  prefix: "加在提示词最前面，例如：电影感画面，柔和自然光",
+  suffix: "加在提示词最后面，例如：8K 超高清，细节丰富，无水印",
+};
+const CLOSE_MS = 140;
 
-/**
- * 输入框工具栏里的「预设」按钮:点开设置前缀、后缀,发送时自动补到提示词前后。
- * 开着且有内容时按钮高亮,并在旁边显示一个小标记。
- */
-export function PromptPresetButton({ preset, onChange, sample }: {
-  preset: PromptPreset;
-  onChange: (next: PromptPreset) => void;
-  /** 输入框里当前的内容,用来预览 */
-  sample: string;
-}) {
+/** 前缀或后缀的一块:直接显示文字,点击单独编辑 */
+function PresetChip({ part, value, onSave }: { part: Part; value: string; onSave: (value: string) => void }) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [text, setText] = useState(value);
   const rootRef = useRef<HTMLDivElement>(null);
-  const active = presetActive(preset);
+  const filled = Boolean(value.trim());
 
   const close = useCallback(() => {
     setClosing(true);
     window.setTimeout(() => { setOpen(false); setClosing(false); }, CLOSE_MS);
   }, []);
+  const save = () => {
+    onSave(text);
+    close();
+  };
 
   useEffect(() => {
     if (!open || closing) return;
     const pointer = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) close();
     };
-    const key = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // 放大编辑时 Esc 也会收起输入框:这里先拦下
-      event.preventDefault();
-      close();
-    };
     document.addEventListener("mousedown", pointer);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("mousedown", pointer);
-      document.removeEventListener("keydown", key);
-    };
+    return () => document.removeEventListener("mousedown", pointer);
   }, [open, closing, close]);
 
-  const preview = applyPromptPreset(sample.trim() || "你输入的提示词", { ...preset, enabled: true });
-
-  return <div className="parameter-control prompt-preset" ref={rootRef}>
-    <button type="button" className={`icon-button prompt-preset-trigger ${open ? "active" : ""} ${active ? "is-on" : ""}`}
-      onClick={() => (open ? close() : setOpen(true))} aria-expanded={open} aria-haspopup="dialog"
-      aria-label="预设提示词（前缀和后缀）"
-      title={active ? `预设已开启：发送时自动加上${preset.prefix.trim() ? "前缀" : ""}${preset.prefix.trim() && preset.suffix.trim() ? "和" : ""}${preset.suffix.trim() ? "后缀" : ""}` : "预设提示词：设置发送时自动加上的前缀和后缀"}>
-      <Brackets size={18} />
-      {active && <span className="prompt-preset-dot" aria-hidden="true" />}
+  return <div className="preset-chip-wrap" ref={rootRef}>
+    <button type="button" className={`preset-chip ${filled ? "is-filled" : ""} ${open ? "active" : ""}`}
+      onClick={() => { if (open) close(); else { setText(value); setOpen(true); } }}
+      aria-expanded={open} aria-haspopup="dialog" title={filled ? `${LABEL[part]}：${value.trim()}（点击编辑）` : `添加${LABEL[part]}`}>
+      <b>{LABEL[part]}</b>
+      {filled ? <><span>{value.trim()}</span><Pencil size={11} /></> : <><Plus size={12} /><em>添加</em></>}
     </button>
-    {open && <div className={`prompt-preset-popover ${closing ? "is-closing" : ""}`} role="dialog" aria-label="预设提示词">
-      <header>
-        <div>
-          <strong>预设提示词</strong>
-          <small>发送时自动加在你输入的内容前后，保存在当前浏览器</small>
-        </div>
-        <button type="button" className="icon-button" onClick={close} aria-label="关闭"><X size={15} /></button>
-      </header>
-      <label className="prompt-preset-switch">
-        <input type="checkbox" checked={preset.enabled} onChange={(event) => onChange({ ...preset, enabled: event.target.checked })} />
-        <span aria-hidden="true" />
-        发送时自动加上
-      </label>
-      <label className="prompt-preset-field">
-        <span>前缀</span>
-        <textarea rows={3} maxLength={2000} value={preset.prefix} placeholder="例如：电影感画面，柔和自然光"
-          onChange={(event) => onChange({ ...preset, prefix: event.target.value })} />
-      </label>
-      <label className="prompt-preset-field">
-        <span>后缀</span>
-        <textarea rows={3} maxLength={2000} value={preset.suffix} placeholder="例如：8K 超高清，细节丰富，无水印"
-          onChange={(event) => onChange({ ...preset, suffix: event.target.value })} />
-      </label>
-      <div className="prompt-preset-preview">
-        <span>发送效果</span>
-        <p>{preview}</p>
-      </div>
+    {open && <div className={`preset-editor ${closing ? "is-closing" : ""}`} role="dialog" aria-label={`编辑${LABEL[part]}`}>
+      <strong>{LABEL[part]}<small>{part === "prefix" ? "发送时加在你输入的内容前面" : "发送时加在你输入的内容后面"}</small></strong>
+      <textarea autoFocus rows={4} maxLength={2000} value={text} placeholder={PLACEHOLDER[part]}
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={(event) => {
+          // Esc 只关掉这个编辑框(不收起放大的输入框),Ctrl / ⌘ + Enter 保存
+          if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); save(); }
+        }} />
       <footer>
-        <button type="button" disabled={!preset.prefix && !preset.suffix}
-          onClick={() => onChange({ ...preset, prefix: "", suffix: "" })}>清空</button>
-        <button type="button" className="primary" onClick={close}>完成</button>
+        {filled && <button type="button" className="danger-text" onClick={() => { onSave(""); close(); }}>删除{LABEL[part]}</button>}
+        <span />
+        <button type="button" onClick={close}>取消</button>
+        <button type="button" className="primary" onClick={save}>保存</button>
       </footer>
     </div>}
+  </div>;
+}
+
+/**
+ * 输入框上方的「预设提示词」:前缀、后缀分开显示和编辑,发送时自动补到提示词前后;右边可以暂停。
+ */
+export function PromptPresetBar({ preset, onChange }: { preset: PromptPreset; onChange: (next: PromptPreset) => void }) {
+  const hasAny = Boolean(preset.prefix.trim() || preset.suffix.trim());
+  return <div className={`preset-bar ${hasAny && !preset.enabled ? "is-paused" : ""} ${presetActive(preset) ? "is-active" : ""}`}
+    aria-label="预设提示词">
+    <span className="preset-bar-title">预设</span>
+    <PresetChip part="prefix" value={preset.prefix} onSave={(prefix) => onChange({ ...preset, prefix })} />
+    <PresetChip part="suffix" value={preset.suffix} onSave={(suffix) => onChange({ ...preset, suffix })} />
+    {hasAny && <label className="preset-switch" title={preset.enabled ? "发送时会自动加上前缀和后缀" : "已暂停，发送时不加"}>
+      <input type="checkbox" checked={preset.enabled} onChange={(event) => onChange({ ...preset, enabled: event.target.checked })} />
+      <span aria-hidden="true" />
+      {preset.enabled ? "自动添加" : "已暂停"}
+    </label>}
   </div>;
 }

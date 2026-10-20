@@ -33,7 +33,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
 import { messageAnchorId, ThreadNavigator } from "@/components/assistant-ui/thread-navigator";
-import { BackToTop } from "@/components/assistant-ui/back-to-top";
+import { ComposerGroupPicker } from "@/components/assistant-ui/group-picker";
 import { copyTextToClipboard } from "@/lib/browser-actions";
 import {
   ActionBarMorePrimitive,
@@ -149,7 +149,6 @@ export const Thread: FC = () => {
           </AuiIf>
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
-      <BackToTop />
       <ThreadNavigator />
       <SelectionToolbar />
     </ThreadPrimitive.Root>
@@ -955,6 +954,8 @@ const ComposerAction: FC = () => {
           </span>
           <span className="sr-only">{settings.webSearch ? "已开启" : "已关闭"}</span>
         </button>
+        {/* 当前聊天所在的项目分组(和侧栏同一份) */}
+        <ComposerGroupPicker />
       </div>
       <div className="flex items-center gap-1.5">
         <ReasoningEffortControl />

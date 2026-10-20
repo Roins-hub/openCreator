@@ -57,15 +57,13 @@ import {
 import { droppablesUnderPointer, startDragPointer, stopDragPointer } from "@/lib/drag-pointer";
 import {
   dissolveGroup,
-  emptyThreadGroups,
-  loadThreadGroups,
   MAX_THREAD_GROUPS,
   moveThreads,
   newGroupId,
-  saveThreadGroups,
   type ThreadGroup,
   type ThreadGroups,
 } from "@/lib/thread-groups";
+import { getThreadGroups, setThreadGroups, useThreadGroups } from "@/lib/thread-groups-store";
 
 export const ThreadList: FC = () => {
   const [search, setSearch] = useState("");
@@ -173,7 +171,8 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
   const [ownQuery, setOwnQuery] = useState("");
   const query = (searchQuery ?? ownQuery).trim().toLowerCase();
   const searching = query.length > 0;
-  const [data, setData] = useState<ThreadGroups>(emptyThreadGroups);
+  // 和输入框里的「项目分组」共用一份
+  const data = useThreadGroups();
   const [managing, setManaging] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const [creating, setCreating] = useState(false);
@@ -191,18 +190,6 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
   );
 
   useEffect(() => {
-    let alive = true;
-    loadThreadGroups()
-      .then((value) => {
-        if (alive) setData(value);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
     if (!groupMenu && !moveOpen) return;
     const close = (event: globalThis.MouseEvent) => {
       if (!(event.target as HTMLElement).closest?.("[data-organizer-menu]")) {
@@ -214,9 +201,24 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
     return () => document.removeEventListener("mousedown", close);
   }, [groupMenu, moveOpen]);
 
-  const update = (next: ThreadGroups) => {
-    setData(next);
-    void saveThreadGroups(next).catch(() => undefined);
+  const update = (next: ThreadGroups) => setThreadGroups(next);
+
+  /** 在这个分组里开一个新聊天:切到新聊天后把它放进分组(新聊天的 ID 发第一条消息后也不变) */
+  const startChatInGroup = (groupId: string) => {
+    setGroupMenu(undefined);
+    const group = getThreadGroups().groups.find((item) => item.id === groupId);
+    if (group?.collapsed) patchGroup(groupId, { collapsed: false });
+    aui.threads.switchToNewThread();
+    let tries = 0;
+    const assign = () => {
+      const { mainThreadId, newThreadId } = aui.threads.getState();
+      if (mainThreadId && mainThreadId === newThreadId) {
+        setThreadGroups(moveThreads(getThreadGroups(), [mainThreadId], groupId));
+        return;
+      }
+      if (++tries < 60) requestAnimationFrame(assign);
+    };
+    assign();
   };
 
   const itemsById = useMemo(() => new Map(threadItems.map((item) => [item.id, item])), [threadItems]);
@@ -502,6 +504,15 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
                   <div className="ws-group-menu" data-organizer-menu>
                     <button
                       type="button"
+                      className="ws-more ws-group-new"
+                      aria-label={`在${group.name}分组里新建聊天`}
+                      title="在这个分组里新建聊天"
+                      onClick={() => startChatInGroup(group.id)}
+                    >
+                      <PlusIcon />
+                    </button>
+                    <button
+                      type="button"
                       className="ws-more"
                       aria-label={`${group.name}分组的更多操作`}
                       aria-expanded={groupMenu === group.id}
@@ -511,6 +522,9 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
                     </button>
                     {groupMenu === group.id && (
                       <div className="ws-popover">
+                        <button type="button" className="ws-action" onClick={() => startChatInGroup(group.id)}>
+                          <PlusIcon /> 在此分组新建聊天
+                        </button>
                         <button
                           type="button"
                           className="ws-action"
@@ -543,7 +557,7 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
                   {members.length ? (
                     <div className="ws-group-items">{members.map(({ index }) => renderItem(index))}</div>
                   ) : (
-                    <p className="ws-group-empty">{managing ? "空分组" : "把聊天拖到这里，或用「管理」移到分组"}</p>
+                    <p className="ws-group-empty">{managing ? "空分组" : "点右侧 + 在这里新建聊天，或把已有聊天拖进来"}</p>
                   )}
                 </div>
               </div>
