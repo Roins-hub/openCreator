@@ -1083,6 +1083,8 @@ export function AppShell() {
             <span title="价格与中转站后台同步">{imageModel.priceDetail}</span>
           </span>}
           {!apiKey && <Link className="key-missing" href="/settings"><KeyRound size={13} />填写 API Key</Link>}
+          {/* 顶栏右侧,和左边的模型规格条同一行 */}
+          <BackToTop scrollRootRef={conversationRef} resetKey={active?.id} />
         </header>
 
         <div className="conversation" ref={conversationRef}>
@@ -1151,7 +1153,6 @@ export function AppShell() {
           )}
         </div>
         <ConversationNavigator messages={active?.messages || []} scrollRootRef={conversationRef} />
-        <BackToTop scrollRootRef={conversationRef} resetKey={active?.id} />
 
         <div className={`composer-region ${draggingImages ? "drag-active" : ""}`}
           onDragEnter={(event) => {
