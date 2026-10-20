@@ -330,6 +330,11 @@ a { color: inherit; text-decoration: none; }
 }
 .group-body.is-collapsed { grid-template-rows: 0fr; opacity: 0; }
 .group-body-inner { min-height: 0; overflow: hidden; }
+/* 展开完成后不再裁切,分组里对话的「…」菜单才能完整露出来;
+ * 展开动画期间(.26s)仍然裁切,收起时立刻恢复裁切 */
+.group-body:not(.is-collapsed) > .group-body-inner {
+  overflow: visible; transition: overflow 0s linear .26s allow-discrete;
+}
 .group-chevron { flex: 0 0 auto; transition: transform .22s cubic-bezier(.16, 1, .3, 1); }
 .group-toggle[aria-expanded="false"] .group-chevron { transform: rotate(-90deg); }
 .group-empty { margin: 0 0 6px 30px; color: var(--faint); font-size: 11px; line-height: 1.5; }
