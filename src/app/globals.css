@@ -2751,3 +2751,48 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .prompt-cat-bulk-bar label, .prompt-cat-bulk-bar button { flex: 0 0 auto; white-space: nowrap; }
 .prompt-cat-bulk-bar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .prompt-cat-bulk-bar button { padding: 0 6px; }
+
+
+/* ---------- 放大预览跟随主题 ----------
+ * 遮罩、底栏、按钮、「生成信息」面板都取主题变量:浅色主题是浅色磨砂,深色主题是深色;
+ * 图片和视频本身的底色保持中性(视频留黑边更自然)。 */
+.video-viewer {
+  background: color-mix(in oklch, var(--paper) 84%, transparent);
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+.video-viewer-body video { box-shadow: 0 20px 60px oklch(0% 0 0 / .25); }
+.image-viewer-img { background: var(--warm); box-shadow: 0 20px 60px oklch(20% 0.01 80 / .18); }
+.video-viewer-bar { color: var(--ink); }
+.video-viewer-bar span { color: var(--muted); }
+.video-viewer-bar a {
+  border: 1px solid transparent; border-radius: max(var(--r-control), 8px);
+  color: var(--accent-ink); background: var(--accent-bg); transition: filter .15s, transform .15s;
+}
+.video-viewer-bar a:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.video-viewer-close, .video-viewer-nav {
+  border: 1px solid var(--line); color: var(--ink); background: color-mix(in oklch, var(--paper) 88%, transparent);
+  box-shadow: 0 6px 18px oklch(20% 0.01 80 / .12);
+}
+.video-viewer-close:hover, .video-viewer-nav:hover { border-color: var(--line-strong); background: var(--warm); }
+.viewer-info-toggle {
+  border: 1px solid var(--line); border-radius: max(var(--r-control), 8px); color: var(--ink); background: var(--paper);
+}
+.viewer-info-toggle:hover { border-color: var(--line-strong); background: var(--warm); }
+.media-preview-audio { color: var(--muted); background: var(--warm); border: 1px solid var(--line); }
+
+/* 生成信息面板 */
+.generation-info {
+  border: 1px solid var(--line); border-radius: max(var(--r-card), 12px); color: var(--ink); background: var(--paper);
+  box-shadow: 0 18px 50px oklch(20% 0.01 80 / .16);
+  scrollbar-color: var(--line-strong) transparent;
+}
+.generation-info header { border-bottom-color: var(--line); }
+.generation-info header strong { color: var(--muted); }
+.generation-info header button, .generation-info-label button, .generation-info-id button { color: var(--faint); }
+.generation-info header button:hover, .generation-info-label button:hover, .generation-info-id button:hover {
+  color: var(--ink); background: var(--hover);
+}
+.generation-info dt, .generation-info-label { color: var(--faint); }
+.generation-info dd { color: var(--ink); }
+.generation-info-prompt p { color: var(--ink); background: var(--warm); border: 1px solid var(--line); }
+.generation-info-refs > span { background: var(--warm); border: 1px solid var(--line); }
