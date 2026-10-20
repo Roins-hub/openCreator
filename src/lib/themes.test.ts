@@ -10,7 +10,7 @@ describe("themes", () => {
 
   it("falls back to system for unknown stored values", () => {
     expect(parseThemeMode("midnight")).toBe("midnight");
-    expect(parseThemeMode("neon")).toBe("system");
+    expect(parseThemeMode("vaporwave")).toBe("system");
     expect(parseThemeMode(null)).toBe("system");
   });
 

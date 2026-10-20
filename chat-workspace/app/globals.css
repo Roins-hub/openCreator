@@ -761,7 +761,7 @@
   }
 }
 
-/* ---------- 工作台模式:配色跟随 Mote 工作台的主题(米白 / 青瓷 / 雾蓝 / 石墨 / 夜幕) ----------
+/* ---------- 工作台模式:配色跟随 Mote 工作台的主题(米白 / 青瓷 / 雾蓝 / 樱粉 / 墨白 / 琥珀 / 石墨 / 夜幕 / 松林 / 霓虹) ----------
  * 色值与工作台 globals.css 的主题色板一致;html[data-mote-theme] 的优先级高于 :root 和 .dark。 */
 html[data-mote-theme="paper"] {
   --m-ink: oklch(20% 0.012 80); --m-muted: oklch(51% 0.012 80); --m-paper: oklch(98.2% 0.006 82);
@@ -787,6 +787,31 @@ html[data-mote-theme="midnight"] {
   --m-ink: oklch(92% 0.015 260); --m-muted: oklch(72% 0.03 260); --m-paper: oklch(16.5% 0.028 268);
   --m-warm: oklch(21% 0.035 268); --m-line: oklch(29% 0.04 268); --m-focus: oklch(60% 0.08 262);
   --m-hover: oklch(26% 0.04 268); --m-dark: oklch(88% 0.025 260); --m-danger: oklch(70% 0.15 22);
+}
+html[data-mote-theme="sakura"] {
+  --m-ink: oklch(25% 0.03 355); --m-muted: oklch(50% 0.04 355); --m-paper: oklch(98.4% 0.008 350);
+  --m-warm: oklch(95.8% 0.017 352); --m-line: oklch(90% 0.028 354); --m-focus: oklch(65% 0.1 358);
+  --m-hover: oklch(92.4% 0.024 354); --m-dark: oklch(31% 0.06 358); --m-danger: oklch(50% 0.17 25);
+}
+html[data-mote-theme="mono"] {
+  --m-ink: oklch(14% 0 0); --m-muted: oklch(40% 0 0); --m-paper: oklch(100% 0 0);
+  --m-warm: oklch(97% 0 0); --m-line: oklch(84% 0 0); --m-focus: oklch(14% 0 0);
+  --m-hover: oklch(93% 0 0); --m-dark: oklch(12% 0 0); --m-danger: oklch(52% 0.2 27);
+}
+html[data-mote-theme="amber"] {
+  --m-ink: oklch(26% 0.035 60); --m-muted: oklch(48% 0.045 62); --m-paper: oklch(96.8% 0.02 86);
+  --m-warm: oklch(93.5% 0.03 83); --m-line: oklch(86.5% 0.04 78); --m-focus: oklch(60% 0.09 62);
+  --m-hover: oklch(90% 0.038 80); --m-dark: oklch(30% 0.05 55); --m-danger: oklch(48% 0.15 28);
+}
+html[data-mote-theme="forest"] {
+  --m-ink: oklch(92% 0.02 150); --m-muted: oklch(73% 0.035 152); --m-paper: oklch(18% 0.022 160);
+  --m-warm: oklch(22% 0.028 160); --m-line: oklch(30% 0.032 160); --m-focus: oklch(62% 0.08 155);
+  --m-hover: oklch(27% 0.032 160); --m-dark: oklch(90% 0.03 150); --m-danger: oklch(70% 0.15 28);
+}
+html[data-mote-theme="neon"] {
+  --m-ink: oklch(94% 0.012 290); --m-muted: oklch(74% 0.03 290); --m-paper: oklch(14.5% 0.02 290);
+  --m-warm: oklch(19% 0.03 290); --m-line: oklch(27% 0.045 292); --m-focus: oklch(68% 0.17 300);
+  --m-hover: oklch(24% 0.04 292); --m-dark: oklch(92% 0.02 290); --m-danger: oklch(70% 0.17 15);
 }
 html[data-mote-theme] {
   --background: var(--m-paper);

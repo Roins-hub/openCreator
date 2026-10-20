@@ -1,6 +1,6 @@
 export const THEME_STORAGE_KEY = "mote-theme";
 
-export type ThemeId = "paper" | "celadon" | "mist" | "graphite" | "midnight";
+export type ThemeId = "paper" | "celadon" | "mist" | "sakura" | "mono" | "amber" | "graphite" | "midnight" | "forest" | "neon";
 export type ThemeMode = ThemeId | "system";
 
 export interface ThemeInfo {
@@ -12,10 +12,15 @@ export interface ThemeInfo {
 
 export const THEMES: ThemeInfo[] = [
   { id: "paper", name: "米白", tagline: "温润纸感，默认", dark: false },
-  { id: "celadon", name: "青瓷", tagline: "淡青釉色，清爽安静", dark: false },
-  { id: "mist", name: "雾蓝", tagline: "冷调灰蓝，专注理性", dark: false },
+  { id: "celadon", name: "青瓷", tagline: "淡青釉色，圆润柔和", dark: false },
+  { id: "mist", name: "雾蓝", tagline: "冷调灰蓝，利落小圆角", dark: false },
+  { id: "sakura", name: "樱粉", tagline: "柔粉大圆角，胶囊按钮", dark: false },
+  { id: "mono", name: "墨白", tagline: "黑白高对比，直角硬投影", dark: false },
+  { id: "amber", name: "琥珀", tagline: "旧纸胶片暖调，衬线标题", dark: false },
   { id: "graphite", name: "石墨", tagline: "中性深灰，夜间护眼", dark: true },
-  { id: "midnight", name: "夜幕", tagline: "深靛夜色，影院氛围", dark: true },
+  { id: "midnight", name: "夜幕", tagline: "深靛夜色，聚焦微光", dark: true },
+  { id: "forest", name: "松林", tagline: "深林墨绿，沉静护眼", dark: true },
+  { id: "neon", name: "霓虹", tagline: "暗紫底色，渐变发光", dark: true },
 ];
 
 const themeIds = new Set<string>(THEMES.map((theme) => theme.id));

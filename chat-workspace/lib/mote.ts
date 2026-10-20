@@ -67,8 +67,8 @@ export const moteComposeUrl = (prompt: string, kind: "image" | "video" = "image"
   `/?compose=${encodeURIComponent(prompt)}&kind=${kind}`;
 
 /** 与工作台 lib/themes.ts 保持一致 */
-const MOTE_THEMES = ["paper", "celadon", "mist", "graphite", "midnight"];
-const DARK_THEMES = new Set(["graphite", "midnight"]);
+const MOTE_THEMES = ["paper", "celadon", "mist", "sakura", "mono", "amber", "graphite", "midnight", "forest", "neon"];
+const DARK_THEMES = new Set(["graphite", "midnight", "forest", "neon"]);
 
 /** 首帧前执行:读取工作台主题,设置 data-mote-theme 和 .dark */
 export const moteThemeScript = `(function(){try{var ids=${JSON.stringify(MOTE_THEMES)};var dark=${JSON.stringify([...DARK_THEMES])};var m=localStorage.getItem("${MOTE_THEME_KEY}");if(m!=="system"&&ids.indexOf(m)<0)m="system";var t=m==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"graphite":"paper"):m;var r=document.documentElement;r.dataset.moteTheme=t;r.classList.toggle("dark",dark.indexOf(t)>=0);}catch(e){}})();`;

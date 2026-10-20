@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUp, AtSign, BookOpen, Clapperboard, Image as ImageIcon, ImagePlus, Images, KeyRound, Loader2, Maximize2, Menu,
-  MessageSquare, Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Settings, Sparkles, Undo2, X, BookMarked, Pencil, Trash2,
+  ArrowUp, AtSign, Clapperboard, Image as ImageIcon, ImagePlus, KeyRound, Loader2, Maximize2, Menu,
+  Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Sparkles, Undo2, X, BookMarked, Pencil, Trash2,
 } from "lucide-react";
 import type { Conversation, GenerationMeta, ImageOptions, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
 import type { Asset } from "@/lib/asset-store";
@@ -14,6 +14,7 @@ import { ImageControls, VideoControls } from "@/components/generation-controls";
 import { ConversationList, type ConversationGroup } from "@/components/conversation-list";
 import { GroupPicker } from "@/components/group-picker";
 import { BackToTop } from "@/components/back-to-top";
+import { AssetsIcon, ChatIcon, CreateIcon, DocsIcon, SettingsIcon } from "@/components/rail-icons";
 import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
 import { acceptAttribute, MEDIA_KIND_LABEL, MEDIA_RULES, pickMediaFiles } from "@/lib/media-files";
@@ -1028,14 +1029,14 @@ export function AppShell() {
           <LogoMark size={30} />
         </button>
         <div className="rail-items">
-          <Link className="rail-item is-active" href="/" aria-current="page"><Clapperboard size={19} /><span>创作</span></Link>
-          <Link className="rail-item" href="/assets"><Images size={19} /><span>资产</span></Link>
+          <Link className="rail-item is-active" href="/" aria-current="page"><CreateIcon /><span>创作</span></Link>
+          <Link className="rail-item" href="/assets"><AssetsIcon /><span>资产</span></Link>
           {/* 聊天是同域名下的另一个程序,整页跳转 */}
-          <a className="rail-item" href="/chat"><MessageSquare size={19} /><span>聊天</span></a>
+          <a className="rail-item" href="/chat"><ChatIcon /><span>聊天</span></a>
         </div>
         <div className="rail-items rail-bottom">
-          <Link className="rail-item" href="/docs"><BookOpen size={19} /><span>文档</span></Link>
-          <Link className="rail-item" href="/settings"><Settings size={19} /><span>设置</span></Link>
+          <Link className="rail-item" href="/docs"><DocsIcon /><span>文档</span></Link>
+          <Link className="rail-item" href="/settings"><SettingsIcon /><span>设置</span></Link>
         </div>
       </nav>
       <aside className="sidebar">
