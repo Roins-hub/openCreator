@@ -140,6 +140,8 @@ export function PromptLibrary({
   const [formError, setFormError] = useState("");
   const [confirm, setConfirm] = useState<string>();
   const [managing, setManaging] = useState(false);
+  // 左侧分类栏自己的批量选择(和右侧卡片的「批量管理」分开,也能单独用)
+  const [catManaging, setCatManaging] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(() => new Set());
   const [newGroup, setNewGroup] = useState<string | null>(null);
@@ -180,6 +182,13 @@ export function PromptLibrary({
   });
   // 拖动排序用的平铺顺序:收起的分组里的分类不参与
   const flatCategoryIds = shownTree.flatMap((node) => [node.category.id, ...(node.expanded ? node.children.map((item) => item.id) : [])]);
+  // 能批量选的分类:当前(搜索后)列出的全部,「我的提示词」不能删除
+  const pickingCategories = managing || catManaging;
+  const selectableCategoryIds = shownTree
+    .flatMap((node) => [node.category, ...node.children])
+    .filter((item) => item.kind !== "mine")
+    .map((item) => item.id);
+  const allCategoriesSelected = selectableCategoryIds.length > 0 && selectableCategoryIds.every((id) => selectedCategories.has(id));
   // 正在把分类拖进某个分组:这时其他分类不让位,只高亮那个分组
   const intoGroupRef = useRef<string | undefined>(undefined);
   const categoryStrategy: SortingStrategy = (args) => (intoGroupRef.current ? null : verticalListSortingStrategy(args));
@@ -239,6 +248,10 @@ export function PromptLibrary({
   const toggleManaging = () => {
     setManaging((value) => !value);
     setSelected(new Set());
+    setSelectedCategories(new Set());
+  };
+  const toggleCatManaging = () => {
+    setCatManaging((value) => !value);
     setSelectedCategories(new Set());
   };
 
@@ -325,7 +338,8 @@ export function PromptLibrary({
     const removable = ids.filter((id) => id !== MY_PROMPTS.id);
     if (!removable.length) return;
     const isGroup = (id: string) => layout.groups.some((group) => group.id === id);
-    if (removable.some(isGroup) && !confirmed(ids.length > 1 ? "bulk-categories" : `category:${ids[0]}`)) return;
+    // 删分组、一次删多个都要点两次确认
+    if ((removable.length > 1 || removable.some(isGroup)) && !confirmed(ids.length > 1 ? "bulk-categories" : `category:${ids[0]}`)) return;
     onLayoutChange(removeCategories(layout, removable));
     setSelectedCategories(new Set());
     if (removable.includes(activeCategory)) setCategory("all");
@@ -462,7 +476,7 @@ export function PromptLibrary({
     const removable = item.kind !== "mine";
     const parent = parentOf(layout, item.id);
     return <>
-      {managing && removable && (
+      {pickingCategories && removable && (
         <input type="checkbox" checked={selectedCategories.has(item.id)} aria-label={`选择分类 ${item.name}`}
           onChange={() => setSelectedCategories((set) => toggle(set, item.id))} />
       )}
@@ -540,6 +554,10 @@ export function PromptLibrary({
                 <button type="button" title="新建分组" aria-label="新建分组" onClick={() => setNewGroup("")}>
                   <FolderPlus size={14} />
                 </button>
+                <button type="button" className={catManaging ? "active" : ""} aria-pressed={catManaging}
+                  title={catManaging ? "完成" : "批量选择分类（全选、删除）"} aria-label="批量选择分类" onClick={toggleCatManaging}>
+                  {catManaging ? <Check size={14} /> : <ListChecks size={14} />}
+                </button>
               </span>
             </div>
             <label className="prompt-cat-search">
@@ -549,6 +567,23 @@ export function PromptLibrary({
                 placeholder="搜索分类" aria-label="搜索分类" />
               {categoryQuery && <button type="button" aria-label="清空搜索" onClick={() => setCategoryQuery("")}><X size={13} /></button>}
             </label>
+            {catManaging && (
+              <div className="prompt-cat-bulk-bar" role="toolbar" aria-label="批量操作分类">
+                <label>
+                  <input type="checkbox" checked={allCategoriesSelected} disabled={!selectableCategoryIds.length}
+                    onChange={() => setSelectedCategories(allCategoriesSelected ? new Set() : new Set(selectableCategoryIds))} />
+                  全选
+                </label>
+                <span>已选 {selectedCategories.size}</span>
+                <button type="button" className={`danger ${confirm === "bulk-categories" || confirm?.startsWith("category:") ? "confirm" : ""}`}
+                  disabled={!selectedCategories.size} onClick={() => removeCategoryList([...selectedCategories])}
+                  title="内置分类会隐藏（可在「已隐藏」里恢复）；分组删除后里面的提示词回到原来的分类">
+                  <Trash2 size={12} />
+                  {confirm === "bulk-categories" || confirm?.startsWith("category:") ? "确认删除" : "删除"}
+                </button>
+                <button type="button" onClick={toggleCatManaging}>完成</button>
+              </div>
+            )}
             {newGroup !== null && (
               <div className="prompt-cat-create">
                 <Folder size={14} />
@@ -591,7 +626,7 @@ export function PromptLibrary({
                 </div>
               ))}
             </SortableContext>
-            {managing && selectedCategories.size > 0 && (
+            {managing && !catManaging && selectedCategories.size > 0 && (
               <button type="button" className={`prompt-cat prompt-cat-bulk ${confirm === "bulk-categories" ? "confirm" : ""}`}
                 onClick={() => removeCategoryList([...selectedCategories])}>
                 <Trash2 size={12} />{confirm === "bulk-categories" ? "确认删除" : `删除所选 ${selectedCategories.size} 个`}
