@@ -12,6 +12,8 @@ import { createClientId } from "@/lib/client-id";
 import { GenerationStatus } from "@/components/generation-status";
 import { ImageControls, VideoControls } from "@/components/generation-controls";
 import { ConversationList, type ConversationGroup } from "@/components/conversation-list";
+import { GroupPicker } from "@/components/group-picker";
+import { BackToTop } from "@/components/back-to-top";
 import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
 import { acceptAttribute, MEDIA_KIND_LABEL, MEDIA_RULES, pickMediaFiles } from "@/lib/media-files";
@@ -454,8 +456,12 @@ export function AppShell() {
     setBeforeOptimize(undefined);
   };
 
-  const create = async () => {
-    const conversation = freshConversation(selected);
+  const create = async (groupId?: string) => {
+    const conversation: Conversation = { ...freshConversation(selected), ...(groupId ? { groupId } : {}) };
+    // 在收起的分组里新建:先展开,新对话才看得见
+    if (groupId && groups.some((group) => group.id === groupId && group.collapsed)) {
+      saveGroups(groups.map((group) => group.id === groupId ? { ...group, collapsed: false } : group));
+    }
     await persist(conversation);
     setActiveId(conversation.id);
     setDraft("");
@@ -501,6 +507,18 @@ export function AppShell() {
     const group: ConversationGroup = { id: createClientId(), name };
     saveGroups([group, ...groups]);
     return group;
+  };
+
+  /** 输入框里换项目分组:当前对话直接移过去;还没有对话时新建一个放进去(不清空正在写的提示词) */
+  const changeGroup = (groupId: string | undefined) => {
+    if (active) {
+      void moveConversations([active.id], groupId);
+      return;
+    }
+    const conversation: Conversation = { ...freshConversation(selected), ...(groupId ? { groupId } : {}) };
+    setConversations((items) => [conversation, ...items]);
+    setActiveId(conversation.id);
+    void persist(conversation).catch((cause) => setError(cause.message));
   };
 
   const rename = async (conversation: Conversation, title: string) => {
@@ -587,14 +605,19 @@ export function AppShell() {
     }));
   };
 
-  const pastedImages = (event: React.ClipboardEvent<HTMLDivElement>) => {
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     const files = [...event.clipboardData.items]
       .filter((item) => item.kind === "file")
       .map((item) => item.getAsFile())
       .filter((file): file is File => Boolean(file));
-    if (!files.length) return;
     event.preventDefault();
-    void upload(files);
+    if (files.length) {
+      void upload(files);
+      return;
+    }
+    // 从网页、文档里复制的文字带着字号、粗体、「不换行」等样式,原样粘进来会撑出横向滚动条:一律按纯文本插入
+    const text = event.clipboardData.getData("text/plain").replace(/\r\n?/g, "\n");
+    if (text) document.execCommand("insertText", false, text);
   };
 
   const send = () => {
@@ -999,39 +1022,50 @@ export function AppShell() {
 
   return (
     <main className="app-frame">
-      <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
+      <div className={`side-panels ${sidebarOpen ? "is-open" : ""}`}>
+      <nav className="app-rail" aria-label="主导航">
+        <button type="button" className="rail-logo" onClick={() => void create()} aria-label="新建对话" title="新建对话">
+          <LogoMark size={30} />
+        </button>
+        <div className="rail-items">
+          <Link className="rail-item is-active" href="/" aria-current="page"><Clapperboard size={19} /><span>创作</span></Link>
+          <Link className="rail-item" href="/assets"><Images size={19} /><span>资产</span></Link>
+          {/* 聊天是同域名下的另一个程序,整页跳转 */}
+          <a className="rail-item" href="/chat"><MessageSquare size={19} /><span>聊天</span></a>
+        </div>
+        <div className="rail-items rail-bottom">
+          <Link className="rail-item" href="/docs"><BookOpen size={19} /><span>文档</span></Link>
+          <Link className="rail-item" href="/settings"><Settings size={19} /><span>设置</span></Link>
+        </div>
+      </nav>
+      <aside className="sidebar">
         <div className="sidebar-head">
-          <button className="wordmark" onClick={create} aria-label="新建对话"><LogoMark size={27} /> TZ</button>
+          <button className="wordmark" onClick={() => void create()} aria-label="新建对话">TZ</button>
           <div className="sidebar-head-actions">
             <button className="icon-button" onClick={() => setSearchOpen(true)}
               aria-label="搜索对话" title="搜索对话 · ⌘ K">
               <SearchIcon size={17} />
             </button>
-            <button className="icon-button desktop-only" onClick={() => setSidebarOpen(false)} aria-label="收起侧栏">
+            <button className="icon-button desktop-only" onClick={() => setSidebarOpen(false)} aria-label="收起侧栏" title="收起侧栏">
               <PanelLeftClose size={17} />
             </button>
           </div>
         </div>
-        <button className="new-chat" onClick={create}><Plus size={16} /> 新对话</button>
-        <Link className="asset-link" href="/assets"><Images size={16} /> 资产</Link>
-        {/* 对话是同域名下的另一个程序,整页跳转 */}
-        <a className="asset-link" href="/chat"><MessageSquare size={16} /> 聊天</a>
+        <button className="new-chat" onClick={() => void create()}><Plus size={16} /> 新对话</button>
         <ConversationList conversations={conversations} groups={groups} activeId={activeId}
           onOpen={(id) => { setActiveId(id); closeSidebarOnMobile(); }}
           onRename={(conversation, title) => void rename(conversation, title)}
           onDelete={removeConversations} onMove={moveConversations}
-          onGroupsChange={saveGroups} onCreateGroup={createGroup} />
-        <div className="sidebar-utilities">
-          <Link className="settings-link" href="/docs"><BookOpen size={16} /> 文档</Link>
-          <Link className="settings-link" href="/settings"><Settings size={16} /> 设置</Link>
-        </div>
+          onGroupsChange={saveGroups} onCreateGroup={createGroup}
+          onCreateInGroup={(groupId) => void create(groupId)} />
       </aside>
+      </div>
 
       {sidebarOpen && <button className="sidebar-scrim" onClick={() => setSidebarOpen(false)} aria-label="关闭侧栏" />}
 
       <section className="workspace">
         <header className="topbar">
-          {!sidebarOpen && <button className="icon-button" onClick={() => setSidebarOpen(true)} aria-label="打开侧栏">
+          {!sidebarOpen && <button className="icon-button" onClick={() => setSidebarOpen(true)} aria-label="打开侧栏" title="打开侧栏">
             <Menu size={18} />
           </button>}
           {videoModel && <span className="model-spec" title={videoModel.description}>
@@ -1116,6 +1150,7 @@ export function AppShell() {
           )}
         </div>
         <ConversationNavigator messages={active?.messages || []} scrollRootRef={conversationRef} />
+        <BackToTop scrollRootRef={conversationRef} resetKey={active?.id} />
 
         <div className={`composer-region ${draggingImages ? "drag-active" : ""}`}
           onDragEnter={(event) => {
@@ -1233,7 +1268,7 @@ export function AppShell() {
                   ? attachments.length ? "描述想怎样修改或组合这些图片，输入 @ 引用参考图…" : "描述你想要的画面、风格和构图；添加参考图可按图修改"
                   : attachments.length ? "描述画面、运动和镜头，输入 @ 引用素材…" :
                     "描述画面、运动、镜头和氛围；添加素材可按参考图或首尾帧生成"}
-                onPaste={pastedImages}
+                onPaste={handlePaste}
                 onKeyDown={(event) => {
                   if (event.key === "@" && !event.ctrlKey && !event.metaKey) {
                     event.preventDefault();
@@ -1318,6 +1353,8 @@ export function AppShell() {
                 onChange={(next) => changeGenerationOptions({ videoOptions: next })} />}
               {imageModel && <ImageControls key={imageModel.id} value={imageOptions} model={imageModel}
                 onChange={(next) => changeGenerationOptions({ imageOptions: next })} />}
+              <GroupPicker groups={groups} value={groups.some((group) => group.id === active?.groupId) ? active?.groupId : undefined}
+                onChange={changeGroup} onCreate={createGroup} />
               <span className="composer-spacer">{attachmentSummary(mode, attachments)}</span>
               <button className="send-button" onClick={send}
                 disabled={!selected || uploading || (!draft.trim() && !attachments.length)}

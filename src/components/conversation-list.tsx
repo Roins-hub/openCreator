@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/core";
 import { droppablesUnderPointer, startDragPointer, stopDragPointer } from "@/lib/drag-pointer";
 import {
-  Check, ChevronDown, Folder, FolderPlus, ListChecks, MoreHorizontal, Pencil, Search, Trash2, X,
+  Check, ChevronDown, Folder, FolderPlus, ListChecks, MoreHorizontal, Pencil, Plus, Search, Trash2, X,
 } from "lucide-react";
 import { Dropdown } from "@/components/dropdown";
 import { HistoryMenu } from "@/components/history-menu";
@@ -52,6 +52,7 @@ function DropSection({ groupId, disabled, className, children }: {
  */
 export function ConversationList({
   conversations: allConversations, groups, activeId, onOpen, onRename, onDelete, onMove, onGroupsChange, onCreateGroup,
+  onCreateInGroup,
 }: {
   conversations: Conversation[];
   groups: ConversationGroup[];
@@ -62,6 +63,8 @@ export function ConversationList({
   onMove: (ids: string[], groupId: string | undefined) => Promise<void>;
   onGroupsChange: (groups: ConversationGroup[]) => void;
   onCreateGroup: (name: string) => ConversationGroup;
+  /** 直接在这个分组里新建对话 */
+  onCreateInGroup?: (groupId: string) => void;
 }) {
   const [managing, setManaging] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
@@ -261,12 +264,21 @@ export function ConversationList({
               <em>{members.length}</em>
             </button>}
             {!managing && renamingGroup !== group.id && <div className="group-menu">
+              {onCreateInGroup && <button type="button" className="history-more group-new"
+                aria-label={`在${group.name}分组里新建对话`} title="在这个分组里新建对话"
+                onClick={() => { setGroupMenu(undefined); onCreateInGroup(group.id); }}>
+                <Plus size={15} />
+              </button>}
               <button type="button" className="history-more" aria-label={`${group.name}分组的更多操作`}
                 aria-expanded={groupMenu === group.id}
                 onClick={() => setGroupMenu((current) => current === group.id ? undefined : group.id)}>
                 <MoreHorizontal size={15} />
               </button>
               {groupMenu === group.id && <div className="history-popover">
+                {onCreateInGroup && <button type="button" className="history-action"
+                  onClick={() => { setGroupMenu(undefined); onCreateInGroup(group.id); }}>
+                  <Plus size={14} /> 在此分组新建对话
+                </button>}
                 <button type="button" className="history-action"
                   onClick={() => { setGroupMenu(undefined); setRenamingGroup(group.id); }}>
                   <Pencil size={14} /> 重命名分组
@@ -283,7 +295,7 @@ export function ConversationList({
             <div className="group-body-inner">
               {members.length
                 ? <div className="group-items">{members.map(row)}</div>
-                : <p className="group-empty">{managing ? "空分组" : "把对话拖到这里，或在对话的「…」里选择移到分组"}</p>}
+                : <p className="group-empty">{managing ? "空分组" : "点右侧 + 在这里新建对话，或把已有对话拖进来"}</p>}
             </div>
           </div>
         </DropSection>;

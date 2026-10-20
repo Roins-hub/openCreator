@@ -19,6 +19,13 @@ const props = () => ({
 });
 
 describe("ConversationList", () => {
+  it("starts a new conversation inside a group", () => {
+    const onCreateInGroup = vi.fn();
+    render(<ConversationList {...props()} onCreateInGroup={onCreateInGroup} />);
+    fireEvent.click(screen.getByRole("button", { name: "在电影感分组里新建对话" }));
+    expect(onCreateInGroup).toHaveBeenCalledWith("g1");
+  });
+
   it("shows grouped and ungrouped conversations", () => {
     render(<ConversationList {...props()} />);
     expect(screen.getByRole("button", { name: /^电影感/, expanded: true }).textContent).toContain("1");

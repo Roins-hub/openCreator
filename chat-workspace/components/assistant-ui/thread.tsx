@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
 import { messageAnchorId, ThreadNavigator } from "@/components/assistant-ui/thread-navigator";
+import { BackToTop } from "@/components/assistant-ui/back-to-top";
 import { copyTextToClipboard } from "@/lib/browser-actions";
 import {
   ActionBarMorePrimitive,
@@ -148,6 +149,7 @@ export const Thread: FC = () => {
           </AuiIf>
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
+      <BackToTop />
       <ThreadNavigator />
       <SelectionToolbar />
     </ThreadPrimitive.Root>
