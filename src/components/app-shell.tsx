@@ -221,6 +221,10 @@ export function AppShell() {
     request<CatalogModel[]>("/api/models").then(setModels).catch((cause) => setError(cause.message));
   }, []);
 
+  // 这台设备见过的分组 ID:保存时告诉服务端只改这些,别的设备新建的分组不会被覆盖掉
+  const knownGroupIdsRef = useRef<Set<string>>(new Set());
+  const rememberGroups = (list: readonly ConversationGroup[]) => list.forEach((group) => knownGroupIdsRef.current.add(group.id));
+
   const load = useCallback(async (key: string) => {
     if (!key) {
       // 没有 Key 就没有个人空间
@@ -244,6 +248,7 @@ export function AppShell() {
     setFavorites(new Set(nextFavorites));
     setCustomPrompts(nextPrompts);
     setPromptLayout(nextLayout);
+    knownGroupIdsRef.current = new Set(nextGroups.map((group) => group.id));
     setGroups(nextGroups);
     setConversations(nextConversations);
     if (nextConversations.length) {
@@ -256,6 +261,38 @@ export function AppShell() {
       setActiveId(undefined);
     }
   }, []);
+
+  // 切回这个标签页 / 窗口时,拉一次最新的对话和分组(另一台设备可能刚改过);15 秒内不重复拉
+  const lastSyncRef = useRef(0);
+  useEffect(() => {
+    if (!apiKey) return;
+    const sync = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastSyncRef.current < 15_000) return;
+      lastSyncRef.current = Date.now();
+      void Promise.all([
+        request<Conversation[]>("/api/conversations"),
+        request<ConversationGroup[]>("/api/groups"),
+      ]).then(([serverConversations, serverGroups]) => {
+        rememberGroups(serverGroups);
+        setGroups(serverGroups);
+        setConversations((current) => {
+          const serverIds = new Set(serverConversations.map((item) => item.id));
+          // 本机刚建、还没保存到服务端的对话先留着
+          const pending = current.filter((item) => !serverIds.has(item.id) && Date.now() - new Date(item.createdAt).getTime() < 60_000);
+          return [...pending, ...serverConversations.map((item) =>
+            keepLocalMessages(item, current.find((local) => local.id === item.id), inflightRef.current))];
+        });
+        // 当前打开的对话保持不变;还没打开过对话时打开最新的一个
+        setActiveId((id) => id || serverConversations[0]?.id);
+      }).catch(() => undefined);
+    };
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("focus", sync);
+    return () => {
+      document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("focus", sync);
+    };
+  }, [apiKey]);
 
   useEffect(() => {
     if (apiKey === undefined) return;
@@ -539,8 +576,14 @@ export function AppShell() {
 
   const saveGroups = (next: ConversationGroup[]) => {
     setGroups(next);
+    rememberGroups(next);
+    // 合并保存:服务端保留这台设备不知道的分组(别的设备刚建的),返回合并后的完整列表
     void request<ConversationGroup[]>("/api/groups", {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next),
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groups: next, known: [...knownGroupIdsRef.current] }),
+    }).then((merged) => {
+      rememberGroups(merged);
+      setGroups(merged);
     }).catch((cause) => setError((cause as Error).message));
   };
 
