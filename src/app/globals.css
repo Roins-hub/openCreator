@@ -2743,3 +2743,11 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .prompt-cat-bulk-bar button.danger { color: var(--danger); }
 .prompt-cat-bulk-bar button.danger.confirm { color: var(--paper); background: var(--danger); font-weight: 700; }
 @media (prefers-reduced-motion: reduce) { .prompt-cat-bulk-bar { animation: none; } }
+
+/* 分类栏很窄:勾选框出现时分类按钮让出位置,文字不换行、太长时省略,不出现横向滚动 */
+.prompt-library-cats { overflow-x: hidden; }
+.prompt-cat-item > .prompt-cat { flex: 1 1 auto; width: auto; min-width: 0; }
+.prompt-cat-bulk-bar { gap: 4px; padding: 4px 4px 4px 8px; }
+.prompt-cat-bulk-bar label, .prompt-cat-bulk-bar button { flex: 0 0 auto; white-space: nowrap; }
+.prompt-cat-bulk-bar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.prompt-cat-bulk-bar button { padding: 0 6px; }
