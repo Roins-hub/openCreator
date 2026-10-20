@@ -2710,3 +2710,16 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 
 /* 设置页顶栏右侧的「回到顶部」:跟在保存按钮左边 */
 .settings-actions .back-to-top { margin-left: 0; }
+
+/* 附件页:文档卡片 */
+.asset-preview.is-file { display: grid; }
+.asset-file {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%; padding: 14px;
+  color: var(--muted); text-align: center; transition: color .15s, background .15s;
+}
+.asset-file:hover { color: var(--ink); background: var(--hover); }
+.asset-file b { padding: 2px 8px; border-radius: 6px; color: var(--paper); background: var(--muted); font-size: 11px; letter-spacing: .04em; }
+.asset-file span { max-width: 100%; overflow: hidden; color: var(--ink); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+
+/* 左侧栏顶部的站点名:不换行,太窄时省略 */
+.sidebar-head .wordmark { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

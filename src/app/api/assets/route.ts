@@ -7,7 +7,7 @@ import { listConversations } from "@/lib/conversation-store";
 import { listFavorites, removeFavorites } from "@/lib/favorite-store";
 import { failure, ok } from "@/lib/http";
 import { mediaPrefix, requireUser, userDir } from "@/lib/identity";
-import { MEDIA_RULES, uploadKind } from "@/lib/media-files";
+import { checkUpload, MEDIA_RULES } from "@/lib/media-files";
 import { deleteObject, objectSize } from "@/lib/object-store";
 
 /** 一次批量操作最多处理的资产数 */
@@ -49,16 +49,16 @@ export async function POST(request: Request) {
     const { userId } = await requireUser(request);
     const input = uploadSchema.parse(await request.json());
     if (!input.path.startsWith(`${mediaPrefix(userId)}uploads/`)) throw new Error("非法素材路径");
-    const kind = uploadKind({ name: input.name, type: input.mimeType });
-    if (!kind) throw new Error("仅支持 JPG/PNG/WebP 图片、MP4/MOV 视频和 MP3/WAV 音频");
+    const { kind, maxBytes } = checkUpload({ name: input.name, type: input.mimeType }, input.source === "chat" ? "chat" : "media");
     const size = await objectSize(input.path);
     if (size === undefined) throw new Error("素材没有上传成功，请重试");
-    if (size > MEDIA_RULES[kind].maxBytes) {
+    if (size > maxBytes) {
       await deleteObject(input.path).catch(() => undefined);
-      throw new Error(`单个素材不能超过 ${MEDIA_RULES[kind].maxBytes / 1024 / 1024}MB`);
+      throw new Error(`单个文件不能超过 ${maxBytes / 1024 / 1024}MB`);
     }
     const record: AssetRecord = {
-      kind, path: input.path, name: input.name, mimeType: input.mimeType || MEDIA_RULES[kind].types[0], size,
+      kind, path: input.path, name: input.name,
+      mimeType: input.mimeType || (kind === "file" ? "application/octet-stream" : MEDIA_RULES[kind].types[0]), size,
       createdAt: new Date().toISOString(), source: input.source || "upload",
     };
     await recordAsset(userId, record);

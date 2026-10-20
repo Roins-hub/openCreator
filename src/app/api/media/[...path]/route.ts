@@ -12,6 +12,11 @@ const contentTypes: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".webp": "image/webp", ".mp4": "video/mp4", ".mov": "video/quicktime",
   ".mp3": "audio/mpeg", ".wav": "audio/wav",
+  ".pdf": "application/pdf", ".txt": "text/plain; charset=utf-8", ".md": "text/markdown; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8", ".json": "application/json",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 };
 const LINK_TTL = 3600;
 

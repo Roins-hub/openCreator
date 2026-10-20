@@ -24,21 +24,23 @@ import { indexedDbThreadAdapter } from "@/lib/thread-adapter";
 import { imageWorkspaceToolkit } from "@/components/image-workspace-tool";
 import { IMAGE_WORKSPACE_TOOL_NAME } from "@/lib/image-workspace";
 import { BASE_PATH, MIGRATE_URL, MOTE_MODE, withBasePath } from "@/lib/mote";
-import { inlineMoteImages, MoteImageAttachmentAdapter, openMoteSession } from "@/lib/mote-attachments";
+import {
+  inlineMoteImages, MoteDocumentAttachmentAdapter, MoteImageAttachmentAdapter, openMoteSession,
+} from "@/lib/mote-attachments";
 
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+// 工作台模式下文档(PDF 等)可以到 20 MB
+const MAX_ATTACHMENT_BYTES = (MOTE_MODE ? 20 : 10) * 1024 * 1024;
 
-// 工作台模式:图片存到工作台的对象存储,聊天记录里只存地址
-const baseAttachmentAdapter = new CompositeAttachmentAdapter([
-  MOTE_MODE ? new MoteImageAttachmentAdapter() : new SimpleImageAttachmentAdapter(),
-  new SimpleTextAttachmentAdapter(),
-]);
+// 工作台模式:图片和文档存到工作台的对象存储(附件页能看到),聊天记录里只存地址或文字;不收视频、音频
+const baseAttachmentAdapter = new CompositeAttachmentAdapter(MOTE_MODE
+  ? [new MoteImageAttachmentAdapter(), new MoteDocumentAttachmentAdapter()]
+  : [new SimpleImageAttachmentAdapter(), new SimpleTextAttachmentAdapter()]);
 
 const attachmentAdapter = {
   accept: baseAttachmentAdapter.accept,
   add: ({ file }: { file: File }) => {
     if (file.size > MAX_ATTACHMENT_BYTES) {
-      throw new Error("单个附件不能超过 10 MB");
+      throw new Error(`单个附件不能超过 ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`);
     }
     return baseAttachmentAdapter.add({ file });
   },

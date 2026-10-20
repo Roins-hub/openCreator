@@ -9,6 +9,9 @@ export interface MediaRef {
   size?: number;
 }
 
+/** 资产 / 附件的种类:生成素材的三类,外加聊天附件里的文档(file) */
+export type AssetKind = MediaRef["kind"] | "file";
+
 export interface Message {
   id: string;
   role: "user" | "assistant" | "system";

@@ -1,4 +1,4 @@
-import type { MediaRef } from "./types";
+import type { AssetKind, MediaRef } from "./types";
 
 type MediaKind = MediaRef["kind"];
 type MediaFile = { name: string; type: string; size: number };
@@ -59,4 +59,49 @@ export function pickMediaFiles<T extends MediaFile>(
     accepted.push({ file, kind });
   }
   return { accepted, ...(error ? { error } : {}) };
+}
+
+/**
+ * 聊天附件里的文档:PDF、Word / Excel / PPT(新版格式)、文本和代码文件。
+ * 只在聊天里用(发给模型看),不能当视频 / 图片的生成素材。
+ */
+export const DOCUMENT_RULE = {
+  extensions: [
+    ".pdf", ".docx", ".xlsx", ".pptx",
+    ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".xml", ".html", ".htm", ".yaml", ".yml", ".log", ".ini", ".toml",
+    ".js", ".jsx", ".ts", ".tsx", ".py", ".java", ".go", ".rs", ".c", ".h", ".cpp", ".cs", ".php", ".rb", ".swift", ".kt",
+    ".css", ".scss", ".sql", ".sh", ".bat", ".ps1",
+  ],
+  maxBytes: 20 * MB,
+  label: "PDF、Word、Excel、PPT 和文本 / 代码文件",
+};
+const OFFICE_TYPES = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/json", "application/xml",
+]);
+
+export function isDocumentFile(file: Pick<MediaFile, "name" | "type">) {
+  return DOCUMENT_RULE.extensions.includes(extensionOf(file.name)) || OFFICE_TYPES.has(file.type) || /^text\//.test(file.type);
+}
+
+export type UploadPurpose = "media" | "chat";
+
+/**
+ * 按用途检查上传的文件,返回种类和大小上限;不合格时抛出给用户看的提示。
+ * media:视频 / 图片的生成素材(图片、视频、音频);chat:聊天附件(图片和文档,不收视频、音频)。
+ */
+export function checkUpload(file: Pick<MediaFile, "name" | "type"> & { size?: number }, purpose: UploadPurpose = "media") {
+  let kind: AssetKind | undefined = uploadKind(file);
+  if (purpose === "chat") {
+    if (kind !== "image") kind = isDocumentFile(file) ? "file" : undefined;
+    if (!kind) throw new Error(`聊天附件支持 JPG / PNG / WebP 图片和 ${DOCUMENT_RULE.label}，不支持视频和音频`);
+  } else if (!kind) {
+    throw new Error("仅支持 JPG/PNG/WebP 图片、MP4/MOV 视频和 MP3/WAV 音频");
+  }
+  const maxBytes = kind === "file" ? DOCUMENT_RULE.maxBytes : MEDIA_RULES[kind].maxBytes;
+  if (file.size !== undefined && file.size > maxBytes) throw new Error(`单个文件不能超过 ${maxBytes / MB}MB`);
+  return { kind, maxBytes };
 }

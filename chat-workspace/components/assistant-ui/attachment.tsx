@@ -15,6 +15,7 @@ import { Dialog, DialogTitle, DialogContent, DialogTrigger } from "@/components/
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { cn } from "@/lib/utils";
+import { MOTE_MODE } from "@/lib/mote";
 
 const useFileSrc = (file: File | undefined) => {
   const [src, setSrc] = useState<string | undefined>(undefined);
@@ -238,7 +239,7 @@ export const ComposerAddAttachment: FC = () => {
     <ComposerPrimitive.AddAttachment
       render={
         <TooltipIconButton
-          tooltip="添加图片或文本附件"
+          tooltip={MOTE_MODE ? "添加图片或文档（PDF、Word、Excel、PPT、文本）" : "添加图片或文本附件"}
           side="bottom"
           variant="ghost"
           size="icon"

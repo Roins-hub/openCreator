@@ -1,14 +1,14 @@
 "use client";
 
 import { useRef, useState, type MouseEvent } from "react";
-import { ArrowUpRight, Clapperboard, Download, FileUp, MessageSquare, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Clapperboard, Download, FileUp, MessageSquare, Paperclip, Trash2, X } from "lucide-react";
 import {
   ThreadListItems,
   ThreadListNew,
   ThreadListRoot,
 } from "@/components/assistant-ui/thread-list";
 import { clearAllChatHistory, exportChatHistory, importChatHistory } from "@/lib/chat-storage";
-import { MOTE_HOME, MOTE_MODE } from "@/lib/mote";
+import { MOTE_ATTACHMENTS, MOTE_HOME, MOTE_MODE } from "@/lib/mote";
 import { cn } from "@/lib/utils";
 import { HOME_URL } from "@/lib/home";
 
@@ -154,6 +154,23 @@ export function WorkspaceSidebar({ open, onClose, collapsed }: WorkspaceSidebarP
             )}
             title={collapsed ? "新聊天" : undefined}
           />
+          {MOTE_MODE && (
+            // 附件管理:聊天里上传的图片和文档(和工作台的资产页同一套)
+            <a
+              href={MOTE_ATTACHMENTS}
+              title={collapsed ? "附件" : "聊天里上传的图片和文档"}
+              className={cn(
+                "flex h-8 shrink-0 items-center overflow-hidden rounded-md text-sm text-foreground/90 transition-all duration-200 hover:bg-muted",
+                collapsed ? "md:w-8 md:justify-center md:gap-0 md:px-2" : "w-full gap-2 px-2.5",
+              )}
+            >
+              <Paperclip className="size-4 shrink-0" />
+              <span className={cn(
+                "overflow-hidden whitespace-nowrap transition-all duration-200",
+                collapsed ? "md:max-w-0 md:opacity-0" : "max-w-24 opacity-100",
+              )}>附件</span>
+            </a>
+          )}
           <ThreadListItems
             aria-hidden={collapsed}
             inert={collapsed}

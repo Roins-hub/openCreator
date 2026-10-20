@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import Link from "next/link";
 import {
   ArrowDownWideNarrow, ArrowLeft, ArrowUpNarrowWide, Check, CheckSquare, Download, Image as ImageIcon, Images, Music,
-  Paperclip, RotateCcw, Search, Sparkles, Star, Trash2, Upload, Video, X, XCircle,
+  FileText, Paperclip, RotateCcw, Search, Sparkles, Star, Trash2, Upload, Video, X, XCircle,
 } from "lucide-react";
 import type { Asset } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
@@ -286,7 +286,7 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
     },
   };
 
-  const kindLabel = (kind: Asset["kind"]) => MEDIA_KIND_LABEL[kind];
+  const kindLabel = (kind: Asset["kind"]) => (kind === "file" ? "文档" : MEDIA_KIND_LABEL[kind]);
   const emptyState = query ? <>
     <Search size={24} />
     <h2>没有找到匹配的资产</h2>
@@ -302,7 +302,7 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
   </> : chat ? <>
     <Paperclip size={24} />
     <h2>还没有附件</h2>
-    <p>在聊天里上传的图片会自动保存到这里。</p>
+    <p>在聊天里上传的图片、PDF、Word、Excel、PPT 和文本文件会自动保存到这里。</p>
   </> : source === "upload" ? <>
     <Upload size={24} />
     <h2>还没有上传素材</h2>
@@ -326,7 +326,7 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
         <span className="eyebrow">{chat ? "CHAT FILES" : "MY LIBRARY"}</span>
         <h1>{chat ? "附件" : "资产"}</h1>
         <p>{chat
-          ? "你在聊天里上传的图片都保存在这里，其他用户看不到；永久删除后，聊天记录里的这张图也会无法显示。"
+          ? "你在聊天里上传的图片和文档都保存在这里，其他用户看不到；永久删除后，聊天记录里的这张图片也会无法显示。"
           : "你的账号生成的图片、视频，以及你上传的素材都在这里，其他用户看不到；上传的素材在输入框里按 @ 就能引用。"}{retentionNote}</p>
       </div>
       <div className="asset-toolbar-row">
@@ -335,8 +335,9 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
           {([
             ["all", "全部", Images],
             ["image", "图片", ImageIcon],
-            ["video", "视频", Video],
-            ...(hasAudio || filter === "audio" ? [["audio", "音频", Music] as const] : []),
+            // 聊天附件是图片和文档,没有视频 / 音频
+            ...(chat ? [["file", "文档", FileText] as const] : [["video", "视频", Video] as const]),
+            ...(!chat && (hasAudio || filter === "audio") ? [["audio", "音频", Music] as const] : []),
             ["favorite", "收藏", Star],
             ["trash", "回收站", Trash2],
           ] as const).map(([value, label, Icon]) =>
@@ -422,7 +423,8 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
           const uploaded = asset.source === "upload";
           const fromChat = asset.source === "chat";
           return <article className={`asset-card ${isSelected ? "is-selected" : ""}`} key={asset.id}>
-            <div className={`asset-preview ${asset.kind === "audio" ? "is-audio" : ""}`} title={asset.prompt || asset.name}>
+            <div className={`asset-preview ${asset.kind === "audio" ? "is-audio" : ""} ${asset.kind === "file" ? "is-file" : ""}`}
+              title={asset.prompt || asset.name}>
               <button type="button" className={`asset-check ${isSelected ? "is-on" : ""}`} aria-pressed={isSelected}
                 aria-label={isSelected ? `取消选择 ${asset.name}` : `选择 ${asset.name}`}
                 onClick={(event) => toggleSelect(asset, event)}>
@@ -433,7 +435,14 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
                 aria-label={asset.favorite ? "取消收藏" : "收藏"} title={asset.favorite ? "取消收藏" : "收藏"}>
                 <Star size={15} fill={asset.favorite ? "currentColor" : "none"} />
               </button>}
-              {asset.kind === "video"
+              {asset.kind === "file"
+                // 文档:大号扩展名 + 文件名,点开在新标签页预览(PDF、文本浏览器能直接看)
+                ? <a className="asset-file" href={`/api/media/${asset.path}`} target="_blank" rel="noreferrer">
+                  <FileText size={30} />
+                  <b>{(asset.name.split(".").pop() || "文件").toUpperCase()}</b>
+                  <span>{asset.name}</span>
+                </a>
+                : asset.kind === "video"
                 ? <video controls={!selecting} preload="metadata" src={`/api/media/${asset.path}`} />
                 : asset.kind === "audio"
                   ? <><Music size={30} /><audio controls={!selecting} preload="none" src={`/api/media/${asset.path}`} /></>

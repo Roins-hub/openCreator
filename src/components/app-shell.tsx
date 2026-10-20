@@ -157,7 +157,7 @@ export function AppShell() {
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   // 输入框里已添加的素材放大查看(第几个)
   const [attachmentPreview, setAttachmentPreview] = useState<number | null>(null);
-  const [referenceAssets, setReferenceAssets] = useState<Asset[]>([]);
+  const [referenceAssets, setReferenceAssets] = useState<(Asset & { kind: MediaKind })[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [customPrompts, setCustomPrompts] = useState<PromptTemplate[]>([]);
   const [promptLayout, setPromptLayout] = useState<PromptLayout>(emptyPromptLayout);
@@ -417,7 +417,8 @@ export function AppShell() {
     }
     try {
       const assets = await request<Asset[]>("/api/assets");
-      setReferenceAssets(assets.filter((asset) => !asset.trashed));
+      // 聊天里的文档附件不能当生成素材
+      setReferenceAssets(assets.filter((asset): asset is Asset & { kind: MediaKind } => !asset.trashed && asset.kind !== "file"));
       setReferenceQuery("");
       setReferencePickerOpen(true);
     } catch (cause) {
@@ -1136,7 +1137,7 @@ export function AppShell() {
       </nav>
       <aside className="sidebar">
         <div className="sidebar-head">
-          <button className="wordmark" onClick={() => void create()} aria-label="新建对话">TZ</button>
+          <button className="wordmark" onClick={() => void create()} aria-label="新建对话" title="新建对话">TZ生成工作台</button>
           <div className="sidebar-head-actions">
             <button className="icon-button" onClick={() => setSearchOpen(true)}
               aria-label="搜索对话" title="搜索对话 · ⌘ K">

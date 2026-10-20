@@ -3,11 +3,11 @@ import { userDir } from "./identity";
 import { readJson, writeJsonAtomic } from "./json-store";
 import { assertKey, deleteObject } from "./object-store";
 import { buildTurns } from "./turns";
-import type { Conversation, MediaRef } from "./types";
+import type { AssetKind, Conversation } from "./types";
 
 export interface Asset {
   id: string;
-  kind: MediaRef["kind"];
+  kind: AssetKind;
   /** 对象存储 key:users/<用户ID>/videos/<文件名>(生成的图片在 images/,上传的素材在 uploads/) */
   path: string;
   name: string;
