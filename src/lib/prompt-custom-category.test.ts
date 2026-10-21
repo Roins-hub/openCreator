@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { PROMPT_TEMPLATES } from "./prompt-library";
 import {
   addPromptCategory, addPromptGroup, arrangePrompts, categoryCounts, categoryTree, emptyPromptLayout, movePrompts,
-  normalizePromptLayout, removeCategories, renamePromptGroup, reorderCategories,
+  normalizePromptLayout, removeCategories, renamePromptGroup, reorderCategories, type PromptLayout,
 } from "./prompt-layout";
 
 describe("custom prompt categories", () => {
   const group = addPromptGroup(emptyPromptLayout(), "GPT质量提示词", "grp-top");
   const created = addPromptCategory(group.layout, "不烦不烦", "grp-top", "cat-a");
-  const top = (layout: typeof created.layout) => categoryTree(layout).map((node) => node.category.id);
+  const top = (layout: PromptLayout) => categoryTree(layout).map((node) => node.category.id);
 
   it("creates a plain category inside the group", () => {
     const node = categoryTree(created.layout).find((item) => item.category.id === "grp-top");

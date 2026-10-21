@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, CornerDownRight, Folder, FolderOpen, FolderPlus, Inbox, MessageSquarePlus } from "lucide-react";
 import type { ConversationGroup } from "@/components/conversation-list";
+import { useSlidingIndicator } from "@/components/sliding-indicator";
 import type { Conversation } from "@/lib/types";
 
 const CLOSE_MS = 150;
@@ -30,6 +31,8 @@ export function GroupPicker({ groups, conversations, activeId, onOpen, onCreateI
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
+  // 选中文件夹的底色滑过去;右栏对话列表换文件夹时淡入
+  const { containerRef: foldersRef, indicator: folderIndicator } = useSlidingIndicator<HTMLDivElement>(":scope > .selected");
   const groupIds = new Set(groups.map((group) => group.id));
   const groupOf = (conversation?: Conversation) =>
     conversation?.groupId && groupIds.has(conversation.groupId) ? conversation.groupId : UNGROUPED;
@@ -99,7 +102,8 @@ export function GroupPicker({ groups, conversations, activeId, onOpen, onCreateI
     </button>
     {open && <div className={`mode-popover group-popover ${closing ? "is-closing" : ""}`} role="dialog" aria-label="选择文件夹和对话">
       <div className="group-popover-cols">
-        <div className="group-popover-folders" role="listbox" aria-label="文件夹">
+        <div className="group-popover-folders has-slider" role="listbox" aria-label="文件夹" ref={foldersRef}>
+          {folderIndicator}
           <small>文件夹</small>
           {[{ id: UNGROUPED, name: "未分组" }, ...groups].map((group) => (
             <button type="button" key={group.id || "ungrouped"} role="option" aria-selected={browsing === group.id}
@@ -123,6 +127,7 @@ export function GroupPicker({ groups, conversations, activeId, onOpen, onCreateI
         </div>
         <div className="group-popover-chats" role="listbox" aria-label={`${browsingName} 里的对话`}>
           <small>{browsingName} 里的对话</small>
+          <div className="group-popover-pane" key={browsing || "ungrouped"}>
           <button type="button" className="group-popover-new-chat" onClick={() => { close(); onCreateIn(browsing || undefined); }}>
             <MessageSquarePlus size={14} /> 在这里新建对话
           </button>
@@ -142,6 +147,7 @@ export function GroupPicker({ groups, conversations, activeId, onOpen, onCreateI
               <CornerDownRight size={13} /> 把当前对话移到这里
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>}

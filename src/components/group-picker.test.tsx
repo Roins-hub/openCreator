@@ -6,6 +6,8 @@ import { GroupPicker } from "./group-picker";
 import type { Conversation } from "@/lib/types";
 
 afterEach(cleanup);
+// jsdom 没有 ResizeObserver(滑动底色用它重新定位)
+globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
 
 const conversation = (id: string, title: string, groupId?: string, updatedAt = "2026-10-20T00:00:00.000Z"): Conversation => ({
   id, title, groupId, createdAt: updatedAt, updatedAt, messages: [],

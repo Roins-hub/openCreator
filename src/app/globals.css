@@ -2864,3 +2864,10 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .group-popover-new button { padding: 0 10px; border-radius: max(var(--r-control), 6px); color: var(--paper); background: var(--ink); font-size: 12px; }
 .group-popover-new button:disabled { opacity: .4; }
 .prompt-cat-create.is-child { margin: 2px 0 4px 14px; padding-left: 0; }
+/* 文件夹选择:选中底色滑动,右栏换文件夹时淡入 */
+.group-popover-folders .slide-indicator { border: 0; border-radius: max(var(--r-row), 6px); background: var(--warm); box-shadow: none; }
+.group-popover-pane { display: flex; flex-direction: column; min-width: 0; animation: group-pane-in .22s cubic-bezier(.16, 1, .3, 1); }
+@keyframes group-pane-in { from { opacity: 0; transform: translateX(8px); } }
+.group-popover-chat-list > button { transition: background .15s, color .15s; }
+.group-popover-folders > button { transition: color .15s; }
+@media (prefers-reduced-motion: reduce) { .group-popover-pane { animation: none; } }
