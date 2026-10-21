@@ -26,6 +26,12 @@ describe("model spec from relay descriptions", () => {
     expect(spec("(按次计费) 10图片，0音频，0视频，合计≤10，720p，5s/10s/15s，卡人脸").durations).toEqual([5, 10, 15]);
   });
 
+  it("does not read per-second prices as durations", () => {
+    const result = spec("Seedance 2.5（通通api）：按秒计费，480p ¥0.345/秒、720p ¥0.46/秒、1080p ¥0.92/秒；480p / 720p / 1080p；4–30秒；比例 16:9 / 9:16 / 1:1 / 4:3 / 3:4 / 21:9；30图/10视频/10音频，参考视频不加价；支持首尾帧，可选生成声音。");
+    expect(result.durations).toEqual(range(4, 30));
+    expect(spec("sd2.5 0.3-0.8元/秒，5秒/10秒").durations).toEqual([5, 10]);
+  });
+
   it("reads ranges with dashes, ratio lists and per-kind limits", () => {
     const result = spec("BD2.5：720P，4–30 整数秒，按条计费；比例 16:9 / 9:16；最多 30 张参考图 / 10 段参考视频 / 10 段参考音频。");
     expect(result.resolutions).toEqual(["720p"]);

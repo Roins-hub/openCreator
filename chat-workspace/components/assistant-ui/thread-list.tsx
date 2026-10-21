@@ -64,6 +64,7 @@ import {
   type ThreadGroups,
 } from "@/lib/thread-groups";
 import { getThreadGroups, setThreadGroups, useThreadGroups } from "@/lib/thread-groups-store";
+import { startChatInGroup as startNewChatInGroup } from "@/lib/chat-group-nav";
 
 export const ThreadList: FC = () => {
   const [search, setSearch] = useState("");
@@ -208,17 +209,7 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
     setGroupMenu(undefined);
     const group = getThreadGroups().groups.find((item) => item.id === groupId);
     if (group?.collapsed) patchGroup(groupId, { collapsed: false });
-    aui.threads.switchToNewThread();
-    let tries = 0;
-    const assign = () => {
-      const { mainThreadId, newThreadId } = aui.threads.getState();
-      if (mainThreadId && mainThreadId === newThreadId) {
-        setThreadGroups(moveThreads(getThreadGroups(), [mainThreadId], groupId));
-        return;
-      }
-      if (++tries < 60) requestAnimationFrame(assign);
-    };
-    assign();
+    startNewChatInGroup(aui, groupId);
   };
 
   const itemsById = useMemo(() => new Map(threadItems.map((item) => [item.id, item])), [threadItems]);

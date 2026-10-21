@@ -66,6 +66,10 @@ export function specDurations(clauses: Clause[]) {
     if (!/秒|\d\s*s(?![a-z])/i.test(clause.text)) continue;
     // 去掉比例、分辨率、数量这些也带数字的写法
     const text = clause.text
+      // 价格(¥0.46/秒、0.3-0.8元/秒、$1.2)不是时长
+      .replace(/[¥￥$]\s*\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+)?)?/g, " ")
+      .replace(/\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+)?)?\s*(?:元|块|美元|刀)/g, " ")
+      .replace(/\d+\.\d+/g, " ")
       .replace(/\d+\s*:\s*\d+/g, " ")
       .replace(RESOLUTION_TOKEN, " ")
       .replace(/\d+\s*(?:张|段|个|份|条|图|视频|音频)/g, " ")
