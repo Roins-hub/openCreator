@@ -14,6 +14,7 @@ import { ImageControls, VideoControls } from "@/components/generation-controls";
 import { ConversationList, type ConversationGroup } from "@/components/conversation-list";
 import { GroupPicker } from "@/components/group-picker";
 import { BackToTop } from "@/components/back-to-top";
+import { ThemeQuickPicker } from "@/components/theme-quick-picker";
 import { AssetsIcon, ChatIcon, CreateIcon, DocsIcon, SettingsIcon } from "@/components/rail-icons";
 import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
@@ -1237,6 +1238,7 @@ export function AppShell() {
             <ListChecks size={14} />{managing ? "完成" : "批量管理"}
           </button>}
           <BackToTop scrollRootRef={conversationRef} resetKey={active?.id} />
+          <ThemeQuickPicker />
         </header>
 
         <div className="conversation" ref={conversationRef}>

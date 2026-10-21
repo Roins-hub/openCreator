@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Download, Info, X } from "lucide-react";
 import type { MediaRef, Message } from "@/lib/types";
 import { mediaDownloadUrl } from "@/lib/download-files";
 import { GenerationInfo } from "@/components/generation-info";
+import { ImageZoom } from "@/components/image-zoom";
 
 const INFO_KEY = "mote.viewerInfo";
 
@@ -55,8 +56,7 @@ export function ResultViewer({
         <div className="viewer-media">
           {isVideo
             ? <video key={current.path} src={`/api/media/${current.path}`} controls autoPlay playsInline />
-            // eslint-disable-next-line @next/next/no-img-element
-            : <img className="image-viewer-img" key={current.path} src={`/api/media/${current.path}`} alt={current.name} />}
+            : <ImageZoom key={current.path} src={`/api/media/${current.path}`} alt={current.name} />}
           <div className="video-viewer-bar">
             <p title={prompt}>{prompt || current.name}</p>
             {items.length > 1 && <span>{index + 1} / {items.length}</span>}

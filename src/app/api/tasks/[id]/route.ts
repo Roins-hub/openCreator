@@ -79,8 +79,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
           kind: "video", path: fetched.video.path, name: fetched.video.name, mimeType: "video/mp4", size: fetched.size,
           createdAt: new Date().toISOString(), conversationId,
         });
-      } else {
-        // 另一个请求已经写入了结果,或记录已被删除:清掉这份重复的视频
+      } else if (!JSON.stringify(conversation).includes(fetched.video.path)) {
+        // 记录已被删除,或另一个请求存的是另一份文件:清掉这份没人用的视频。
+        // 同时查到完成的几个请求共用同一次下载、同一个文件,已经写进对话的那份不能删
         await deleteObject(fetched.video.path).catch(() => undefined);
       }
     }

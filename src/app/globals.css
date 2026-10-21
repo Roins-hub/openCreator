@@ -2881,3 +2881,96 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
   min-height: 32px; border: 2px solid transparent; border-radius: 999px; background: var(--sb-thumb) padding-box;
 }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--sb-thumb-hover); }
+
+/* ---------- 放大预览的图片缩放(见 image-zoom.tsx) ---------- */
+.image-zoom { position: relative; }
+.image-zoom-stage {
+  overflow: hidden; border-radius: 12px; background: var(--warm); box-shadow: 0 20px 60px oklch(20% 0.01 80 / .18);
+  touch-action: none; user-select: none;
+}
+.image-zoom-stage .image-viewer-img {
+  display: block; border-radius: 0; background: transparent; box-shadow: none; transform-origin: center;
+  transition: transform .28s cubic-bezier(.16, 1, .3, 1); will-change: transform; cursor: zoom-in;
+}
+.image-zoom.is-zoomed .image-viewer-img { cursor: grab; }
+.image-zoom.is-dragging .image-viewer-img { cursor: grabbing; transition: none; }
+.image-zoom-bar {
+  position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 2px; padding: 3px;
+  border: 1px solid var(--line); border-radius: 999px; background: color-mix(in oklab, var(--paper) 88%, transparent);
+  box-shadow: 0 6px 20px oklch(20% 0.01 80 / .14); backdrop-filter: blur(8px);
+  opacity: 0; transform: translateY(4px); transition: opacity .2s ease, transform .25s cubic-bezier(.16, 1, .3, 1);
+}
+.image-zoom:hover .image-zoom-bar, .image-zoom.is-zoomed .image-zoom-bar, .image-zoom-bar:focus-within { opacity: 1; transform: none; }
+.image-zoom-bar button {
+  display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 6px; border-radius: 999px;
+  color: var(--ink); background: transparent; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+  transition: background .15s;
+}
+.image-zoom-bar button:hover:not(:disabled) { background: var(--warm); }
+.image-zoom-bar button:disabled { opacity: .35; }
+.image-zoom-level { min-width: 52px !important; }
+@media (hover: none) { .image-zoom-bar { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .image-zoom-stage .image-viewer-img { transition: none; } }
+
+/* ---------- 顶栏右侧的主题快捷切换(见 theme-quick-picker.tsx) ---------- */
+.theme-quick { position: relative; flex: 0 0 auto; }
+.theme-quick-trigger {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px 0 8px;
+  border: 1px solid var(--line); border-radius: max(var(--r-control), 8px);
+  color: var(--muted); background: var(--paper); font-size: 12px; font-weight: 600; white-space: nowrap;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.theme-quick-trigger:hover, .theme-quick-trigger.active { color: var(--ink); border-color: var(--line-strong); background: var(--warm); }
+.theme-quick-chevron { opacity: .6; transition: transform .3s cubic-bezier(.34, 1.56, .64, 1); }
+.theme-quick-trigger.active .theme-quick-chevron { transform: rotate(180deg); }
+/* 色块:纸色底 + 左侧侧栏色 + 墨色圆点,取自目标主题 */
+.theme-swatch {
+  position: relative; flex: 0 0 auto; display: inline-block; width: 18px; height: 18px; overflow: hidden;
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--paper);
+}
+.theme-swatch i { position: absolute; inset: 0 auto 0 0; width: 38%; background: var(--rail); }
+.theme-swatch b { position: absolute; right: 3px; bottom: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+.theme-swatch.is-system { display: inline-flex; border: 0; background: none; }
+.theme-swatch.is-system .theme-swatch { width: 11px; border-radius: 6px 0 0 6px; }
+.theme-swatch.is-system .theme-swatch + .theme-swatch { border-left: 0; border-radius: 0 6px 6px 0; }
+.theme-quick-popover {
+  position: absolute; z-index: 60; top: calc(100% + 8px); right: 0; width: 248px; max-height: min(520px, calc(100dvh - 90px));
+  overflow-y: auto; padding: 6px; border: 1px solid var(--line); border-radius: max(var(--r-card), 12px);
+  background: var(--paper); box-shadow: 0 18px 50px oklch(20% 0.01 80 / .16);
+  transform-origin: calc(100% - 28px) 0;
+  animation: theme-quick-in .42s cubic-bezier(.34, 1.56, .64, 1) both;
+}
+.theme-quick-popover.is-closing { animation: theme-quick-out .17s cubic-bezier(.4, 0, 1, 1) both; pointer-events: none; }
+@keyframes theme-quick-in { from { opacity: 0; transform: translateY(-6px) scale(.9); } }
+@keyframes theme-quick-out { to { opacity: 0; transform: translateY(-4px) scale(.95); } }
+.theme-quick-popover > small {
+  display: flex; align-items: center; gap: 5px; padding: 6px 8px 5px; color: var(--faint); font-size: 10px; letter-spacing: .04em;
+}
+.theme-quick-popover > button {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border-radius: max(var(--r-row), 7px);
+  color: var(--muted); background: transparent; text-align: left;
+  transition: background .15s, color .15s;
+  animation: theme-quick-item .34s cubic-bezier(.16, 1, .3, 1) both;
+}
+@keyframes theme-quick-item { from { opacity: 0; transform: translateY(-4px); } }
+.theme-quick-popover > button:hover, .theme-quick-popover > button.selected { color: var(--ink); background: var(--warm); }
+.theme-quick-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.theme-quick-text b { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+.theme-quick-text b em {
+  padding: 0 5px; border: 1px solid var(--line); border-radius: 999px; color: var(--faint); font-size: 9px; font-style: normal; font-weight: 500;
+}
+.theme-quick-text small { overflow: hidden; color: var(--faint); font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
+.theme-quick-check { flex: 0 0 auto; color: var(--ink); }
+.back-to-top + .theme-quick, .topbar-manage + .theme-quick, .key-missing + .theme-quick { margin-left: 0; }
+@media (max-width: 700px) { .theme-quick-trigger > span { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .theme-quick-popover, .theme-quick-popover > button, .theme-quick-popover.is-closing { animation: none; }
+}
+/* 「回到顶部」隐藏时不占位(和聊天页一致),主题按钮始终贴在最右边 */
+.back-to-top {
+  max-width: 120px; overflow: hidden;
+  transition: opacity .2s ease, transform .25s cubic-bezier(.16, 1, .3, 1), max-width .25s cubic-bezier(.16, 1, .3, 1),
+    padding .25s, margin .25s, color .15s, border-color .15s, background .15s;
+}
+.back-to-top:not(.is-visible) { max-width: 0; padding: 0; border-color: transparent; }
+.topbar .back-to-top:not(.is-visible) { margin-right: -8px; }
