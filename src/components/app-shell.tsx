@@ -599,7 +599,15 @@ export function AppShell() {
       void moveConversations([active.id], groupId);
       return;
     }
+    startConversationIn(groupId);
+  };
+
+  /** 在某个分组里开一个新对话并切过去;输入框里写的提示词和素材都留着(从输入框的分组选择里新建) */
+  const startConversationIn = (groupId: string | undefined) => {
     const conversation: Conversation = { ...freshConversation(selected), ...(groupId ? { groupId } : {}) };
+    if (groupId && groups.some((group) => group.id === groupId && group.collapsed)) {
+      saveGroups(groups.map((group) => group.id === groupId ? { ...group, collapsed: false } : group));
+    }
     setConversations((items) => [conversation, ...items]);
     setActiveId(conversation.id);
     void persist(conversation).catch((cause) => setError(cause.message));
@@ -1513,8 +1521,8 @@ export function AppShell() {
                 onChange={(next) => changeGenerationOptions({ videoOptions: next })} />}
               {imageModel && <ImageControls key={imageModel.id} value={imageOptions} model={imageModel}
                 onChange={(next) => changeGenerationOptions({ imageOptions: next })} />}
-              <GroupPicker groups={groups} value={groups.some((group) => group.id === active?.groupId) ? active?.groupId : undefined}
-                onChange={changeGroup} onCreate={createGroup} />
+              <GroupPicker groups={groups} conversations={conversations} activeId={active?.id}
+                onOpen={setActiveId} onCreateIn={startConversationIn} onMoveCurrent={changeGroup} onCreateGroup={createGroup} />
               <span className="composer-spacer">{attachmentSummary(mode, attachments)}</span>
               <button className="send-button" onClick={send}
                 disabled={!selected || uploading || (!draft.trim() && !attachments.length)}

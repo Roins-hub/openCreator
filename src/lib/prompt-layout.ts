@@ -30,7 +30,7 @@ export interface PromptLayout {
   promptOrder: string[];
   /** 拖到别的分类的卡片:提示词 ID → 分类 ID */
   placement: Record<string, string>;
-  /** 放进分组的分类:分类 ID → 分组 ID(分组不能再放进分组) */
+  /** 放进分组的分类和子分组:ID → 分组 ID(最多两级:顶层分组下可以有子分组,子分组里只放提示词) */
   parents: Record<string, string>;
   usage: Record<string, PromptUsage>;
   sort: PromptSort;
@@ -65,11 +65,18 @@ export const hiddenCategoryList = (layout: PromptLayout) =>
 
 const isGroupId = (layout: PromptLayout, id: string) => layout.groups.some((group) => group.id === id);
 
-/** 分类所在的分组;分组本身、或分组已经删掉时返回 undefined */
-export function parentOf(layout: PromptLayout, id: string) {
+/** 分类 / 子分组所在的分组;顶层的、或分组已经删掉时返回 undefined */
+export function parentOf(layout: PromptLayout, id: string): string | undefined {
   const parent = layout.parents?.[id];
-  return parent && !isGroupId(layout, id) && isGroupId(layout, parent) ? parent : undefined;
+  if (!parent || parent === id || !isGroupId(layout, parent)) return undefined;
+  // 只有顶层分组能装东西(子分组里只放提示词,不再往下套)
+  const grandparent = layout.parents?.[parent];
+  if (grandparent && isGroupId(layout, grandparent)) return undefined;
+  return parent;
 }
+
+/** 是不是某个分组下的子分组 */
+export const isSubgroup = (layout: PromptLayout, id: string) => isGroupId(layout, id) && Boolean(parentOf(layout, id));
 
 export interface CategoryNode { category: LibraryCategory; children: LibraryCategory[] }
 
@@ -210,7 +217,9 @@ export function reorderCategories(layout: PromptLayout, id: string, targetId: st
 export function nestCategories(layout: PromptLayout, ids: string[], groupId: string | undefined): PromptLayout {
   const parents = { ...(layout.parents || {}) };
   for (const id of ids) {
-    if (isGroupId(layout, id) || id === groupId) continue;
+    // 子分组可以移出到顶层;拖动时分组不能放进分组,子分组里也不能再放分类
+    if (!groupId && isGroupId(layout, id)) { delete parents[id]; continue; }
+    if (isGroupId(layout, id) || id === groupId || (groupId && isSubgroup(layout, groupId))) continue;
     if (groupId && isGroupId(layout, groupId)) parents[id] = groupId;
     else delete parents[id];
   }
@@ -223,14 +232,17 @@ export const toggleGroupCollapsed = (layout: PromptLayout, id: string): PromptLa
 
 export const MAX_PROMPT_GROUPS = 50;
 
-export function addPromptGroup(layout: PromptLayout, name: string, id = `grp-${crypto.randomUUID().slice(0, 8)}`) {
+/** 新建分组;给了 parentId 时建成那个分组下的子分组(并展开父分组) */
+export function addPromptGroup(layout: PromptLayout, name: string, id = `grp-${crypto.randomUUID().slice(0, 8)}`, parentId?: string) {
   const trimmed = name.trim().slice(0, 20);
   if (!trimmed) throw new Error("分组名称不能为空");
   if (layout.groups.length >= MAX_PROMPT_GROUPS) throw new Error(`最多 ${MAX_PROMPT_GROUPS} 个分组`);
-  const groups = [...layout.groups, { id, name: trimmed }];
-  // 新分组排在分类列表最上面,建完马上能看到
+  if (parentId && (!isGroupId(layout, parentId) || isSubgroup(layout, parentId))) throw new Error("子分组下不能再建分组");
+  const groups = [...layout.groups.map((group) => group.id === parentId ? { ...group, collapsed: false } : group), { id, name: trimmed }];
+  // 新分组排在最上面(子分组排在父分组里的最上面),建完马上能看到
   const categoryOrder = [id, ...allCategories({ ...layout, groups }).map((item) => item.id).filter((item) => item !== id)];
-  return { layout: { ...layout, groups, categoryOrder }, id };
+  const parents = parentId ? { ...(layout.parents || {}), [id]: parentId } : layout.parents;
+  return { layout: { ...layout, groups, categoryOrder, parents }, id };
 }
 
 export function renamePromptGroup(layout: PromptLayout, id: string, name: string): PromptLayout {

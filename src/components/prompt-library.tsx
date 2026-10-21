@@ -145,6 +145,8 @@ export function PromptLibrary({
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(() => new Set());
   const [newGroup, setNewGroup] = useState<string | null>(null);
+  // 在哪个分组下新建子分组;undefined 是顶层分组
+  const [newGroupParent, setNewGroupParent] = useState<string>();
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [overCategory, setOverCategory] = useState<string>();
@@ -324,10 +326,11 @@ export function PromptLibrary({
     setNewGroup(null);
     if (!newGroup.trim()) return;
     try {
-      const { layout: next, id } = addPromptGroup(layout, newGroup);
+      const { layout: next, id } = addPromptGroup(layout, newGroup, undefined, newGroupParent);
       onLayoutChange(next);
       setCategory(id);
     } catch (cause) { flash((cause as Error).message); }
+    setNewGroupParent(undefined);
   };
   const finishRename = () => {
     if (skipBlur.current) { skipBlur.current = false; return; }
@@ -492,7 +495,8 @@ export function PromptLibrary({
         <button type="button" className={`prompt-cat ${item.kind === "group" ? "is-group" : ""} ${activeCategory === item.id ? "active" : ""} ${counts[item.id] ? "" : "is-empty"}`}
           onClick={() => changeCategory(item.id)}
           title={item.kind === "group" ? "按住拖动调整顺序；把分类或卡片拖到这里可放进这个分组" : "按住拖动调整顺序；拖到分组上可放进分组；把卡片拖到这里可移到该分类"}>
-          {item.kind === "group" && (
+          {/* 子分组下面没有分类,不用展开箭头 */}
+          {item.kind === "group" && !parent && (
             <span className={`prompt-cat-chevron ${expanded ? "" : "is-collapsed"}`} role="button" tabIndex={-1}
               aria-label={expanded ? "收起分组" : "展开分组"}
               onClick={(event) => { event.stopPropagation(); onLayoutChange(toggleGroupCollapsed(layout, item.id)); }}>
@@ -505,8 +509,8 @@ export function PromptLibrary({
       )}
       {!renaming && (
         <span className="prompt-cat-tools">
-          <button type="button" onClick={() => startCreateIn(item.id)}
-            title={`在「${item.name}」里新建提示词`} aria-label={`在 ${item.name} 里新建提示词`}><Plus size={12} /></button>
+          {item.kind === "group" && !parent && <button type="button" onClick={() => { setNewGroupParent(item.id); setNewGroup(""); }}
+            title={`在「${item.name}」下新建子分组`} aria-label={`在 ${item.name} 下新建子分组`}><Plus size={12} /></button>}
           {removable && parent && (
             <button type="button" onClick={() => onLayoutChange(nestCategories(layout, [item.id], undefined))}
               title="移出分组" aria-label={`把 ${item.name} 移出分组`}><CornerUpLeft size={11} /></button>
@@ -551,7 +555,7 @@ export function PromptLibrary({
             <div className="prompt-cat-label">
               <span>分类</span>
               <span className="prompt-cat-head-tools">
-                <button type="button" title="新建分组" aria-label="新建分组" onClick={() => setNewGroup("")}>
+                <button type="button" title="新建分组" aria-label="新建分组" onClick={() => { setNewGroupParent(undefined); setNewGroup(""); }}>
                   <FolderPlus size={14} />
                 </button>
                 <button type="button" className={catManaging ? "active" : ""} aria-pressed={catManaging}
@@ -587,12 +591,13 @@ export function PromptLibrary({
             {newGroup !== null && (
               <div className="prompt-cat-create">
                 <Folder size={14} />
-                <input className="prompt-cat-rename" value={newGroup} maxLength={20} autoFocus placeholder="分组名称，回车创建"
+                <input className="prompt-cat-rename" value={newGroup} maxLength={20} autoFocus
+                  placeholder={newGroupParent ? `「${categories.find((item) => item.id === newGroupParent)?.name || ""}」下的子分组，回车创建` : "分组名称，回车创建"}
                   onChange={(event) => setNewGroup(event.target.value)}
                   onFocus={() => { skipBlur.current = false; }} onBlur={createGroup}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") event.currentTarget.blur();
-                    if (event.key === "Escape") { event.stopPropagation(); skipBlur.current = true; setNewGroup(null); }
+                    if (event.key === "Escape") { event.stopPropagation(); skipBlur.current = true; setNewGroup(null); setNewGroupParent(undefined); }
                   }} />
               </div>
             )}

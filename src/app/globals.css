@@ -2800,3 +2800,47 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 /* 分组展开后不再裁切(为了「…」菜单),但宽度要锁在侧栏内:否则长标题按全文撑宽,伸出侧栏、也不显示省略号 */
 .group-body { grid-template-columns: minmax(0, 1fr); }
 .group-body-inner { min-width: 0; }
+
+
+/* ---------- 输入框里的「文件夹 / 对话」选择:左栏文件夹,右栏里面的对话 ---------- */
+.group-trigger .group-trigger-chat { max-width: 8em; color: var(--muted); font-weight: 500; }
+.group-trigger i { width: 1px; height: 11px; background: var(--line); }
+.group-popover { width: min(520px, calc(100vw - 32px)); padding: 8px; }
+.group-popover.is-closing { animation: preset-out .15s ease-in forwards; pointer-events: none; }
+.group-popover-cols { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 8px; }
+.group-popover-cols small { display: block; padding: 6px 8px 5px; color: var(--faint); font-size: 10px; letter-spacing: .04em; }
+.group-popover-folders { display: flex; flex-direction: column; min-width: 0; max-height: min(340px, 50vh); overflow-y: auto; padding-right: 8px; border-right: 1px solid var(--line); }
+.group-popover-folders > button {
+  position: relative; display: flex; align-items: center; gap: 7px; width: 100%; padding: 8px; border-radius: max(var(--r-row), 6px);
+  color: var(--muted); background: transparent; font-size: 12px; text-align: left;
+}
+.group-popover-folders > button b { flex: 1; min-width: 0; overflow: hidden; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.group-popover-folders > button em { color: var(--faint); font-size: 10px; font-style: normal; }
+.group-popover-folders > button > svg:last-child { color: var(--faint); opacity: 0; transition: opacity .15s; }
+.group-popover-folders > button:hover, .group-popover-folders > button.selected { color: var(--ink); background: var(--warm); }
+.group-popover-folders > button.selected > svg:last-child { opacity: 1; }
+.group-popover-here { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.group-popover-chats { display: flex; flex-direction: column; min-width: 0; }
+.group-popover-new-chat {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 4px; padding: 8px 10px; border: 1px dashed var(--line-strong);
+  border-radius: max(var(--r-row), 6px); color: var(--ink); background: transparent; font-size: 12px; font-weight: 600; text-align: left;
+  transition: background .15s, border-color .15s;
+}
+.group-popover-new-chat:hover { border-color: var(--focus); background: var(--warm); }
+.group-popover-chat-list { display: flex; flex-direction: column; max-height: min(260px, 40vh); overflow-y: auto; }
+.group-popover-chat-list > button {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px;
+  border-radius: max(var(--r-row), 6px); color: var(--muted); background: transparent; font-size: 12px; text-align: left;
+}
+.group-popover-chat-list > button span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.group-popover-chat-list > button:hover, .group-popover-chat-list > button.selected { color: var(--ink); background: var(--warm); }
+.group-popover-chat-list p { margin: 10px; color: var(--faint); font-size: 11px; }
+.group-popover-move {
+  display: flex; align-items: center; gap: 6px; margin-top: 6px; padding: 7px 10px; border-top: 1px solid var(--line);
+  color: var(--muted); background: transparent; font-size: 11px; text-align: left;
+}
+.group-popover-move:hover { color: var(--ink); }
+@media (max-width: 700px) {
+  .group-popover-cols { grid-template-columns: 1fr; }
+  .group-popover-folders { max-height: 160px; padding-right: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+}
