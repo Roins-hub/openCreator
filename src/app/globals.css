@@ -2844,3 +2844,23 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
   .group-popover-cols { grid-template-columns: 1fr; }
   .group-popover-folders { max-height: 160px; padding-right: 0; border-right: 0; border-bottom: 1px solid var(--line); }
 }
+
+/* 文件夹选择在工具栏最右边:弹框靠右对齐往左展开,不超出窗口 */
+.group-picker .group-popover { left: auto; right: 0; transform-origin: calc(100% - 24px) 100%; }
+@media (max-width: 700px) {
+  .group-picker .group-popover { position: fixed; left: 12px; right: 12px; bottom: 72px; width: auto; max-height: min(74dvh, 560px); overflow-y: auto; }
+}
+.group-popover-create {
+  display: flex; align-items: center; gap: 7px; margin-top: 4px; padding: 8px; border-top: 1px solid var(--line);
+  border-radius: 0; color: var(--muted); background: transparent; font-size: 12px; text-align: left;
+}
+.group-popover-create:hover { color: var(--ink); }
+.group-popover-new { display: flex; gap: 6px; margin-top: 4px; padding: 6px 0 2px; border-top: 1px solid var(--line); }
+.group-popover-new input {
+  flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: max(var(--r-control), 6px);
+  color: var(--ink); background: var(--paper); font-size: 12px; outline: none;
+}
+.group-popover-new input:focus { border-color: var(--focus); }
+.group-popover-new button { padding: 0 10px; border-radius: max(var(--r-control), 6px); color: var(--paper); background: var(--ink); font-size: 12px; }
+.group-popover-new button:disabled { opacity: .4; }
+.prompt-cat-create.is-child { margin: 2px 0 4px 14px; padding-left: 0; }

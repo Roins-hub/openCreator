@@ -22,7 +22,7 @@ import {
   addPromptGroup, arrangePrompts, categoryCounts, categoryOf, categoryTree, hiddenCategoryList, hidePrompts, nestCategories,
   parentOf, toggleGroupCollapsed, type LibraryCategory,
   type LibraryFilter, movePrompts, PROMPT_SORTS, type PromptLayout, type PromptSort, removeCategories,
-  renamePromptGroup, reorderCategories, reorderPrompts, restoreCategories, restorePrompts, visibleCategories,
+  addPromptCategory, renamePromptGroup, reorderCategories, reorderPrompts, restoreCategories, restorePrompts, visibleCategories,
 } from "@/lib/prompt-layout";
 import type { VideoOptions } from "@/lib/types";
 import { Dropdown } from "@/components/dropdown";
@@ -145,8 +145,8 @@ export function PromptLibrary({
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(() => new Set());
   const [newGroup, setNewGroup] = useState<string | null>(null);
-  // 在哪个分组下新建子分组;undefined 是顶层分组
-  const [newGroupParent, setNewGroupParent] = useState<string>();
+  // 分组旁的「+」:在这个分组里新建分类
+  const [newCategory, setNewCategory] = useState<{ groupId: string; name: string } | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [overCategory, setOverCategory] = useState<string>();
@@ -326,11 +326,21 @@ export function PromptLibrary({
     setNewGroup(null);
     if (!newGroup.trim()) return;
     try {
-      const { layout: next, id } = addPromptGroup(layout, newGroup, undefined, newGroupParent);
+      const { layout: next, id } = addPromptGroup(layout, newGroup);
       onLayoutChange(next);
       setCategory(id);
     } catch (cause) { flash((cause as Error).message); }
-    setNewGroupParent(undefined);
+  };
+  const createCategory = () => {
+    if (skipBlur.current) { skipBlur.current = false; return; }
+    if (!newCategory) return;
+    setNewCategory(null);
+    if (!newCategory.name.trim()) return;
+    try {
+      const { layout: next, id } = addPromptCategory(layout, newCategory.name, newCategory.groupId);
+      onLayoutChange(next);
+      setCategory(id);
+    } catch (cause) { flash((cause as Error).message); }
   };
   const finishRename = () => {
     if (skipBlur.current) { skipBlur.current = false; return; }
@@ -341,13 +351,15 @@ export function PromptLibrary({
     const removable = ids.filter((id) => id !== MY_PROMPTS.id);
     if (!removable.length) return;
     const isGroup = (id: string) => layout.groups.some((group) => group.id === id);
-    // 删分组、一次删多个都要点两次确认
-    if ((removable.length > 1 || removable.some(isGroup)) && !confirmed(ids.length > 1 ? "bulk-categories" : `category:${ids[0]}`)) return;
+    const isCustom = (id: string) => (layout.categories || []).some((item) => item.id === id);
+    // 删分组、删自建分类、一次删多个都要点两次确认
+    if ((removable.length > 1 || removable.some((id) => isGroup(id) || isCustom(id)))
+      && !confirmed(ids.length > 1 ? "bulk-categories" : `category:${ids[0]}`)) return;
     onLayoutChange(removeCategories(layout, removable));
     setSelectedCategories(new Set());
     if (removable.includes(activeCategory)) setCategory("all");
-    const builtin = removable.filter((id) => !isGroup(id)).length;
-    flash(builtin ? `已隐藏 ${builtin} 个内置分类，可在「已隐藏」里恢复` : "分组已删除，里面的提示词回到原来的分类");
+    const builtin = removable.filter((id) => !isGroup(id) && !isCustom(id)).length;
+    flash(builtin ? `已隐藏 ${builtin} 个内置分类，可在「已隐藏」里恢复` : "已删除，里面的提示词回到原来的分类");
   };
 
   // ---------- 拖动 ----------
@@ -495,8 +507,7 @@ export function PromptLibrary({
         <button type="button" className={`prompt-cat ${item.kind === "group" ? "is-group" : ""} ${activeCategory === item.id ? "active" : ""} ${counts[item.id] ? "" : "is-empty"}`}
           onClick={() => changeCategory(item.id)}
           title={item.kind === "group" ? "按住拖动调整顺序；把分类或卡片拖到这里可放进这个分组" : "按住拖动调整顺序；拖到分组上可放进分组；把卡片拖到这里可移到该分类"}>
-          {/* 子分组下面没有分类,不用展开箭头 */}
-          {item.kind === "group" && !parent && (
+          {item.kind === "group" && (
             <span className={`prompt-cat-chevron ${expanded ? "" : "is-collapsed"}`} role="button" tabIndex={-1}
               aria-label={expanded ? "收起分组" : "展开分组"}
               onClick={(event) => { event.stopPropagation(); onLayoutChange(toggleGroupCollapsed(layout, item.id)); }}>
@@ -509,20 +520,21 @@ export function PromptLibrary({
       )}
       {!renaming && (
         <span className="prompt-cat-tools">
-          {item.kind === "group" && !parent && <button type="button" onClick={() => { setNewGroupParent(item.id); setNewGroup(""); }}
-            title={`在「${item.name}」下新建子分组`} aria-label={`在 ${item.name} 下新建子分组`}><Plus size={12} /></button>}
+          {item.kind === "group" && <button type="button" onClick={() => setNewCategory({ groupId: item.id, name: "" })}
+            title={`在「${item.name}」里新建分类`} aria-label={`在 ${item.name} 里新建分类`}><Plus size={12} /></button>}
           {removable && parent && (
             <button type="button" onClick={() => onLayoutChange(nestCategories(layout, [item.id], undefined))}
               title="移出分组" aria-label={`把 ${item.name} 移出分组`}><CornerUpLeft size={11} /></button>
           )}
-          {removable && item.kind === "group" && (
+          {(item.kind === "group" || item.kind === "custom") && (
             <button type="button" onClick={() => setRenaming({ id: item.id, name: item.name })}
-              title="重命名" aria-label={`重命名分组 ${item.name}`}><Pencil size={11} /></button>
+              title="重命名" aria-label={`重命名 ${item.name}`}><Pencil size={11} /></button>
           )}
           {removable && <button type="button" className={`is-delete ${confirm === `category:${item.id}` ? "confirm" : ""}`}
             onClick={() => removeCategoryList([item.id])}
-            title={item.kind === "group" ? (confirm === `category:${item.id}` ? "再点一次确认删除" : "删除分组（提示词回到原分类）")
-              : "删除分类（可在已隐藏中恢复）"}
+            title={item.kind === "builtin" ? "删除分类（可在已隐藏中恢复）"
+              : confirm === `category:${item.id}` ? "再点一次确认删除"
+                : item.kind === "group" ? "删除分组（提示词回到原分类）" : "删除分类（提示词回到原分类）"}
             aria-label={`删除分类 ${item.name}`}><Trash2 size={11} /></button>}
         </span>
       )}
@@ -555,7 +567,7 @@ export function PromptLibrary({
             <div className="prompt-cat-label">
               <span>分类</span>
               <span className="prompt-cat-head-tools">
-                <button type="button" title="新建分组" aria-label="新建分组" onClick={() => { setNewGroupParent(undefined); setNewGroup(""); }}>
+                <button type="button" title="新建分组" aria-label="新建分组" onClick={() => setNewGroup("")}>
                   <FolderPlus size={14} />
                 </button>
                 <button type="button" className={catManaging ? "active" : ""} aria-pressed={catManaging}
@@ -591,13 +603,12 @@ export function PromptLibrary({
             {newGroup !== null && (
               <div className="prompt-cat-create">
                 <Folder size={14} />
-                <input className="prompt-cat-rename" value={newGroup} maxLength={20} autoFocus
-                  placeholder={newGroupParent ? `「${categories.find((item) => item.id === newGroupParent)?.name || ""}」下的子分组，回车创建` : "分组名称，回车创建"}
+                <input className="prompt-cat-rename" value={newGroup} maxLength={20} autoFocus placeholder="分组名称，回车创建"
                   onChange={(event) => setNewGroup(event.target.value)}
                   onFocus={() => { skipBlur.current = false; }} onBlur={createGroup}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") event.currentTarget.blur();
-                    if (event.key === "Escape") { event.stopPropagation(); skipBlur.current = true; setNewGroup(null); setNewGroupParent(undefined); }
+                    if (event.key === "Escape") { event.stopPropagation(); skipBlur.current = true; setNewGroup(null); }
                   }} />
               </div>
             )}
@@ -616,14 +627,26 @@ export function PromptLibrary({
                     // 分组里的分类:收起时高度过渡到 0,展开收起都有动画
                     <div className={`prompt-cat-children ${expanded ? "" : "is-collapsed"}`} inert={!expanded}>
                       <div>
+                        {newCategory?.groupId === item.id && (
+                          <div className="prompt-cat-create is-child">
+                            <input className="prompt-cat-rename" value={newCategory.name} maxLength={20} autoFocus
+                              placeholder="分类名称，回车创建" aria-label={`在 ${item.name} 里新建分类`}
+                              onChange={(event) => setNewCategory({ groupId: item.id, name: event.target.value })}
+                              onFocus={() => { skipBlur.current = false; }} onBlur={createCategory}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") event.currentTarget.blur();
+                                if (event.key === "Escape") { event.stopPropagation(); skipBlur.current = true; setNewCategory(null); }
+                              }} />
+                          </div>
+                        )}
                         {children.map((child) => (
                           <SortableCategory key={child.id} id={child.id} disabled={!expanded || renaming?.id === child.id}
                             className={`prompt-cat-item is-child ${overCategory === child.id ? "is-drop-target" : ""}`}>
                             {categoryRow(child)}
                           </SortableCategory>
                         ))}
-                        {!children.length && !catQuery && (
-                          <p className="prompt-cat-empty">把左侧的分类拖到这里</p>
+                        {!children.length && !catQuery && newCategory?.groupId !== item.id && (
+                          <p className="prompt-cat-empty">点「+」新建分类，或把分类拖到这里</p>
                         )}
                       </div>
                     </div>

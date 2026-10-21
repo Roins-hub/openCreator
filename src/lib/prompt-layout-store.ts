@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
 import { z } from "zod";
 import { readJson, writeJsonAtomic } from "./json-store";
-import { emptyPromptLayout, MAX_PROMPT_GROUPS, recordUsage, type PromptLayout } from "./prompt-layout";
+import {
+  emptyPromptLayout, MAX_PROMPT_CATEGORIES, MAX_PROMPT_GROUPS, normalizePromptLayout, recordUsage, type PromptLayout,
+} from "./prompt-layout";
 
 /** 提示词库的个人布局,存在每个用户自己的目录里(root = data/users/<用户ID>)。 */
 const layoutFile = (root: string) => resolve(root, "prompt-library.json");
@@ -16,6 +18,11 @@ const layoutSchema = z.object({
     name: z.string().trim().min(1, "分组名称不能为空").max(20, "分组名称最多 20 个字"),
     collapsed: z.boolean().optional(),
   })).max(MAX_PROMPT_GROUPS, `最多 ${MAX_PROMPT_GROUPS} 个分组`),
+  categories: z.array(z.object({
+    // 旧数据里由「分组里的分组」转来的分类保留原来的 grp- ID
+    id: z.string().regex(/^(cat|grp)-[\w-]{1,40}$/, "分类 ID 不正确"),
+    name: z.string().trim().min(1, "分类名称不能为空").max(20, "分类名称最多 20 个字"),
+  })).max(MAX_PROMPT_CATEGORIES, `最多 ${MAX_PROMPT_CATEGORIES} 个自建分类`).optional(),
   categoryOrder: ids,
   hiddenCategories: ids,
   hiddenPrompts: ids,
@@ -39,10 +46,11 @@ function serial<T>(root: string, task: () => Promise<T>) {
 export async function getPromptLayout(root: string): Promise<PromptLayout> {
   const parsed = layoutSchema.safeParse(await readJson<unknown>(layoutFile(root), null));
   if (!parsed.success) return emptyPromptLayout();
-  return {
+  return normalizePromptLayout({
     ...parsed.data, usage: parsed.data.usage || {}, parents: parsed.data.parents || {},
+    categories: parsed.data.categories || [],
     hiddenCategories: parsed.data.hiddenCategories.filter((item) => item !== "mine"),
-  };
+  });
 }
 
 /** 整体保存布局;使用次数以服务端记的为准,不被页面上的旧数据覆盖 */
@@ -51,8 +59,10 @@ export async function savePromptLayout(root: string, value: unknown) {
   return serial(root, async () => {
     const current = await getPromptLayout(root);
     const groups = [...new Map(data.groups.map((group) => [group.id, group])).values()];
+    const categories = [...new Map((data.categories || []).map((item) => [item.id, item])).values()]
+      .filter((item) => !groups.some((group) => group.id === item.id));
     const next: PromptLayout = {
-      ...data, groups, usage: current.usage, parents: data.parents || {},
+      ...data, groups, categories, usage: current.usage, parents: data.parents || {},
       hiddenCategories: [...new Set(data.hiddenCategories)].filter((item) => item !== "mine"),
       hiddenPrompts: [...new Set(data.hiddenPrompts)],
       categoryOrder: [...new Set(data.categoryOrder)],
