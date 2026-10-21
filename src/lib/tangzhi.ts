@@ -209,14 +209,15 @@ export function videoSpec(id: string, description: string, tag = "") {
 
 /** 把 /api/pricing 的返回整理成可选的视频模型,参数限制按模型描述锁定(见 videoSpec)。 */
 /** rechargeRate:中转站充值汇率(元/美元),价格换算成用户实际支付的人民币 */
-export function toVideoModels(payload: unknown, group = "default", rechargeRate = 1): VideoModel[] {
+/** group 为 null 时不看分组(自定义中转站:能用哪些由 Key 决定),价格按原价 */
+export function toVideoModels(payload: unknown, group: string | null = "default", rechargeRate = 1): VideoModel[] {
   const data = (payload as { data?: PricingEntry[]; group_ratio?: Record<string, number> }) || {};
-  const groupRatio = Number(data.group_ratio?.[group] || 1);
+  const groupRatio = Number((group && data.group_ratio?.[group]) || 1);
   const vendors = vendorNames(payload);
   const models: VideoModel[] = [];
   for (const entry of data.data || []) {
     if (!entry.model_name || !entry.supported_endpoint_types?.includes("openai-video")) continue;
-    if (entry.enable_groups && !entry.enable_groups.includes(group)) continue;
+    if (group && entry.enable_groups && !entry.enable_groups.includes(group)) continue;
     const tag = (String(entry.tags || "").split(",")[0] || "").trim().toUpperCase();
     const defaults = TAG_DEFAULTS[tag] || FALLBACK_DEFAULTS;
     const spec = videoSpec(entry.model_name, entry.description || "", tag);

@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { genericVideoModel, toVideoModels, type VideoModel } from "./tangzhi";
 import { genericImageModel, IMAGE_MODEL_NAME, isChatImageName, toImageModels, type ImageModel } from "./image-models";
-import { assistCandidates, assistSystemPrompt, cleanAssistOutput, toTextModels, type AssistKind } from "./prompt-assist";
+import {
+  assistCandidates, assistSystemPrompt, cleanAssistOutput, isChatModelEntry, toTextModels, type AssistKind,
+} from "./prompt-assist";
 import { DEFAULT_RELAY, publicFetch, relayFetch, relayHost, type Relay } from "./relay";
 
 export type CatalogModel = VideoModel | ImageModel;
@@ -9,7 +11,11 @@ export type CatalogModel = VideoModel | ImageModel;
 const CATALOG_TTL = 60_000;
 const MAX_CATALOGS = 50;
 // 每个中转站地址各自缓存
-const catalogs = new Map<string, { at: number; videos: VideoModel[]; images: ImageModel[]; texts: string[] }>();
+const catalogs = new Map<string, {
+  at: number; videos: VideoModel[]; images: ImageModel[]; texts: string[];
+  /** 不看分组解析出的视频 / 生图模型(自定义中转站按 Key 的模型列表取用,分组名可能都不叫 default) */
+  anyGroup: CatalogModel[];
+}>();
 
 /** 读取中转站公开定价接口(new-api 的 /api/pricing)里的视频、生图模型(1 分钟缓存,失败时沿用上次结果)。 */
 async function catalog(relay: Relay) {
@@ -26,8 +32,10 @@ async function catalog(relay: Relay) {
       at: Date.now(), videos: toVideoModels(payload, "default", rate), images: toImageModels(payload, "default", rate),
       // 文本模型不看分组:Key 在哪个分组就能用哪些,见 textModelsFor
       texts: toTextModels(payload, null),
+      anyGroup: relay.custom ? [...toVideoModels(payload, null, rate), ...toImageModels(payload, null, rate)] : [],
     };
-    if (!entry.videos.length && !entry.images.length) throw new Error("中转站暂无可用的视频或生图模型");
+    // 自定义中转站的分组可能都不叫 default(视频、生图一个都对不上),对话模型照样要留着
+    if (!entry.videos.length && !entry.images.length && !entry.anyGroup.length && !entry.texts.length) throw new Error("中转站暂无可用的模型");
     if (catalogs.size >= MAX_CATALOGS && !catalogs.has(relay.base)) catalogs.delete(catalogs.keys().next().value as string);
     catalogs.set(relay.base, entry);
     return entry;
@@ -68,10 +76,13 @@ async function customRelayModels(relay: Relay, apiKey: string): Promise<CatalogM
   const parsed = await catalog(relay).catch(() => undefined);
   const list = await keyModelList(apiKey, relay);
   if (!list) {
-    if (parsed) return [...parsed.videos, ...parsed.images];
+    if (parsed) return parsed.anyGroup.length ? parsed.anyGroup : [...parsed.videos, ...parsed.images];
     throw new Error("无法获取中转站模型：请检查中转站地址和 API Key");
   }
-  const known = new Map<string, CatalogModel>([...(parsed?.videos || []), ...(parsed?.images || [])].map((model) => [model.id, model]));
+  // 定价表里写了描述的沿用解析出的参数和价格(不看分组;价格按原价)
+  const known = new Map<string, CatalogModel>(
+    [...(parsed?.anyGroup || []), ...(parsed?.videos || []), ...(parsed?.images || [])].map((model) => [model.id, model]),
+  );
   const models: CatalogModel[] = [];
   for (const { id, types } of list) {
     const found = known.get(id);
@@ -343,16 +354,22 @@ async function keyModelList(apiKey: string, relay: Relay) {
   }
 }
 
-async function keyModelIds(apiKey: string, relay: Relay) {
-  const list = await keyModelList(apiKey, relay);
-  return list ? new Set(list.map((item) => item.id)) : undefined;
-}
-
-/** 这个 Key 能用的对话模型;没给 Key 或中转站读不到 Key 的模型列表时,列出全部对话模型 */
+/**
+ * 这个 Key 能用的对话模型:定价表里的对话模型 ∩ Key 的 /v1/models;
+ * 自定义中转站再加上 Key 的模型列表里认得出是对话模型的(定价表可能读不到或没写)。
+ * 没给 Key 或读不到 Key 的模型列表时,列出定价表里全部对话模型。
+ */
 async function textModelsFor(relay: Relay, apiKey?: string) {
-  const texts = (await catalog(relay)).texts;
-  const ids = apiKey ? await keyModelIds(apiKey, relay) : undefined;
-  return ids ? texts.filter((id) => ids.has(id)) : texts;
+  const parsed = await catalog(relay).catch((error) => {
+    if (!relay.custom) throw error;
+    return undefined;
+  });
+  const texts = parsed?.texts || [];
+  const list = apiKey ? await keyModelList(apiKey, relay) : undefined;
+  if (!list) return texts;
+  const known = new Set(texts);
+  const ids = list.filter(({ id, types }) => known.has(id) || (relay.custom && isChatModelEntry(id, types))).map((item) => item.id);
+  return [...new Set(ids)].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
 }
 
 /** 设置页「提示词优化模型」的选项:这个 Key 能用的对话模型,以及「自动」现在会先用哪个 */

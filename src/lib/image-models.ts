@@ -330,15 +330,15 @@ export function imageSpec(description: string, chat: boolean) {
 }
 
 /** 从 /api/pricing 里挑出生图模型 */
-export function toImageModels(payload: unknown, group = "default", rechargeRate = 1): ImageModel[] {
+export function toImageModels(payload: unknown, group: string | null = "default", rechargeRate = 1): ImageModel[] {
   const data = (payload as { data?: PricingEntry[]; group_ratio?: Record<string, number> }) || {};
-  const context: PriceContext = { groupRatio: Number(data.group_ratio?.[group] || 1), rechargeRate };
+  const context: PriceContext = { groupRatio: Number((group && data.group_ratio?.[group]) || 1), rechargeRate };
   const vendors = vendorNames(payload);
   const models: ImageModel[] = [];
   for (const entry of data.data || []) {
     const chat = isChatImageModel(entry);
     if (!entry.model_name || (!chat && !entry.supported_endpoint_types?.includes("image-generation"))) continue;
-    if (entry.enable_groups && !entry.enable_groups.includes(group)) continue;
+    if (group && entry.enable_groups && !entry.enable_groups.includes(group)) continue;
     const price = imagePricing(entry, context);
     models.push({
       type: "image",

@@ -2,7 +2,7 @@
  * 提示词优化:用中转站的对话模型把用户写的几句话扩写成完整的视频 / 生图提示词。
  * 默认挑一个便宜、快的对话模型(名字带 luna / mini / flash 等),可用 MOTE_ASSIST_MODEL 指定。
  */
-import { isChatImageModel } from "./image-models";
+import { IMAGE_MODEL_NAME, isChatImageModel, isChatImageName } from "./image-models";
 
 interface PricingEntry {
   model_name?: string;
@@ -11,7 +11,24 @@ interface PricingEntry {
   billing_expr?: string;
 }
 
-const NON_CHAT = new Set(["openai-video", "image-generation"]);
+const NON_CHAT = new Set([
+  "openai-video", "video-generation", "image-generation", "image-edit", "openai-image",
+  "openai-transcription", "openai-speech", "openai-music", "embeddings", "jina-rerank",
+]);
+const CHAT_TYPES = new Set(["openai", "anthropic", "gemini", "openai-response"]);
+// 只有名字时:视频、生图、语音、向量这些都不是对话模型
+const NOT_CHAT_NAME = /veo|sora|kling|hailuo|seedance|video|vidu|runway|pika|embed|whisper|tts|speech|audio|rerank|moderation|music|suno/i;
+
+/**
+ * Key 的 /v1/models 里一项是不是对话模型:new-api 会给端点类型,按类型认;
+ * 没有类型(非 new-api 的中转站)时按名字排除视频、生图、语音等。
+ */
+export function isChatModelEntry(id: string, types: readonly string[]) {
+  // 生图模型有的也只标 openai(gpt-image、nano-banana…),名字上再排除一次
+  if (IMAGE_MODEL_NAME.test(id) || isChatImageName(id)) return false;
+  if (types.length) return types.some((type) => CHAT_TYPES.has(type)) && !types.some((type) => NON_CHAT.has(type));
+  return !NOT_CHAT_NAME.test(id);
+}
 
 /** /api/pricing 里能走 Chat Completions 的纯文本模型;group 为 null 时不看分组(具体能用哪些由 Key 决定) */
 export function toTextModels(payload: unknown, group: string | null = "default"): string[] {
