@@ -15,6 +15,12 @@ import { mergeWorkspace, readProfile, writeProfile } from "./workspace-merge";
  * 服务器只保存哈希,不保存 Key。
  */
 export const API_KEY_HEADER = "x-tangzhi-key";
+/** 图片单独用的 Key(选填);没带时图片也用 API_KEY_HEADER 的 Key */
+export const IMAGE_KEY_HEADER = "x-tangzhi-image-key";
+
+/** 生图、列生图模型用的 Key:单独填了就用它,否则用视频的 Key */
+export const imageKeyOf = (request: Request, fallback?: string) =>
+  request.headers.get(IMAGE_KEY_HEADER)?.trim() || fallback;
 export const SESSION_COOKIE = "mote_uid";
 
 export interface User { apiKey: string; userId: string; relay: Relay }

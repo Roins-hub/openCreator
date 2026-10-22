@@ -4,7 +4,7 @@ import { generateRequestSchema } from "@/lib/schemas";
 import {
   buildVideoRequest, TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError,
 } from "@/lib/tangzhi";
-import { mediaPrefixes, requireUser } from "@/lib/identity";
+import { imageKeyOf, mediaPrefixes, requireUser } from "@/lib/identity";
 import { externalMediaUrl } from "@/lib/object-store";
 import { encodeTaskId, findModel, publicOrigin, submitVideoTask } from "@/lib/tangzhi-server";
 import { fitImageOptions, fitImageToModel, imageRequestError, type ImageModel } from "@/lib/image-models";
@@ -67,13 +67,15 @@ export async function POST(request: Request) {
     const input = generateRequestSchema.parse(await request.json());
     const conversation = await getConversation(userId, input.conversationId);
     if (!conversation) throw new Error("会话不存在");
-    const model = await findModel(input.modelId, relay, apiKey);
+    // 视频走视频的 Key,图片走图片的 Key(没单独填就是同一个);对话和资产都记在视频 Key 的账号下
+    const imageKey = imageKeyOf(request, apiKey) || apiKey;
+    const model = await findModel(input.modelId, relay, apiKey, imageKey);
     // 只能引用自己的素材
     const prefixes = await mediaPrefixes(userId);
     if (input.attachments.some((item) => !prefixes.some((prefix) => item.path.startsWith(prefix)))) {
       throw new Error("参考素材不存在，请重新上传");
     }
-    if (model.type === "image") return await generateImages({ apiKey, userId, relay }, conversation, model, input);
+    if (model.type === "image") return await generateImages({ apiKey: imageKey, userId, relay }, conversation, model, input);
 
     const options = input.videoOptions;
     if (!options) throw new Error("缺少视频参数");

@@ -6,6 +6,8 @@ const STORAGE_KEY = "mote.tangzhi.apiKey";
 const BASE_STORAGE_KEY = "mote.tangzhi.baseUrl";
 export const API_KEY_HEADER = "x-tangzhi-key";
 export const RELAY_HEADER = "x-tangzhi-base";
+/** 图片单独用的 Key(选填);服务端没收到时图片也用视频的 Key */
+export const IMAGE_KEY_HEADER = "x-tangzhi-image-key";
 const CHANGE_EVENT = "mote-api-key-change";
 
 export function readApiKey() {
@@ -43,8 +45,13 @@ export function onApiKeyChange(listener: () => void) {
   };
 }
 
-export function apiKeyHeaders(key = readApiKey(), base = readRelayBase()): Record<string, string> {
-  return { ...(key ? { [API_KEY_HEADER]: key } : {}), ...(base ? { [RELAY_HEADER]: base } : {}) };
+/** 请求头:视频的 Key(也决定对话和资产存在哪个账号)、中转站地址,单独填了图片 Key 时一并带上 */
+export function apiKeyHeaders(key = readApiKey(), base = readRelayBase(), imageKey = readImageKey()): Record<string, string> {
+  return {
+    ...(key ? { [API_KEY_HEADER]: key } : {}),
+    ...(base ? { [RELAY_HEADER]: base } : {}),
+    ...(imageKey && imageKey !== key ? { [IMAGE_KEY_HEADER]: imageKey } : {}),
+  };
 }
 
 /** 用当前 Key 换取看视频/图片用的 Cookie;Key 无效时抛出中转站的提示。 */
@@ -61,10 +68,12 @@ export async function openSession(key = readApiKey(), base = readRelayBase()) {
 }
 
 /**
- * 按用途分开的 Key(选填):聊天和提示词优化要调用文本模型,视频 / 图片的 Key 所在分组未必有,
- * 所以可以各填一个。聊天没填用视频 / 图片的 Key;提示词优化没填先用聊天的 Key,聊天也没填再用视频 / 图片的 Key。
- * 聊天记录、资产始终按视频 / 图片的 Key 对应的账号存放。
+ * 按用途分开的 Key(选填):图片可以和视频用不同的 Key(不同分组 / 账号);
+ * 聊天和提示词优化要调用文本模型,视频的 Key 所在分组未必有,所以也可以各填一个。
+ * 图片、聊天没填用视频的 Key;提示词优化没填先用聊天的 Key,聊天也没填再用视频的 Key。
+ * 聊天记录、资产始终按视频的 Key 对应的账号存放。
  */
+const IMAGE_KEY_STORAGE = "mote.tangzhi.imageKey";
 const CHAT_KEY_STORAGE = "mote.tangzhi.chatKey";
 const ASSIST_KEY_STORAGE = "mote.tangzhi.assistKey";
 
@@ -80,12 +89,14 @@ function writeStored(name: string, value: string) {
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
+export const readImageKey = () => readStored(IMAGE_KEY_STORAGE);
+export const writeImageKey = (value: string) => writeStored(IMAGE_KEY_STORAGE, value);
 export const readChatKey = () => readStored(CHAT_KEY_STORAGE);
 export const writeChatKey = (value: string) => writeStored(CHAT_KEY_STORAGE, value);
 export const readAssistKey = () => readStored(ASSIST_KEY_STORAGE);
 export const writeAssistKey = (value: string) => writeStored(ASSIST_KEY_STORAGE, value);
 
-/** 提示词优化实际用的 Key:单独填了就用它,否则用聊天的 Key,聊天也没填再用视频 / 图片的 Key */
+/** 提示词优化实际用的 Key:单独填了就用它,否则用聊天的 Key,聊天也没填再用视频的 Key */
 export const effectiveAssistKey = () => readAssistKey() || readChatKey() || readApiKey();
 export const assistKeyHeaders = () => apiKeyHeaders(effectiveAssistKey());
 

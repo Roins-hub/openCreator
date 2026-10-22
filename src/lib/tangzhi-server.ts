@@ -67,6 +67,22 @@ export async function videoModels(relay: Relay = DEFAULT_RELAY): Promise<VideoMo
 // 没有端点信息时按名字认视频模型
 const VIDEO_MODEL_NAME = /veo|sora|kling|hailuo|seedance|(?:^|[-_])sd-\d|(?:^|[-_])wan[\d.]*[-_]?(?:t2v|i2v)|vidu|video|runway|pika|luma|pixverse/i;
 
+const VIDEO_TYPES = new Set(["openai-video", "video-generation"]);
+const IMAGE_TYPES = new Set(["image-generation", "image-edit", "openai-image"]);
+
+export type KeyModelKind = "video" | "image" | "chat" | "other";
+
+/**
+ * Key 的 /v1/models 里一项是什么模型:new-api 会给端点类型,按类型认;没有类型时按名字认。
+ * 同一个 Key 往往视频、生图、对话模型都有,模型列表和设置页的「验证」都靠它分开。
+ */
+export function keyModelKind(id: string, types: readonly string[]): KeyModelKind {
+  if (types.some((type) => VIDEO_TYPES.has(type)) || (!types.length && VIDEO_MODEL_NAME.test(id))) return "video";
+  if (types.some((type) => IMAGE_TYPES.has(type)) || isChatImageName(id) || (!types.length && IMAGE_MODEL_NAME.test(id))) return "image";
+  if (isChatModelEntry(id, types)) return "chat";
+  return "other";
+}
+
 /**
  * 自定义中转站:模型以这个 Key 的 /v1/models 为准(能用哪些就列哪些)。
  * 中转站的 /api/pricing 里按本站格式写了描述的,沿用解析出的参数和价格;
@@ -87,25 +103,36 @@ async function customRelayModels(relay: Relay, apiKey: string): Promise<CatalogM
   for (const { id, types } of list) {
     const found = known.get(id);
     if (found) { models.push(found); continue; }
-    if (types.includes("openai-video") || (!types.length && VIDEO_MODEL_NAME.test(id))) {
-      models.push(genericVideoModel(id));
-    } else if (types.includes("image-generation") || isChatImageName(id) || (!types.length && IMAGE_MODEL_NAME.test(id))) {
-      models.push(genericImageModel(id, !types.includes("image-generation") && isChatImageName(id)));
-    }
+    const kind = keyModelKind(id, types);
+    if (kind === "video") models.push(genericVideoModel(id));
+    // 只能走对话接口出图的(nano-banana 这类)标记为对话生图
+    else if (kind === "image") models.push(genericImageModel(id, !types.some((type) => IMAGE_TYPES.has(type)) && isChatImageName(id)));
   }
   if (!models.length) throw new Error("这个 Key 在中转站上没有可用的视频或生图模型");
   return [...models.filter((model) => model.type === "video"), ...models.filter((model) => model.type === "image")];
 }
 
-/** 视频模型在前,生图模型在后;自定义中转站按 Key 读模型列表 */
-export async function catalogModels(relay: Relay = DEFAULT_RELAY, apiKey?: string): Promise<CatalogModel[]> {
-  if (relay.custom && apiKey) return customRelayModels(relay, apiKey);
+/**
+ * 视频模型在前,生图模型在后。视频和图片可以用不同的 Key:
+ * 自定义中转站的视频模型按视频 Key 的 /v1/models 列,生图模型按图片 Key 的列。
+ */
+export async function catalogModels(relay: Relay = DEFAULT_RELAY, apiKey?: string, imageKey = apiKey): Promise<CatalogModel[]> {
+  if (relay.custom && apiKey) {
+    if (!imageKey || imageKey === apiKey) return customRelayModels(relay, apiKey);
+    const [fromVideoKey, fromImageKey] = await Promise.all([
+      customRelayModels(relay, apiKey).catch(() => [] as CatalogModel[]),
+      customRelayModels(relay, imageKey).catch(() => [] as CatalogModel[]),
+    ]);
+    const models = [...fromVideoKey.filter((model) => model.type === "video"), ...fromImageKey.filter((model) => model.type === "image")];
+    if (!models.length) throw new Error("视频和图片的 Key 在中转站上都没有可用的模型");
+    return models;
+  }
   const { videos, images } = await catalog(relay);
   return [...videos, ...images];
 }
 
-export async function findModel(id: string, relay: Relay = DEFAULT_RELAY, apiKey?: string) {
-  const model = (await catalogModels(relay, apiKey)).find((item) => item.id === id);
+export async function findModel(id: string, relay: Relay = DEFAULT_RELAY, apiKey?: string, imageKey = apiKey) {
+  const model = (await catalogModels(relay, apiKey, imageKey)).find((item) => item.id === id);
   if (!model) throw new Error("所选模型已下线，请重新选择模型");
   return model;
 }

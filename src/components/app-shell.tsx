@@ -966,7 +966,7 @@ export function AppShell() {
     setOptimizing(true);
     setError("");
     try {
-      // 用「提示词优化」的 Key(没单独填时就是视频 / 图片的 Key)
+      // 用「提示词优化」的 Key(没单独填时先用聊天的,再用视频的 Key)
       const result = await request<{ prompt: string; model: string }>("/api/prompt-assist", {
         method: "POST", headers: { ...assistKeyHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ prompt, kind: selected.type, model: readAssistModel() || undefined }),
