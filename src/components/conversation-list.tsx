@@ -11,6 +11,7 @@ import {
   Check, ChevronDown, Folder, FolderPlus, ListChecks, MoreHorizontal, Pencil, Plus, Search, Trash2, X,
 } from "lucide-react";
 import { Dropdown } from "@/components/dropdown";
+import { useHoverPeek } from "@/components/hover-peek";
 import { HistoryMenu } from "@/components/history-menu";
 import { matchConversation } from "@/lib/conversation-search";
 import type { Conversation } from "@/lib/types";
@@ -27,12 +28,14 @@ const DROP = "group:";
 const collision: CollisionDetection = (args) => droppablesUnderPointer(args, DROP).slice(0, 1).map((item) => ({ id: item.id }));
 
 /** 侧边栏的一行对话,按住拖动(原位置留下虚影,拿起的那一行浮在鼠标下) */
-function DraggableRow({ id, disabled, className, children }: {
+function DraggableRow({ id, disabled, className, children, ...hover }: {
   id: string; disabled: boolean; className: string; children: ReactNode;
-}) {
+} & Pick<React.HTMLAttributes<HTMLDivElement>, "onMouseEnter" | "onMouseLeave" | "onMouseDown">) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id, disabled });
   return (
     <div ref={setNodeRef} {...attributes} {...listeners} tabIndex={-1} role={undefined}
+      onMouseEnter={hover.onMouseEnter} onMouseLeave={hover.onMouseLeave}
+      onMouseDownCapture={hover.onMouseDown}
       aria-roledescription="可拖动的对话" className={`${className} ${isDragging ? "is-placeholder" : ""}`}>
       {children}
     </div>
@@ -75,6 +78,8 @@ export function ConversationList({
   const [groupMenu, setGroupMenu] = useState<string>();
   const [dropTarget, setDropTarget] = useState<string>();
   const [draggingId, setDraggingId] = useState<string>();
+  // 鼠标停在某个对话上时,旁边显示完整标题、分组和最近更新时间;管理、拖动时不弹
+  const peek = useHoverPeek(managing || Boolean(draggingId));
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
@@ -168,7 +173,14 @@ export function ConversationList({
 
   const row = (conversation: Conversation) => {
     const checked = selected.has(conversation.id);
+    const records = conversation.messages?.filter((message) => message.role === "assistant").length || 0;
     return <DraggableRow key={conversation.id} id={conversation.id} disabled={managing}
+      {...peek.bind(conversation.id, {
+        title: conversation.title || "新对话",
+        group: groups.find((group) => group.id === inGroup(conversation))?.name,
+        time: conversation.updatedAt,
+        extra: records ? `${records} 条生成记录` : undefined,
+      })}
       className={`history-row ${conversation.id === activeId && !managing ? "active" : ""} ${managing && checked ? "selected" : ""}`}>
       {managing ? <label className="history-title history-check">
         <input type="checkbox" checked={checked} onChange={(event) => toggle([conversation.id], event.target.checked)} />
@@ -185,6 +197,7 @@ export function ConversationList({
   };
 
   return <div className="conversation-list">
+    {peek.card}
     <div className="history-label history-toolbar">
       <span>对话</span>
       {!managing && <span className="history-tools">

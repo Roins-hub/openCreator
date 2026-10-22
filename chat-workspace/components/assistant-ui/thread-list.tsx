@@ -64,6 +64,7 @@ import {
   type ThreadGroups,
 } from "@/lib/thread-groups";
 import { getThreadGroups, setThreadGroups, useThreadGroups } from "@/lib/thread-groups-store";
+import { useHoverPeek } from "@/components/assistant-ui/hover-peek";
 import { startChatInGroup as startNewChatInGroup } from "@/lib/chat-group-nav";
 
 export const ThreadList: FC = () => {
@@ -147,6 +148,8 @@ type OrganizerContextValue = {
   managing: boolean;
   selected: ReadonlySet<string>;
   toggle: (id: string) => void;
+  /** 悬停卡片:鼠标停在某个聊天上时显示完整标题、分组和最后一条消息的时间 */
+  peek?: (id: string) => Pick<React.HTMLAttributes<HTMLElement>, "onMouseEnter" | "onMouseLeave" | "onMouseDown">;
 };
 const OrganizerContext = createContext<OrganizerContextValue>({
   managing: false,
@@ -184,6 +187,8 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState<string>();
+  // 管理、拖动时不弹悬停卡片
+  const hoverPeek = useHoverPeek(managing || Boolean(draggingId));
   const [dropTarget, setDropTarget] = useState<string>();
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -290,6 +295,16 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
     if (groupOf(id) !== target) update(moveThreads(data, [id], target));
   };
 
+  const peek = (id: string) => {
+    const item = itemsById.get(id);
+    const groupId = groupOf(id);
+    return hoverPeek.bind(id, {
+      title: item?.title || "新聊天",
+      group: groupId ? data.groups.find((group) => group.id === groupId)?.name : undefined,
+      time: item?.lastMessageAt,
+    });
+  };
+
   const renderItem = (index: number) => (
     <ThreadListPrimitive.ItemByIndex key={threadIds[index]} index={index} components={{ ThreadListItem }} />
   );
@@ -314,7 +329,8 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
   const hasThreads = threadIds.length > 0;
 
   return (
-    <OrganizerContext.Provider value={{ managing, selected, toggle }}>
+    <OrganizerContext.Provider value={{ managing, selected, toggle, peek }}>
+      {hoverPeek.card}
       {hasThreads && (
         <div className="ws-label">
           <span>聊天</span>
@@ -698,7 +714,7 @@ const ThreadListSkeleton: FC = () => (
 export const ThreadListItem: FC = () => {
   const id = useAuiState((s) => s.threadListItem.id);
   const isRunning = useAuiState((s) => s.threadListItem.isRunning);
-  const { managing, selected, toggle } = useContext(OrganizerContext);
+  const { managing, selected, toggle, peek } = useContext(OrganizerContext);
   const [isRenaming, setIsRenaming] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef(false);
@@ -725,7 +741,8 @@ export const ThreadListItem: FC = () => {
   }
 
   return (
-    <div ref={setNodeRef} {...attributes} {...listeners} tabIndex={-1} role={undefined}>
+    <div ref={setNodeRef} {...attributes} {...listeners} tabIndex={-1} role={undefined}
+      {...(isRenaming ? {} : peek?.(id))}>
       <ThreadListItemPrimitive.Root className={cn("ws-row group", isDragging && "is-placeholder")}>
         {isRenaming ? (
           <ThreadListItemRename
