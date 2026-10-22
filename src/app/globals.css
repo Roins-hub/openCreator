@@ -2974,3 +2974,27 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 }
 .back-to-top:not(.is-visible) { max-width: 0; padding: 0; border-color: transparent; }
 .topbar .back-to-top:not(.is-visible) { margin-right: -8px; }
+
+/* ---------- 模型选择「常用」的管理:移出单个、勾选后清除、一键清空 ---------- */
+.common-tools { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--muted); font-size: 11px; }
+.common-tools button, .common-pick-all {
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border: 1px solid var(--line);
+  border-radius: max(var(--r-control), 7px); color: var(--muted); background: var(--paper); font-size: 11px; font-weight: 600;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.common-tools button:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); background: var(--warm); }
+.common-tools button:disabled { opacity: .4; }
+.common-tools button.is-danger:hover, .common-tools button.is-danger.confirm { color: var(--danger, oklch(55% .18 25)); border-color: currentColor; }
+.common-tools.is-managing { animation: common-tools-in .26s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes common-tools-in { from { opacity: 0; transform: translateX(6px); } }
+.common-pick-all { cursor: pointer; }
+.common-pick-all input, .pick-row-pick { accent-color: var(--ink); }
+.pick-row-pick { flex: 0 0 auto; width: 15px; height: 15px; margin-left: 8px; }
+.pick-row.is-picked { background: color-mix(in oklab, var(--warm) 70%, transparent); }
+.pick-row-remove {
+  flex: 0 0 auto; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border-radius: 8px;
+  color: var(--faint); background: transparent; opacity: 0; transition: opacity .15s, color .15s, background .15s;
+}
+.pick-row:hover .pick-row-remove, .pick-row-remove:focus-visible { opacity: 1; }
+.pick-row-remove:hover { color: var(--ink); background: var(--warm); }
+@media (hover: none) { .pick-row-remove { opacity: 1; } }

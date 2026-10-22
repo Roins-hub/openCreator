@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Check, ChevronDown, Clapperboard, Image as ImageIcon, Search, Star, X } from "lucide-react";
+import { Check, ChevronDown, Clapperboard, Image as ImageIcon, ListChecks, Search, Star, Trash2, X } from "lucide-react";
 import { durationSummary, formatPrice, type VideoModel } from "@/lib/tangzhi";
 import { tierPrice, yuan, type ImageModel, type ImageResolution } from "@/lib/image-models";
 import { channelOf, groupModels, matchesQuery } from "@/lib/model-catalog";
@@ -117,6 +117,10 @@ export function ModelPicker({
   const [billingFilter, setBillingFilter] = useState<VideoModel["billing"]>();
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recents, setRecents] = useState<string[]>([]);
+  // 「常用」的批量管理:勾选后清除,或一键清空(加星的和最近用过的都会移出)
+  const [managingCommon, setManagingCommon] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [confirmClear, setConfirmClear] = useState(false);
   const [active, setActive] = useState(0);
   const keyboardMove = useRef(false);
   const [position, setPosition] = useState<CSSProperties>();
@@ -169,6 +173,9 @@ export function ModelPicker({
     return [];
   })();
   const rows = sections.flatMap((section) => section.models);
+  const inCommon = !searching && currentView === FAVORITE_VIEW;
+  const managing = managingCommon && inCommon;
+  const allPicked = managing && common.length > 0 && common.every((model) => picked.has(model.id));
 
   const place = useCallback(() => {
     const trigger = triggerRef.current?.getBoundingClientRect();
@@ -204,6 +211,9 @@ export function ModelPicker({
     const recent = readList(RECENTS_KEY);
     setFavorites(favs);
     setRecents(recent);
+    setManagingCommon(false);
+    setPicked(new Set());
+    setConfirmClear(false);
     setQuery("");
     // 打开时停在当前模型所在的系列
     setView(selected ? seriesKey(selected) : favs.length || recent.length ? FAVORITE_VIEW : undefined);
@@ -256,6 +266,30 @@ export function ModelPicker({
     writeList(FAVORITES_KEY, next);
     setFavorites(next);
   };
+  /** 从「常用」里移出:加星的取消星标,最近用过的从记录里删掉 */
+  const removeCommon = (ids: readonly string[]) => {
+    const drop = new Set(ids);
+    const nextFavorites = readList(FAVORITES_KEY).filter((id) => !drop.has(id));
+    const nextRecents = readList(RECENTS_KEY).filter((id) => !drop.has(id));
+    writeList(FAVORITES_KEY, nextFavorites);
+    writeList(RECENTS_KEY, nextRecents);
+    setFavorites(nextFavorites);
+    setRecents(nextRecents);
+    setPicked((current) => new Set([...current].filter((id) => !drop.has(id))));
+    setConfirmClear(false);
+    setActive(0);
+    if (!nextFavorites.length && !nextRecents.length) setManagingCommon(false);
+  };
+  const togglePicked = (id: string) => setPicked((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const stopManagingCommon = () => {
+    setManagingCommon(false);
+    setPicked(new Set());
+    setConfirmClear(false);
+  };
 
   const chip = (label: string, on: boolean, toggle: () => void) => (
     <button type="button" className={`model-filter ${on ? "is-on" : ""}`} aria-pressed={on} onClick={toggle}>{label}</button>
@@ -293,7 +327,10 @@ export function ModelPicker({
                     keyboardMove.current = true;
                     setActive((index) => Math.max(0, index - 1));
                   }
-                  else if (event.key === "Enter" && rows[active]) { event.preventDefault(); choose(rows[active].id); }
+                  else if (event.key === "Enter" && rows[active]) {
+                    event.preventDefault();
+                    if (managing) togglePicked(rows[active].id); else choose(rows[active].id);
+                  }
                 }} />
               {query && <button type="button" className="model-search-clear" aria-label="清空搜索"
                 onClick={() => { setQuery(""); searchRef.current?.focus(); }}><X size={13} /></button>}
@@ -341,17 +378,48 @@ export function ModelPicker({
               <div className="model-list-body" key={searching ? "search" : currentView}>
               {sections.map((section) => (
                 <section key={section.title}>
-                  <h4>{section.title}<span>{section.models.length} 个</span></h4>
+                  <h4>{section.title}<span>{section.models.length} 个</span>
+                    {inCommon && (
+                      <span className={`common-tools ${managing ? "is-managing" : ""}`}>
+                        {managing ? <>
+                          <label className="common-pick-all">
+                            <input type="checkbox" checked={allPicked}
+                              onChange={() => setPicked(allPicked ? new Set() : new Set(common.map((model) => model.id)))} />
+                            全选
+                          </label>
+                          <button type="button" disabled={!picked.size} onClick={() => removeCommon([...picked])}>
+                            <X size={12} />清除所选{picked.size ? ` ${picked.size}` : ""}
+                          </button>
+                          <button type="button" className={`is-danger ${confirmClear ? "confirm" : ""}`}
+                            onClick={() => (confirmClear ? removeCommon(common.map((model) => model.id)) : setConfirmClear(true))}
+                            title="把加星的和最近用过的都移出常用">
+                            <Trash2 size={12} />{confirmClear ? "确认清空" : "一键清空"}
+                          </button>
+                          <button type="button" onClick={stopManagingCommon}>完成</button>
+                        </> : (
+                          <button type="button" onClick={() => { setManagingCommon(true); setPicked(new Set()); }}
+                            title="批量移出常用">
+                            <ListChecks size={12} />管理
+                          </button>
+                        )}
+                      </span>
+                    )}
+                  </h4>
                   {section.models.map((model) => {
                     const index = rows.indexOf(model);
                     const starred = favorites.includes(model.id);
                     return (
                       <div key={`${section.title}-${model.id}`} data-row={index} role="option" aria-selected={model.id === value}
                         style={{ "--i": Math.min(index, 10) } as CSSProperties}
-                        className={`pick-row ${index === active ? "is-active" : ""} ${model.id === value ? "is-selected" : ""}`}
+                        className={`pick-row ${index === active ? "is-active" : ""} ${model.id === value ? "is-selected" : ""} ${managing && picked.has(model.id) ? "is-picked" : ""}`}
                         onMouseEnter={() => setActive(index)}>
-                        <button type="button" className="pick-row-main" onClick={() => choose(model.id)}
-                          title={model.description || model.id}>
+                        {managing && (
+                          <input type="checkbox" className="pick-row-pick" checked={picked.has(model.id)}
+                            aria-label={`选择 ${model.id}`} onChange={() => togglePicked(model.id)} />
+                        )}
+                        <button type="button" className="pick-row-main"
+                          onClick={() => (managing ? togglePicked(model.id) : choose(model.id))}
+                          title={managing ? "点击选择" : model.description || model.id}>
                           <ScrollingName text={model.id} />
                           <span className="pick-row-chips">{rowChips(model).map((label) => (
                             <em key={label} className={label === channelOf(model.id, model.tag) ? "is-channel" : undefined}>{label}</em>
@@ -360,10 +428,17 @@ export function ModelPicker({
                         <span className="pick-row-price">{priceText(model, imageResolution)}</span>
                         {model.id === value && <Check size={14} className="pick-row-check" aria-label="当前模型" />}
                         <button type="button" className={`pick-row-star ${starred ? "is-on" : ""}`} aria-pressed={starred}
-                          aria-label={starred ? `从常用移除 ${model.id}` : `加入常用 ${model.id}`}
-                          title={starred ? "从常用移除" : "加入常用"} onClick={() => toggleFavorite(model.id)}>
+                          aria-label={starred ? `取消星标 ${model.id}` : `加星 ${model.id}`}
+                          title={starred ? "取消星标" : "加星（固定在常用里）"} onClick={() => toggleFavorite(model.id)}>
                           <Star size={14} />
                         </button>
+                        {/* 常用里每一行都能直接移出(最近用过的也能删掉) */}
+                        {inCommon && !managing && (
+                          <button type="button" className="pick-row-remove" aria-label={`移出常用 ${model.id}`}
+                            title="移出常用" onClick={() => removeCommon([model.id])}>
+                            <X size={14} />
+                          </button>
+                        )}
                       </div>
                     );
                   })}
