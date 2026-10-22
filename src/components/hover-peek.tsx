@@ -5,8 +5,9 @@ import { createPortal } from "react-dom";
 import { Clock3, Folder, Inbox } from "lucide-react";
 import { fullTime, relativeTime } from "@/lib/relative-time";
 
-const SHOW_DELAY = 450;
+const SHOW_DELAY = 200;
 const CARD_WIDTH = 280;
+const LEAVE_GRACE = 120;
 
 export interface PeekInfo {
   title: string;
@@ -51,7 +52,7 @@ export function useHoverPeek(disabled = false) {
       const target = event.currentTarget;
       window.clearTimeout(timer.current);
       // 已经有卡片时(在相邻几行间移动)马上换,不再等
-      const delay = shown ? 60 : SHOW_DELAY;
+      const delay = shown ? 0 : SHOW_DELAY;
       timer.current = window.setTimeout(() => {
         if (!target.isConnected) return;
         const rect = target.getBoundingClientRect();
@@ -60,7 +61,11 @@ export function useHoverPeek(disabled = false) {
         setShown({ ...info, key, top, left });
       }, delay);
     },
-    onMouseLeave: hide,
+    // 移开后稍等一下再收:鼠标移到相邻一行时卡片直接换内容,不用重新等
+    onMouseLeave: () => {
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => setShown(undefined), LEAVE_GRACE);
+    },
     onMouseDown: hide,
   });
 

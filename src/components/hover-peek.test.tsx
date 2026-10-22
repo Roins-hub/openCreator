@@ -26,6 +26,7 @@ describe("useHoverPeek", () => {
     expect(card.textContent).toContain("svasd");
     expect(card.textContent).toContain("3 分钟前");
     fireEvent.mouseLeave(screen.getByTestId("row"));
+    act(() => { vi.advanceTimersByTime(200); });
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
