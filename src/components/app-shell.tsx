@@ -21,7 +21,8 @@ import { EmptyStatePrompt } from "@/components/empty-state-prompt";
 import { acceptAttribute, MEDIA_KIND_LABEL, MEDIA_RULES, pickMediaFiles } from "@/lib/media-files";
 import { NETWORK_ERROR, readableError } from "@/lib/network-error";
 import {
-  apiKeyHeaders, assistKeyHeaders, effectiveAssistKey, onApiKeyChange, openSession, readApiKey, readAssistModel, readRelayBase,
+  apiKeyHeaders, assistKeyHeaders, effectiveAssistKey, isImageOnly, onApiKeyChange, openSession, readApiKey, readAssistModel,
+  readRelayBase,
 } from "@/lib/api-key";
 import {
   countMedia, durationSummary, effectiveReferenceMode, fitVideoOptions, formatPrice, normalizeReferenceMode, remainingMedia,
@@ -166,6 +167,8 @@ export function AppShell() {
   const [groups, setGroups] = useState<ConversationGroup[]>([]);
   // 自定义中转站的域名;空 = 内置中转站
   const [relayHost, setRelayHost] = useState("");
+  // 只填了图片 Key(没有视频 Key):视频入口不可用
+  const [imageOnly, setImageOnly] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const { containerRef: kindSliderRef, indicator: kindIndicator } = useSlidingIndicator<HTMLDivElement>();
   const [optimizing, setOptimizing] = useState(false);
@@ -301,7 +304,11 @@ export function AppShell() {
     return () => clearTimeout(timer);
   }, [load, apiKey]);
   useEffect(() => {
-    const sync = () => { setApiKey(readApiKey()); setRelayHost(readRelayBase().replace(/^https?:\/\//, "")); };
+    const sync = () => {
+      setApiKey(readApiKey());
+      setImageOnly(isImageOnly());
+      setRelayHost(readRelayBase().replace(/^https?:\/\//, ""));
+    };
     const timer = window.setTimeout(sync, 0);
     const unsubscribe = onApiKeyChange(sync);
     return () => { clearTimeout(timer); unsubscribe(); };
@@ -1511,6 +1518,7 @@ export function AppShell() {
                   <button type="button" key={kind} role="radio" aria-checked={selected?.type === kind}
                     className={selected?.type === kind ? "selected" : ""}
                     disabled={!(kind === "image" ? imageModels : videoModels).length}
+                    title={kind === "video" && imageOnly ? "还没有填写视频的 Key：到「设置」填写后才能生成视频" : undefined}
                     onClick={() => switchKind(kind)}><Icon size={13} />{label}</button>
                 ))}
               </div>}

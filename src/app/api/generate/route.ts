@@ -4,7 +4,7 @@ import { generateRequestSchema } from "@/lib/schemas";
 import {
   buildVideoRequest, TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError,
 } from "@/lib/tangzhi";
-import { imageKeyOf, mediaPrefixes, requireUser } from "@/lib/identity";
+import { imageKeyOf, isImageOnly, mediaPrefixes, requireUser } from "@/lib/identity";
 import { externalMediaUrl } from "@/lib/object-store";
 import { encodeTaskId, findModel, publicOrigin, submitVideoTask } from "@/lib/tangzhi-server";
 import { fitImageOptions, fitImageToModel, imageRequestError, type ImageModel } from "@/lib/image-models";
@@ -76,6 +76,7 @@ export async function POST(request: Request) {
       throw new Error("参考素材不存在，请重新上传");
     }
     if (model.type === "image") return await generateImages({ apiKey: imageKey, userId, relay }, conversation, model, input);
+    if (isImageOnly(request)) throw new Error("还没有填写视频的 Key，不能生成视频。请到「设置」填写视频的 Key");
 
     const options = input.videoOptions;
     if (!options) throw new Error("缺少视频参数");

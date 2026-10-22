@@ -18,6 +18,10 @@ export const API_KEY_HEADER = "x-tangzhi-key";
 /** 图片单独用的 Key(选填);没带时图片也用 API_KEY_HEADER 的 Key */
 export const IMAGE_KEY_HEADER = "x-tangzhi-image-key";
 
+/** 只填了图片 Key(没有视频 Key):这时 API_KEY_HEADER 里就是图片 Key,只列生图模型、不接视频生成 */
+export const IMAGE_ONLY_HEADER = "x-tangzhi-image-only";
+export const isImageOnly = (request: Request) => request.headers.get(IMAGE_ONLY_HEADER) === "1";
+
 /** 生图、列生图模型用的 Key:单独填了就用它,否则用视频的 Key */
 export const imageKeyOf = (request: Request, fallback?: string) =>
   request.headers.get(IMAGE_KEY_HEADER)?.trim() || fallback;
