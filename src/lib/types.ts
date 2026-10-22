@@ -40,6 +40,8 @@ export interface GenerationMeta {
   modelId: string;
   videoOptions?: VideoOptions;
   imageOptions?: ImageOptions;
+  /** 提交视频任务的 Key 的指纹(有多个视频 Key 时记下,查询 / 下载用同一个 Key) */
+  keyHint?: string;
 }
 
 export interface Conversation {

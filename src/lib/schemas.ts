@@ -18,6 +18,7 @@ const generationMetaSchema = z.object({
   videoOptions: z.lazy(() => videoOptionsSchema).optional(),
   // 早期版本的生图参数格式不同,读不懂时丢掉,不让整条消息校验失败
   imageOptions: z.lazy(() => imageOptionsSchema).optional().catch(undefined),
+  keyHint: z.string().regex(/^[0-9a-f]{6,64}$/).optional().catch(undefined),
 });
 
 export const messageSchema = z.object({

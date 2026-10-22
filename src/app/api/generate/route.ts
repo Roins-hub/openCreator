@@ -4,9 +4,9 @@ import { generateRequestSchema } from "@/lib/schemas";
 import {
   buildVideoRequest, TANGZHI_PROVIDER_ID, TANGZHI_PROVIDER_NAME, videoRequestError,
 } from "@/lib/tangzhi";
-import { imageKeyOf, isImageOnly, mediaPrefixes, requireUser } from "@/lib/identity";
+import { imageKeysOf, isImageOnly, keyHint, mediaPrefixes, requireUser, videoKeysOf } from "@/lib/identity";
 import { externalMediaUrl } from "@/lib/object-store";
-import { encodeTaskId, findModel, publicOrigin, submitVideoTask } from "@/lib/tangzhi-server";
+import { encodeTaskId, findModel, pickKey, publicOrigin, submitVideoTask } from "@/lib/tangzhi-server";
 import { fitImageOptions, fitImageToModel, imageRequestError, type ImageModel } from "@/lib/image-models";
 import { newImageTaskId, startImageJob } from "@/lib/image-jobs";
 import type { Relay } from "@/lib/relay";
@@ -67,19 +67,25 @@ export async function POST(request: Request) {
     const input = generateRequestSchema.parse(await request.json());
     const conversation = await getConversation(userId, input.conversationId);
     if (!conversation) throw new Error("会话不存在");
-    // 视频走视频的 Key,图片走图片的 Key(没单独填就是同一个);对话和资产都记在视频 Key 的账号下
-    const imageKey = imageKeyOf(request, apiKey) || apiKey;
-    const model = await findModel(input.modelId, relay, apiKey, imageKey);
+    // 视频走视频的 Key,图片走图片的 Key(没单独填就是同一个),各自可以有多个;对话和资产都记在账号 Key 下
+    const videoKeys = videoKeysOf(request, apiKey);
+    const imageKeys = imageKeysOf(request, apiKey);
+    const model = await findModel(input.modelId, relay, videoKeys, imageKeys);
     // 只能引用自己的素材
     const prefixes = await mediaPrefixes(userId);
     if (input.attachments.some((item) => !prefixes.some((prefix) => item.path.startsWith(prefix)))) {
       throw new Error("参考素材不存在，请重新上传");
     }
-    if (model.type === "image") return await generateImages({ apiKey: imageKey, userId, relay }, conversation, model, input);
+    if (model.type === "image") {
+      const imageKey = (await pickKey(relay, imageKeys, model.id)) || apiKey;
+      return await generateImages({ apiKey: imageKey, userId, relay }, conversation, model, input);
+    }
     if (isImageOnly(request)) throw new Error("还没有填写视频的 Key，不能生成视频。请到「设置」填写视频的 Key");
 
     const options = input.videoOptions;
     if (!options) throw new Error("缺少视频参数");
+    // 几个视频 Key 里用能调用这个模型的那个;记下它的指纹,查询和下载视频时找回同一个 Key
+    const videoKey = (await pickKey(relay, videoKeys, model.id)) || apiKey;
     const invalid = videoRequestError(model, input.prompt, options, input.attachments);
     if (invalid) throw new Error(invalid);
     // 给中转站的是 24 小时有效的临时链接
@@ -96,7 +102,7 @@ export async function POST(request: Request) {
           model, input.prompt, options, input.attachments,
           (media) => urls.get(media.path) || "", `${batch}_${index + 1}`,
         );
-        taskIds.push(encodeTaskId(await submitVideoTask(apiKey, body, request.signal, relay)));
+        taskIds.push(encodeTaskId(await submitVideoTask(videoKey, body, request.signal, relay)));
       }
     } catch (error) {
       // 一个都没提交成功、也没有记下提示词时,直接把错误返回给浏览器
@@ -116,6 +122,7 @@ export async function POST(request: Request) {
       generation: {
         type: "video", providerName: TANGZHI_PROVIDER_NAME, modelName: model.id, modelId: model.id,
         videoOptions: options,
+        ...(videoKeys.length > 1 ? { keyHint: keyHint(videoKey) } : {}),
       },
     };
     // 同一对话可以同时有多个生成任务:在锁内追加,不覆盖其他请求写入的消息

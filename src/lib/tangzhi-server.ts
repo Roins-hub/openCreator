@@ -113,18 +113,28 @@ async function customRelayModels(relay: Relay, apiKey: string): Promise<CatalogM
   return [...models.filter((model) => model.type === "video"), ...models.filter((model) => model.type === "image")];
 }
 
+const keyList = (keys?: string | readonly string[]) =>
+  [...new Set((typeof keys === "string" ? [keys] : keys || []).filter(Boolean))];
+
 /**
- * 视频模型在前,生图模型在后。视频和图片可以用不同的 Key:
- * 自定义中转站的视频模型按视频 Key 的 /v1/models 列,生图模型按图片 Key 的列。
+ * 视频模型在前,生图模型在后。视频和图片可以用不同的 Key,每种还可以有多个 Key:
+ * 自定义中转站的视频模型取所有视频 Key 的 /v1/models 合起来(去重),生图模型取所有图片 Key 的。
  */
-export async function catalogModels(relay: Relay = DEFAULT_RELAY, apiKey?: string, imageKey = apiKey): Promise<CatalogModel[]> {
-  if (relay.custom && apiKey) {
-    if (!imageKey || imageKey === apiKey) return customRelayModels(relay, apiKey);
-    const [fromVideoKey, fromImageKey] = await Promise.all([
-      customRelayModels(relay, apiKey).catch(() => [] as CatalogModel[]),
-      customRelayModels(relay, imageKey).catch(() => [] as CatalogModel[]),
-    ]);
-    const models = [...fromVideoKey.filter((model) => model.type === "video"), ...fromImageKey.filter((model) => model.type === "image")];
+export async function catalogModels(
+  relay: Relay = DEFAULT_RELAY, videoKeys?: string | readonly string[], imageKeys: string | readonly string[] | undefined = videoKeys,
+): Promise<CatalogModel[]> {
+  const videoList = keyList(videoKeys);
+  const imageList = keyList(imageKeys).length ? keyList(imageKeys) : videoList;
+  if (relay.custom && videoList.length) {
+    if (videoList.length === 1 && imageList.length === 1 && imageList[0] === videoList[0]) {
+      return customRelayModels(relay, videoList[0]);
+    }
+    const lists = new Map(await Promise.all([...new Set([...videoList, ...imageList])].map(async (key) =>
+      [key, await customRelayModels(relay, key).catch(() => [] as CatalogModel[])] as const)));
+    const seen = new Set<string>();
+    const pick = (keys: string[], type: CatalogModel["type"]) => keys.flatMap((key) => (lists.get(key) || [])
+      .filter((model) => model.type === type && !seen.has(model.id) && seen.add(model.id)));
+    const models = [...pick(videoList, "video"), ...pick(imageList, "image")];
     if (!models.length) throw new Error("视频和图片的 Key 在中转站上都没有可用的模型");
     return models;
   }
@@ -132,8 +142,20 @@ export async function catalogModels(relay: Relay = DEFAULT_RELAY, apiKey?: strin
   return [...videos, ...images];
 }
 
-export async function findModel(id: string, relay: Relay = DEFAULT_RELAY, apiKey?: string, imageKey = apiKey) {
-  const model = (await catalogModels(relay, apiKey, imageKey)).find((item) => item.id === id);
+/** 几个 Key 里挑能调用这个模型的(按顺序,第一个能用的);只有一个 Key 或都看不出来时用第一个 */
+export async function pickKey(relay: Relay, keys: readonly string[], modelId: string) {
+  if (keys.length <= 1) return keys[0];
+  for (const key of keys) {
+    const list = await keyModelList(key, relay);
+    if (list?.some((item) => item.id === modelId)) return key;
+  }
+  return keys[0];
+}
+
+export async function findModel(
+  id: string, relay: Relay = DEFAULT_RELAY, videoKeys?: string | readonly string[], imageKeys: string | readonly string[] | undefined = videoKeys,
+) {
+  const model = (await catalogModels(relay, videoKeys, imageKeys)).find((item) => item.id === id);
   if (!model) throw new Error("所选模型已下线，请重新选择模型");
   return model;
 }

@@ -1,7 +1,7 @@
 import { getConversation, updateConversation } from "@/lib/conversation-store";
 import { failure, ok } from "@/lib/http";
 import { recordAsset } from "@/lib/asset-store";
-import { requireUser } from "@/lib/identity";
+import { keyByHint, requireUser, videoKeysOf } from "@/lib/identity";
 import { mediaKey } from "@/lib/media-store";
 import { deleteObject, putObject } from "@/lib/object-store";
 import { decodeTaskId, downloadVideo, queryVideoTask, type TaskResult } from "@/lib/tangzhi-server";
@@ -53,10 +53,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }
 
     const upstreamId = decodeTaskId(taskId);
+    // 有多个视频 Key 时,用提交这个任务的那个(按记下的指纹找);找不到就用主要的
+    const taskKey = keyByHint(videoKeysOf(request, apiKey), current.generation?.keyHint) || apiKey;
     // 切换到 Tangzhi 之前由其他供应商提交的任务,已无法查询
-    const task: TaskResult = upstreamId ? await queryVideoTask(apiKey, upstreamId, relay)
+    const task: TaskResult = upstreamId ? await queryVideoTask(taskKey, upstreamId, relay)
       : { status: "failed", error: "该任务来自已移除的供应商，无法继续查询" };
-    const fetched = task.status === "succeeded" && upstreamId ? await fetchVideo(apiKey, userId, upstreamId, relay) : undefined;
+    const fetched = task.status === "succeeded" && upstreamId ? await fetchVideo(taskKey, userId, upstreamId, relay) : undefined;
 
     let applied = false;
     const conversation = await updateConversation(userId, conversationId, (latest) => {

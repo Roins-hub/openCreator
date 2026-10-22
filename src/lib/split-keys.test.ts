@@ -10,6 +10,11 @@ const byKey: Record<string, { id: string; supported_endpoint_types: string[] }[]
     { id: "gpt-image-2", supported_endpoint_types: ["image-generation"] },
     { id: "image-key-video", supported_endpoint_types: ["openai-video"] },
   ],
+  // 第二个视频 Key:在另一个分组,能看到别的视频模型
+  "sk-video2": [
+    { id: "sd2.5-101010", supported_endpoint_types: ["openai-video"] },
+    { id: "kling-v3", supported_endpoint_types: ["openai-video"] },
+  ],
 };
 
 vi.mock("./relay", async (importOriginal) => ({
@@ -23,7 +28,7 @@ vi.mock("./relay", async (importOriginal) => ({
   },
 }));
 
-const { catalogModels, findModel } = await import("./tangzhi-server");
+const { catalogModels, findModel, pickKey } = await import("./tangzhi-server");
 const relay = { base: "https://custom.example.com", custom: true };
 
 describe("separate video and image keys", () => {
@@ -50,5 +55,28 @@ describe("telling models apart on one key", async () => {
     expect(keyModelKind("flux-dev", [])).toBe("image");
     expect(keyModelKind("gpt-6-sol", ["openai"])).toBe("chat");
     expect(keyModelKind("whisper-1", ["openai-transcription"])).toBe("other");
+  });
+});
+
+describe("several keys for one use", () => {
+  it("merges the models of every video key and calls each model with a key that has it", async () => {
+    const models = await catalogModels(relay, ["sk-video", "sk-video2"], ["sk-image"]);
+    expect(models.map((model) => `${model.type}:${model.id}`)).toEqual(["video:sd2.5-101010", "video:kling-v3", "image:gpt-image-2"]);
+    expect(await pickKey(relay, ["sk-video", "sk-video2"], "kling-v3")).toBe("sk-video2");
+    expect(await pickKey(relay, ["sk-video", "sk-video2"], "sd2.5-101010")).toBe("sk-video");
+    expect(await pickKey(relay, ["sk-video"], "kling-v3")).toBe("sk-video");
+  });
+
+  it("reads extra keys from the request and finds the submitting key by its hint", async () => {
+    const { imageKeysOf, keyByHint, keyHint, videoKeysOf } = await import("./identity");
+    const request = new Request("http://x", { headers: {
+      "x-tangzhi-video-keys": "sk-video2, sk-video ,",
+      "x-tangzhi-image-key": "sk-image",
+      "x-tangzhi-image-keys": "sk-image2",
+    } });
+    expect(videoKeysOf(request, "sk-video")).toEqual(["sk-video", "sk-video2"]);
+    expect(imageKeysOf(request, "sk-video")).toEqual(["sk-image", "sk-image2"]);
+    expect(keyByHint(["sk-video", "sk-video2"], keyHint("sk-video2"))).toBe("sk-video2");
+    expect(keyByHint(["sk-video"], undefined)).toBeUndefined();
   });
 });

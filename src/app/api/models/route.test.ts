@@ -21,6 +21,6 @@ describe("GET /api/models", () => {
       headers: { "x-tangzhi-key": "sk-video", "x-tangzhi-image-key": "sk-image" },
     }));
     expect((await response.json())).toHaveLength(2);
-    expect(catalogModels).toHaveBeenLastCalledWith(expect.anything(), "sk-video", "sk-image");
+    expect(catalogModels).toHaveBeenLastCalledWith(expect.anything(), ["sk-video"], ["sk-image"]);
   });
 });

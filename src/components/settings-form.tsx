@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft, Check, CircleCheck, CircleX, ExternalLink, Eye, EyeOff, LoaderCircle, Save, TestTube2, X,
+  ArrowLeft, Check, CircleCheck, CircleX, ExternalLink, Eye, EyeOff, LoaderCircle, Plus, Save, TestTube2, X,
 } from "lucide-react";
 import {
   apiKeyHeaders, openSession, readAccountKey, readVideoKey, readAssistKey, readAssistModel, readChatKey, readImageKey, readRelayBase,
-  writeAccountKey, writeApiKey, writeAssistKey, writeAssistModel, writeChatKey, writeImageKey, writeRelayBase,
+  writeAccountKey, writeApiKey, writeAssistKey, cleanKeys, extraKeyHeaders, MAX_EXTRA_KEYS, readExtraKeys,
+  writeExtraKeys, type KeyUse, writeAssistModel, writeChatKey, writeImageKey, writeRelayBase,
 } from "@/lib/api-key";
 import { Dropdown } from "@/components/dropdown";
 import {
@@ -24,7 +25,7 @@ const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 type KeyCheck = { state: "loading" | "success" | "error"; message: string };
 
 /** 一个 API Key 输入框:显示 / 隐藏、验证(只读模型列表,不产生费用) */
-function KeyField({ id, label, note, value, placeholder, check, onChange, onVerify, onEnter, children }: {
+function KeyField({ id, label, note, value, placeholder, check, onChange, onVerify, onEnter, extras, onExtrasChange, children }: {
   id: string;
   label: string;
   note: string;
@@ -34,9 +35,13 @@ function KeyField({ id, label, note, value, placeholder, check, onChange, onVeri
   onChange: (value: string) => void;
   onVerify: () => void;
   onEnter: () => void;
+  /** 同一用途的额外 Key(自定义中转站);不传时不显示「再加一个 Key」 */
+  extras?: string[];
+  onExtrasChange?: (extras: string[]) => void;
   children?: React.ReactNode;
 }) {
   const [visible, setVisible] = useState(false);
+  const setExtra = (index: number, next: string) => onExtrasChange?.(extras!.map((item, at) => at === index ? next : item));
   return (
     <div className="key-field" aria-labelledby={id}>
       <div className="key-field-head">
@@ -62,6 +67,25 @@ function KeyField({ id, label, note, value, placeholder, check, onChange, onVeri
           验证
         </button>
       </div>
+      {extras?.map((extra, index) => (
+        <div className="key-row key-row-extra" key={index}>
+          <div className="secret-input">
+            <input aria-label={`${label}的第 ${index + 2} 个 Key`} type={visible ? "text" : "password"} value={extra}
+              placeholder="sk-…" autoComplete="off" spellCheck={false}
+              onChange={(event) => setExtra(index, event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") onEnter(); }} />
+          </div>
+          <button type="button" className="key-remove" aria-label={`删除${label}的第 ${index + 2} 个 Key`}
+            onClick={() => onExtrasChange?.(extras.filter((_, at) => at !== index))}>
+            <X size={14} />删除
+          </button>
+        </div>
+      ))}
+      {extras && extras.length < MAX_EXTRA_KEYS && (
+        <button type="button" className="key-add" onClick={() => onExtrasChange?.([...extras, ""])}>
+          <Plus size={13} />再加一个 Key（模型取几个 Key 的合集）
+        </button>
+      )}
       {check && check.state !== "loading" && <div className={`model-test-result ${check.state}`}>{check.message}</div>}
       {children}
     </div>
@@ -78,6 +102,10 @@ export function SettingsForm() {
   const [accountKey, setAccountKey] = useState("");
   const [savedAccountKey, setSavedAccountKey] = useState("");
   const [imageKey, setImageKey] = useState("");
+  // 自定义中转站:每种用途可以再加几个 Key(模型取合集)
+  const [extras, setExtras] = useState<Record<KeyUse, string[]>>({ video: [], image: [], chat: [] });
+  const [savedExtras, setSavedExtras] = useState<Record<KeyUse, string[]>>({ video: [], image: [], chat: [] });
+  const changeExtras = (use: KeyUse) => (list: string[]) => setExtras((current) => ({ ...current, [use]: list }));
   const [savedImageKey, setSavedImageKey] = useState("");
   const [chatKey, setChatKey] = useState("");
   const [savedChatKey, setSavedChatKey] = useState("");
@@ -107,9 +135,13 @@ export function SettingsForm() {
 
   // 自定义中转站的模型按 Key 读取(/v1/models):视频模型用视频的 Key,生图模型用图片的 Key;
   // 只填了图片 Key 时只列生图模型
-  const loadModels = (relayBase: string, videoKey: string, imageModelKey: string) => {
+  const loadModels = (relayBase: string, videoKey: string, imageModelKey: string, videoExtras: string[] = [], imageExtras: string[] = []) => {
     setModels(undefined);
-    const headers = apiKeyHeaders(videoKey || imageModelKey, relayBase, imageModelKey, !videoKey && Boolean(imageModelKey));
+    const headers = {
+      ...apiKeyHeaders(videoKey || imageModelKey, relayBase, imageModelKey, !videoKey && Boolean(imageModelKey)),
+      // 用输入框里的额外 Key(可能还没保存)
+      ...(relayBase ? extraKeyHeaders(cleanKeys(videoExtras), cleanKeys(imageExtras)) : {}),
+    };
     fetch("/api/models", { headers }).then(async (response) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "无法获取模型列表");
@@ -144,6 +176,9 @@ export function SettingsForm() {
       setSavedAccountKey(readAccountKey());
       setImageKey(readImageKey());
       setSavedImageKey(readImageKey());
+      const stored = { video: readExtraKeys("video"), image: readExtraKeys("image"), chat: readExtraKeys("chat") };
+      setExtras(stored);
+      setSavedExtras(stored);
       setChatKey(readChatKey());
       setSavedChatKey(readChatKey());
       setAssistKey(readAssistKey());
@@ -152,12 +187,14 @@ export function SettingsForm() {
       setBaseInput(relayBase);
       setCustomMode(Boolean(relayBase));
       setAssistModel(readAssistModel());
-      loadModels(relayBase, key || (relayBase ? readAccountKey() : ""), readImageKey());
+      loadModels(relayBase, key || (relayBase ? readAccountKey() : ""), readImageKey(), readExtraKeys("video"), readExtraKeys("image"));
       setReady(true);
     }, 0);
     return () => clearTimeout(timer);
   }, []);
 
+  const extrasChanged = (["video", "image", "chat"] as const)
+    .some((use) => cleanKeys(extras[use]).join(",") !== savedExtras[use].join(","));
   const [saving, setSaving] = useState(false);
   const save = async () => {
     const key = apiKey.trim();
@@ -176,6 +213,10 @@ export function SettingsForm() {
       setApiKey(key);
       setSaved(key);
       writeAccountKey(accountKey);
+      const nextExtras = { video: cleanKeys(extras.video), image: cleanKeys(extras.image), chat: cleanKeys(extras.chat) };
+      (Object.keys(nextExtras) as KeyUse[]).forEach((use) => writeExtraKeys(use, nextExtras[use]));
+      setExtras(nextExtras);
+      setSavedExtras(nextExtras);
       setSavedAccountKey(accountKey.trim());
       writeImageKey(imageKey);
       writeChatKey(chatKey);
@@ -183,8 +224,9 @@ export function SettingsForm() {
       setSavedImageKey(imageKey.trim());
       setSavedChatKey(chatKey.trim());
       setSavedAssistKey(assistKey.trim());
-      if (base !== savedBase || key !== saved || imageKey.trim() !== savedImageKey || accountKey.trim() !== savedAccountKey) {
-        loadModels(base, key || account, imageKey.trim());
+      if (base !== savedBase || key !== saved || imageKey.trim() !== savedImageKey || accountKey.trim() !== savedAccountKey
+        || extrasChanged) {
+        loadModels(base, key || account, imageKey.trim(), customMode ? nextExtras.video : [], customMode ? nextExtras.image : []);
       }
       setSavedBase(base);
       setStatus(callKey ? "已保存" : "已清除");
@@ -227,7 +269,7 @@ export function SettingsForm() {
   };
 
   const dirty = apiKey.trim() !== saved || base !== savedBase || imageKey.trim() !== savedImageKey
-    || (customMode && accountKey.trim() !== savedAccountKey)
+    || (customMode && accountKey.trim() !== savedAccountKey) || (customMode && extrasChanged)
     || chatKey.trim() !== savedChatKey || assistKey.trim() !== savedAssistKey;
   const saveIfDirty = () => { if (dirty) void save(); };
 
@@ -307,17 +349,20 @@ export function SettingsForm() {
                 note={customMode ? "选填 · 不填就用主 Key · 生成视频" : "和图片至少填一个 · 生成视频，也用来存放你的对话和资产"}
                 value={apiKey} placeholder="sk-…" check={checks.main} onEnter={saveIfDirty}
                 onChange={(value) => { setApiKey(value); setCheck("main", undefined); }}
-                onVerify={() => void verify("main")} />
+                onVerify={() => void verify("main")}
+                {...(customMode ? { extras: extras.video, onExtrasChange: changeExtras("video") } : {})} />
               <KeyField id="key-image" label="图片" note="选填 · 不填就用视频的 Key；没填视频 Key 时必填"
                 value={imageKey} placeholder="不填则沿用视频的 Key" check={checks.image} onEnter={saveIfDirty}
                 onChange={(value) => { setImageKey(value); setCheck("image", undefined); }}
-                onVerify={() => void verify("image")}>
+                onVerify={() => void verify("image")}
+                {...(customMode ? { extras: extras.image, onExtrasChange: changeExtras("image") } : {})}>
                 <p className="key-help">生图和输入框里的生图模型列表都用这个 Key；自定义中转站按这个 Key 的 /v1/models 列出能用的生图模型。填了视频 Key 时，生成的图片存在视频 Key 的账号下；只填图片 Key 时，对话和资产都存在图片 Key 的账号下（只能生图）。</p>
               </KeyField>
               <KeyField id="key-chat" label="聊天" note="选填 · 不填就用视频的 Key"
                 value={chatKey} placeholder="不填则沿用上面的 Key" check={checks.chat} onEnter={saveIfDirty}
                 onChange={(value) => { setChatKey(value); setCheck("chat", undefined); }}
-                onVerify={() => void verify("chat")}>
+                onVerify={() => void verify("chat")}
+                {...(customMode ? { extras: extras.chat, onExtrasChange: changeExtras("chat") } : {})}>
                 <p className="key-help">「聊天」页面的模型列表和回复都用这个 Key；聊天模型在聊天页面的输入框里选。</p>
               </KeyField>
               <KeyField id="key-assist" label="提示词优化" note="选填 · 不填就用聊天的 Key（聊天也没填则用视频的）"

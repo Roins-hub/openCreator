@@ -3044,3 +3044,17 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .key-help, .key-field-head span { color: var(--muted); font-weight: 600; }
 .key-help code, .relay-rules code { font-weight: 500; }
 .key-help.is-warning { color: var(--danger); }
+
+/* 设置页:同一用途的额外 Key(自定义中转站) */
+.key-row-extra .key-remove {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 104px; height: 100%;
+  border: 1px solid var(--line); border-radius: max(var(--r-control), 10px); color: var(--muted); background: var(--paper);
+  font-size: 13px; font-weight: 600; transition: color .15s, border-color .15s;
+}
+.key-row-extra .key-remove:hover { color: var(--danger); border-color: currentColor; }
+.key-add {
+  display: inline-flex; align-items: center; gap: 6px; margin: 0 0 6px; padding: 6px 10px; border: 1px dashed var(--line-strong);
+  border-radius: max(var(--r-control), 8px); color: var(--muted); background: transparent; font-size: 12px; font-weight: 600;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.key-add:hover { color: var(--ink); border-color: var(--focus); background: var(--warm); }

@@ -31,6 +31,30 @@ export const isImageOnly = (request: Request) => request.headers.get(IMAGE_ONLY_
 /** 生图、列生图模型用的 Key:单独填了就用它,否则用视频的 Key */
 export const imageKeyOf = (request: Request, fallback?: string) =>
   request.headers.get(IMAGE_KEY_HEADER)?.trim() || fallback;
+
+/**
+ * 同一用途可以填多个 Key(自定义中转站):一个 Key 只能看到它分组里的模型,几个 Key 合起来模型更多。
+ * 额外的 Key 用逗号分隔放在这两个请求头里;调用某个模型时用能调用它的那个 Key(见 tangzhi-server 的 pickKey)。
+ */
+export const VIDEO_KEYS_HEADER = "x-tangzhi-video-keys";
+export const IMAGE_KEYS_HEADER = "x-tangzhi-image-keys";
+export const MAX_KEYS_PER_USE = 8;
+
+const headerKeys = (request: Request, name: string) =>
+  (request.headers.get(name) || "").split(",").map((key) => key.trim()).filter(Boolean);
+const uniqueKeys = (keys: (string | undefined)[]) =>
+  [...new Set(keys.filter((key): key is string => Boolean(key)))].slice(0, MAX_KEYS_PER_USE);
+
+/** 视频用的全部 Key:主要的(API_KEY_HEADER)在前,额外的在后 */
+export const videoKeysOf = (request: Request, apiKey?: string) => uniqueKeys([apiKey, ...headerKeys(request, VIDEO_KEYS_HEADER)]);
+/** 图片用的全部 Key:图片 Key(没填就是视频的)在前,额外的在后 */
+export const imageKeysOf = (request: Request, apiKey?: string) =>
+  uniqueKeys([imageKeyOf(request, apiKey), ...headerKeys(request, IMAGE_KEYS_HEADER)]);
+
+/** Key 的指纹(只存这个,不存 Key 本身):记在视频任务上,查询 / 下载时找回提交它的那个 Key */
+export const keyHint = (key: string) => createHash("sha256").update(key).digest("hex").slice(0, 12);
+export const keyByHint = (keys: readonly string[], hint?: string) =>
+  hint ? keys.find((key) => keyHint(key) === hint) : undefined;
 export const SESSION_COOKIE = "mote_uid";
 
 export interface User { apiKey: string; userId: string; relay: Relay }

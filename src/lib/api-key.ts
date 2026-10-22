@@ -12,6 +12,9 @@ export const IMAGE_KEY_HEADER = "x-tangzhi-image-key";
 export const ACCOUNT_KEY_HEADER = "x-tangzhi-account-key";
 /** 只填了图片 Key(没有视频 Key):服务端只列生图模型、不接视频生成 */
 export const IMAGE_ONLY_HEADER = "x-tangzhi-image-only";
+/** 同一用途的额外 Key(自定义中转站,逗号分隔):模型取几个 Key 的合集,调用时用能调用该模型的 Key */
+export const VIDEO_KEYS_HEADER = "x-tangzhi-video-keys";
+export const IMAGE_KEYS_HEADER = "x-tangzhi-image-keys";
 const CHANGE_EVENT = "mote-api-key-change";
 
 /** 设置里填的视频 Key(可能没填) */
@@ -96,7 +99,46 @@ export function apiKeyHeaders(
     ...(base ? { [RELAY_HEADER]: base } : {}),
     ...(imageKey && imageKey !== key ? { [IMAGE_KEY_HEADER]: imageKey } : {}),
     ...(imageOnly ? { [IMAGE_ONLY_HEADER]: "1" } : {}),
+    ...(base ? extraKeyHeaders(readExtraKeys("video"), readExtraKeys("image")) : {}),
   };
+}
+
+/** 额外 Key 的请求头;settings 页用输入框里还没保存的值时直接调用它覆盖 */
+export function extraKeyHeaders(video: readonly string[], image: readonly string[]): Record<string, string> {
+  return {
+    ...(video.length ? { [VIDEO_KEYS_HEADER]: video.join(",") } : {}),
+    ...(image.length ? { [IMAGE_KEYS_HEADER]: image.join(",") } : {}),
+  };
+}
+
+/**
+ * 同一用途的额外 Key(只在自定义中转站用):一个 Key 只能看到它所在分组的模型,多填几个,
+ * 模型列表就是这些 Key 的 /v1/models 合起来;调用时自动用能调用这个模型的 Key。最多 7 个额外的。
+ */
+export type KeyUse = "video" | "image" | "chat";
+export const MAX_EXTRA_KEYS = 7;
+const EXTRA_KEYS_STORAGE: Record<KeyUse, string> = {
+  video: "mote.tangzhi.videoKeysExtra",
+  image: "mote.tangzhi.imageKeysExtra",
+  chat: "mote.tangzhi.chatKeysExtra",
+};
+export const cleanKeys = (list: readonly string[]) =>
+  [...new Set(list.map((key) => key.trim()).filter((key) => key && !key.includes(",")))].slice(0, MAX_EXTRA_KEYS);
+
+export function readExtraKeys(use: KeyUse): string[] {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(EXTRA_KEYS_STORAGE[use]) || "[]");
+    return Array.isArray(value) ? cleanKeys(value.filter((item): item is string => typeof item === "string")) : [];
+  } catch { return []; }
+}
+
+export function writeExtraKeys(use: KeyUse, list: readonly string[]) {
+  const keys = cleanKeys(list);
+  try {
+    if (keys.length) window.localStorage.setItem(EXTRA_KEYS_STORAGE[use], JSON.stringify(keys));
+    else window.localStorage.removeItem(EXTRA_KEYS_STORAGE[use]);
+  } catch { /* 隐私模式等无法写入时忽略 */ }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
 /** 用当前 Key 换取看视频/图片用的 Cookie;Key 无效时抛出中转站的提示。 */
