@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { genericVideoModel, toVideoModels, type VideoModel } from "./tangzhi";
 import { genericImageModel, IMAGE_MODEL_NAME, isChatImageName, toImageModels, type ImageModel } from "./image-models";
 import {
-  assistCandidates, assistSystemPrompt, cleanAssistOutput, isChatModelEntry, toTextModels, type AssistKind,
+  assistCandidates, assistSystemPrompt, cleanAssistOutput, compareModelsNewestFirst, isChatModelEntry, toTextModels,
+  type AssistKind,
 } from "./prompt-assist";
 import { DEFAULT_RELAY, publicFetch, relayFetch, relayHost, type Relay } from "./relay";
 
@@ -396,7 +397,7 @@ async function textModelsFor(relay: Relay, apiKey?: string) {
   if (!list) return texts;
   const known = new Set(texts);
   const ids = list.filter(({ id, types }) => known.has(id) || (relay.custom && isChatModelEntry(id, types))).map((item) => item.id);
-  return [...new Set(ids)].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  return [...new Set(ids)].sort(compareModelsNewestFirst);
 }
 
 /** 设置页「提示词优化模型」的选项:这个 Key 能用的对话模型,以及「自动」现在会先用哪个 */

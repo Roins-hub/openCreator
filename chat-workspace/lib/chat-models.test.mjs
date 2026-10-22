@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chatModelIds, isChatModel } from "./chat-models.ts";
+import { chatModelIds, compareModelsNewestFirst, isChatModel } from "./chat-models.ts";
 
 test("keeps text models and drops video and image models by endpoint type", () => {
   const data = [
@@ -22,7 +22,7 @@ test("keeps text models and drops video and image models by endpoint type", () =
     { id: "claude-x", supported_endpoint_types: ["anthropic"] },
     { id: "gpt-5.5", supported_endpoint_types: ["openai"] },
   ];
-  assert.deepEqual(chatModelIds(data), ["claude-x", "gpt-5.5", "gpt-6-astra"]);
+  assert.deepEqual(chatModelIds(data), ["claude-x", "gpt-6-astra", "gpt-5.5"]);
 });
 
 test("falls back to the model name when the relay gives no endpoint types", () => {
@@ -40,4 +40,12 @@ test("an embeddings-only model is not offered for chat", () => {
     isChatModel({ id: "text-embedding-3", supported_endpoint_types: ["embeddings"] }),
     false,
   );
+});
+
+test("lists newer models first within a family", () => {
+  const ids = ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-astra", "gpt-6-luna", "gpt-6.1-sol", "gpt-5.6-terra", "claude-opus-4-5", "claude-opus-4-7", "gpt-legacy"];
+  assert.deepEqual([...ids].sort(compareModelsNewestFirst), [
+    "claude-opus-4-7", "claude-opus-4-5",
+    "gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-legacy",
+  ]);
 });

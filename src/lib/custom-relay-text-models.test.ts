@@ -32,7 +32,7 @@ const { assistModelOptions } = await import("./tangzhi-server");
 describe("text models on a custom relay", () => {
   it("lists the key's chat models even without a default group", async () => {
     const options = await assistModelOptions({ base: "https://custom.example.com", custom: true }, "sk-test");
-    expect(options.models).toEqual(["claude-luna", "gpt-5.6-terra", "gpt-6-sol"]);
+    expect(options.models).toEqual(["claude-luna", "gpt-6-sol", "gpt-5.6-terra"]);
     expect(options.auto).toBe("claude-luna");
   });
 
@@ -44,5 +44,15 @@ describe("text models on a custom relay", () => {
     expect(isChatModelEntry("deepseek-v4", [])).toBe(true);
     expect(isChatModelEntry("kling-v3", [])).toBe(false);
     expect(isChatModelEntry("text-embedding-3", [])).toBe(false);
+  });
+});
+
+describe("text model order", async () => {
+  const { compareModelsNewestFirst } = await import("./prompt-assist");
+  it("puts newer versions first within a family", () => {
+    const ids = ["gpt-5.6-luna", "gpt-6-astra", "gpt-6.1-sol", "gpt-5.6-sol", "claude-opus-4-5", "claude-opus-4-7"];
+    expect([...ids].sort(compareModelsNewestFirst)).toEqual(
+      ["claude-opus-4-7", "claude-opus-4-5", "gpt-6.1-sol", "gpt-6-astra", "gpt-5.6-luna", "gpt-5.6-sol"],
+    );
   });
 });

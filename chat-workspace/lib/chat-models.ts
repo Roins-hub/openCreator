@@ -31,9 +31,36 @@ export function isChatModel(item: RelayModel) {
   return !NON_CHAT_NAME.test(id);
 }
 
-/** 从 /v1/models 的返回里取出去重、排好序的文本模型 ID。 */
+/** 模型名拆成「系列 / 版本号 / 型号」:gpt-6.1-sol → gpt / [6, 1] / sol,claude-opus-4-7 → claude-opus / [4, 7] / "" */
+function parseModelName(id: string) {
+  const tokens = id.toLowerCase().split(/[-_\s]+/).filter(Boolean);
+  const family: string[] = [];
+  let index = 0;
+  while (index < tokens.length && !/^v?\d/.test(tokens[index])) family.push(tokens[index++]);
+  const version: number[] = [];
+  while (index < tokens.length && /^v?\d+(?:\.\d+)*$/.test(tokens[index])) {
+    version.push(...tokens[index++].replace(/^v/, "").split(".").map(Number));
+  }
+  return { family: family.join("-"), version, variant: tokens.slice(index).join("-") };
+}
+
+/** 新的在前:同一系列按版本号从高到低(6.1 > 6 > 5.6),同版本按型号名;不同系列按名称分开排 */
+export function compareModelsNewestFirst(a: string, b: string) {
+  const x = parseModelName(a);
+  const y = parseModelName(b);
+  if (x.family !== y.family) return x.family.localeCompare(y.family);
+  // 没有版本号的排在这个系列最后
+  if (!x.version.length !== !y.version.length) return x.version.length ? -1 : 1;
+  for (let index = 0; index < Math.max(x.version.length, y.version.length); index++) {
+    const diff = (y.version[index] ?? 0) - (x.version[index] ?? 0);
+    if (diff) return diff;
+  }
+  return x.variant.localeCompare(y.variant) || a.localeCompare(b);
+}
+
+/** 从 /v1/models 的返回里取出去重的文本模型 ID,新的模型排在上面。 */
 export function chatModelIds(data: readonly RelayModel[]) {
   return Array.from(
     new Set(data.filter(isChatModel).map((item) => (item.id as string).trim())),
-  ).sort((a, b) => a.localeCompare(b));
+  ).sort(compareModelsNewestFirst);
 }

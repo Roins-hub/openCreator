@@ -14,8 +14,8 @@ describe("prompt assist", () => {
   };
 
   it("lists only chat-completions text models of the group", () => {
-    expect(toTextModels(pricing)).toEqual(["gpt-5.6-luna", "gpt-6-astra"]);
-    expect(toTextModels(pricing, null)).toEqual(["gpt-5.6-luna", "gpt-6-astra", "vip-only"]);
+    expect(toTextModels(pricing)).toEqual(["gpt-6-astra", "gpt-5.6-luna"]);
+    expect(toTextModels(pricing, null)).toEqual(["gpt-6-astra", "gpt-5.6-luna", "vip-only"]);
   });
 
   it("prefers a configured, then a light model", () => {
