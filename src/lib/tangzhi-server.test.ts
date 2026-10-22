@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { chatImageResult, friendlyMessage, upstreamMessage } from "./tangzhi-server";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_RELAY } from "./relay";
+import { chatImage, chatImageResult, editImage, friendlyMessage, generateImage, upstreamMessage } from "./tangzhi-server";
 
 describe("relay error messages", () => {
   it("explains a failed quota pre-deduction", () => {
@@ -34,5 +35,33 @@ describe("chatImageResult", () => {
   it("reports the model's text when no image comes back", async () => {
     await expect(chatImageResult(reply("这个请求无法生成图片"))).rejects.toThrow("模型没有返回图片：这个请求无法生成图片");
     await expect(chatImageResult({})).rejects.toThrow("中转站没有返回图片");
+  });
+});
+
+describe("task ID header", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // The relay answers with an error so each call stops right after the request.
+  const captureHeaders = () => {
+    const seen: Headers[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      seen.push(new Headers(init.headers));
+      return new Response(JSON.stringify({ error: { message: "stop" } }), { status: 500 });
+    }));
+    return seen;
+  };
+
+  it("sends the workbench task ID with every kind of image call", async () => {
+    const seen = captureHeaders();
+    await generateImage("sk-test", { model: "m", prompt: "p" }, DEFAULT_RELAY, "img.abc").catch(() => {});
+    await editImage("sk-test", new FormData(), DEFAULT_RELAY, "img.def").catch(() => {});
+    await chatImage("sk-test", { model: "m", prompt: "p", aspectRatio: "1:1", imageSize: "1K", references: [] }, DEFAULT_RELAY, "img.ghi").catch(() => {});
+    expect(seen.map((headers) => headers.get("X-Client-Task-Id"))).toEqual(["img.abc", "img.def", "img.ghi"]);
+  });
+
+  it("leaves the header out without a task ID", async () => {
+    const seen = captureHeaders();
+    await generateImage("sk-test", { model: "m", prompt: "p" }).catch(() => {});
+    expect(seen[0].has("X-Client-Task-Id")).toBe(false);
   });
 });

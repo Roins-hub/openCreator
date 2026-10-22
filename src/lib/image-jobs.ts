@@ -60,10 +60,10 @@ async function requestImage(job: ImageJob): Promise<ImageResult> {
       aspectRatio: nearestChatRatio(job.options.ratio),
       imageSize: job.options.resolution.toUpperCase(),
       references,
-    }, job.relay);
+    }, job.relay, job.taskId);
   }
   const fields = imageRequestFields(job.model, job.prompt, job.options);
-  if (!job.references.length) return generateImage(job.apiKey, fields, job.relay);
+  if (!job.references.length) return generateImage(job.apiKey, fields, job.relay, job.taskId);
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) form.set(key, String(value));
   const field = job.references.length === 1 ? "image" : "image[]";
@@ -71,7 +71,7 @@ async function requestImage(job: ImageJob): Promise<ImageResult> {
     const bytes = await getObject(reference.path);
     form.append(field, new Blob([bytes as BlobPart], { type: reference.mimeType || "image/png" }), reference.name || "reference.png");
   }
-  return editImage(job.apiKey, form, job.relay);
+  return editImage(job.apiKey, form, job.relay, job.taskId);
 }
 
 async function runImageJob(job: ImageJob) {

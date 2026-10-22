@@ -281,10 +281,13 @@ async function imageResponse(response: Response, relay: Relay): Promise<ImageRes
   return { bytes, mimeType: type };
 }
 
-export async function generateImage(apiKey: string, body: Record<string, unknown>, relay: Relay = DEFAULT_RELAY) {
+// 工作台自己的任务 ID(img.…):中转站把它记进使用日志,生图日志里能按它对上这次生成
+const taskHeader = (taskId?: string): Record<string, string> => (taskId ? { "X-Client-Task-Id": taskId } : {});
+
+export async function generateImage(apiKey: string, body: Record<string, unknown>, relay: Relay = DEFAULT_RELAY, taskId?: string) {
   const response = await relayFetch(relay, "/v1/images/generations", {
     method: "POST", body: JSON.stringify(body), signal: AbortSignal.timeout(300_000),
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", ...taskHeader(taskId) },
   });
   return imageResponse(response, relay);
 }
@@ -298,6 +301,7 @@ export async function chatImage(
   apiKey: string,
   request: { model: string; prompt: string; aspectRatio: string; imageSize: string; references: { bytes: Uint8Array; mimeType: string }[] },
   relay: Relay = DEFAULT_RELAY,
+  taskId?: string,
 ): Promise<ImageResult> {
   const content = [
     { type: "text", text: request.prompt },
@@ -307,7 +311,7 @@ export async function chatImage(
     })),
   ];
   const data = await call(relay, apiKey, "/v1/chat/completions", {
-    method: "POST", signal: AbortSignal.timeout(300_000),
+    method: "POST", signal: AbortSignal.timeout(300_000), headers: taskHeader(taskId),
     body: JSON.stringify({
       model: request.model,
       messages: [{ role: "user", content }],
@@ -341,10 +345,10 @@ export async function chatImageResult(data: Record<string, unknown>): Promise<Im
   return { bytes, mimeType: type };
 }
 
-export async function editImage(apiKey: string, form: FormData, relay: Relay = DEFAULT_RELAY) {
+export async function editImage(apiKey: string, form: FormData, relay: Relay = DEFAULT_RELAY, taskId?: string) {
   const response = await relayFetch(relay, "/v1/images/edits", {
     method: "POST", body: form, signal: AbortSignal.timeout(300_000),
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: { Authorization: `Bearer ${apiKey}`, ...taskHeader(taskId) },
   });
   return imageResponse(response, relay);
 }
