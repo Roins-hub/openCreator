@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ModelPicker } from "./model-picker";
 import { genericVideoModel } from "@/lib/tangzhi";
+import { cachedModelPrefs } from "@/lib/model-prefs-client";
 
 afterEach(cleanup);
 // jsdom 没有 ResizeObserver / matchMedia(滑动底色和动画用)
@@ -11,10 +12,12 @@ globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {
 window.matchMedia ??= ((query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {} })) as never;
 
 const models = ["alpha-video", "beta-video", "gamma-video"].map((id) => genericVideoModel(id));
-const stored = (key: string) => JSON.parse(window.localStorage.getItem(key) || "[]");
+// 没填 Key 时只改本地缓存;以前存在本地的旧数据先显示出来
+const stored = () => cachedModelPrefs();
 
 describe("ModelPicker 常用", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     window.localStorage.setItem("mote.modelFavorites", JSON.stringify(["alpha-video"]));
     window.localStorage.setItem("mote.modelRecents", JSON.stringify(["beta-video", "gamma-video"]));
   });
@@ -28,7 +31,7 @@ describe("ModelPicker 常用", () => {
   it("removes a recently used model from 常用", () => {
     const list = openCommon();
     fireEvent.click(within(list).getByRole("button", { name: "移出常用 beta-video" }));
-    expect(stored("mote.modelRecents")).toEqual(["gamma-video"]);
+    expect(stored().recents).toEqual(["gamma-video"]);
     expect(within(list).queryByText("beta-video")).toBeNull();
   });
 
@@ -37,10 +40,9 @@ describe("ModelPicker 常用", () => {
     fireEvent.click(within(list).getByRole("button", { name: /管理/ }));
     fireEvent.click(within(list).getByRole("checkbox", { name: "选择 alpha-video" }));
     fireEvent.click(within(list).getByRole("button", { name: /清除所选/ }));
-    expect(stored("mote.modelFavorites")).toEqual([]);
-    expect(stored("mote.modelRecents")).toEqual(["beta-video", "gamma-video"]);
+    expect(stored()).toEqual({ favorites: [], recents: ["beta-video", "gamma-video"] });
     fireEvent.click(within(list).getByRole("button", { name: /一键清空/ }));
     fireEvent.click(within(list).getByRole("button", { name: /确认清空/ }));
-    expect(stored("mote.modelRecents")).toEqual([]);
+    expect(stored()).toEqual({ favorites: [], recents: [] });
   });
 });

@@ -6,27 +6,15 @@ import { durationSummary, formatPrice, type VideoModel } from "@/lib/tangzhi";
 import { tierPrice, yuan, type ImageModel, type ImageResolution } from "@/lib/image-models";
 import { channelOf, groupModels, matchesQuery } from "@/lib/model-catalog";
 import { useSlidingIndicator } from "@/components/sliding-indicator";
+import { cachedModelPrefs, changeModelPrefs, syncModelPrefs } from "@/lib/model-prefs-client";
+import type { ModelPrefs, ModelPrefsOp } from "@/lib/model-prefs";
 
 type PickerModel = VideoModel | ImageModel;
 
-const FAVORITES_KEY = "mote.modelFavorites";
-const RECENTS_KEY = "mote.modelRecents";
-const MAX_RECENTS = 8;
 // 关闭动画的时长(和 CSS 里 model-panel-out 一致)
 const CLOSE_MS = 160;
 const FAVORITE_VIEW = "\u0000favorites";
 const seriesKey = (model: Pick<PickerModel, "vendor" | "series">) => `${model.vendor}\u0000${model.series}`;
-
-function readList(key: string): string[] {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(key) || "[]");
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-  } catch { return []; }
-}
-
-function writeList(key: string, list: string[]) {
-  try { window.localStorage.setItem(key, JSON.stringify(list)); } catch { /* 只影响「常用」 */ }
-}
 
 /** 排序用的价格:视频按秒的在前;价格未知的放最后 */
 function sortValue(model: PickerModel, resolution: ImageResolution) {
@@ -207,10 +195,13 @@ export function ModelPicker({
 
   const openPanel = () => {
     if (!models.length) return;
-    const favs = readList(FAVORITES_KEY);
-    const recent = readList(RECENTS_KEY);
+    // 「常用」按中转站账号保存在服务端:先显示本地缓存,再同步最新的(别的设备可能改过)
+    const cached = cachedModelPrefs();
+    const favs = cached.favorites;
+    const recent = cached.recents;
     setFavorites(favs);
     setRecents(recent);
+    void syncModelPrefs().then((prefs) => { if (prefs) adoptPrefs(prefs); });
     setManagingCommon(false);
     setPicked(new Set());
     setConfirmClear(false);
@@ -253,28 +244,28 @@ export function ModelPicker({
     }
   }, [active, listRef, open]);
 
+  const adoptPrefs = (prefs: ModelPrefs) => {
+    setFavorites(prefs.favorites);
+    setRecents(prefs.recents);
+  };
+  /** 改一次「常用」:界面立刻变,服务端合并后的结果回来再对齐 */
+  const changePrefs = (op: ModelPrefsOp) => {
+    const next = changeModelPrefs({ favorites, recents }, op, adoptPrefs);
+    adoptPrefs(next);
+    return next;
+  };
+
   const choose = (id: string) => {
-    const next = [id, ...readList(RECENTS_KEY).filter((item) => item !== id)].slice(0, MAX_RECENTS);
-    writeList(RECENTS_KEY, next);
-    setRecents(next);
+    changePrefs({ type: "use", id });
     closePanel();
     if (id !== value) onChange(id);
     triggerRef.current?.focus();
   };
-  const toggleFavorite = (id: string) => {
-    const next = favorites.includes(id) ? favorites.filter((item) => item !== id) : [...favorites, id];
-    writeList(FAVORITES_KEY, next);
-    setFavorites(next);
-  };
+  const toggleFavorite = (id: string) => { changePrefs({ type: "favorite", id, on: !favorites.includes(id) }); };
   /** 从「常用」里移出:加星的取消星标,最近用过的从记录里删掉 */
   const removeCommon = (ids: readonly string[]) => {
     const drop = new Set(ids);
-    const nextFavorites = readList(FAVORITES_KEY).filter((id) => !drop.has(id));
-    const nextRecents = readList(RECENTS_KEY).filter((id) => !drop.has(id));
-    writeList(FAVORITES_KEY, nextFavorites);
-    writeList(RECENTS_KEY, nextRecents);
-    setFavorites(nextFavorites);
-    setRecents(nextRecents);
+    const { favorites: nextFavorites, recents: nextRecents } = changePrefs({ type: "remove", ids: [...ids] });
     setPicked((current) => new Set([...current].filter((id) => !drop.has(id))));
     setConfirmClear(false);
     setActive(0);
