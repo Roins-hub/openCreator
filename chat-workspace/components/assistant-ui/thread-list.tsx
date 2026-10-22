@@ -66,6 +66,7 @@ import {
 import { getThreadGroups, setThreadGroups, useThreadGroups } from "@/lib/thread-groups-store";
 import { useHoverPeek } from "@/components/assistant-ui/hover-peek";
 import { chatActivity } from "@/lib/chat-activity";
+import { MarqueeText } from "@/components/assistant-ui/marquee-text";
 import { startChatInGroup as startNewChatInGroup } from "@/lib/chat-group-nav";
 
 export const ThreadList: FC = () => {
@@ -716,6 +717,7 @@ const ThreadListSkeleton: FC = () => (
 export const ThreadListItem: FC = () => {
   const id = useAuiState((s) => s.threadListItem.id);
   const isRunning = useAuiState((s) => s.threadListItem.isRunning);
+  const title = useAuiState((s) => s.threadListItem.title);
   const { managing, selected, toggle, peek } = useContext(OrganizerContext);
   const [isRenaming, setIsRenaming] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -756,9 +758,8 @@ export const ThreadListItem: FC = () => {
         ) : (
           <ThreadListItemPrimitive.Trigger ref={triggerRef} className="ws-row-title">
             {isRunning && <Loader2Icon className="me-1.5 size-3.5 shrink-0 animate-spin opacity-70" />}
-            <span>
-              <ThreadListItemPrimitive.Title fallback="新聊天" />
-            </span>
+            {/* 标题放不下时,悬停像数码屏一样循环滚动 */}
+            <MarqueeText text={title || "新聊天"} />
             {isRunning && <span className="sr-only">正在生成</span>}
           </ThreadListItemPrimitive.Trigger>
         )}

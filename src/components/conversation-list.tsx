@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Dropdown } from "@/components/dropdown";
 import { useHoverPeek } from "@/components/hover-peek";
+import { MarqueeText } from "@/components/marquee-text";
 import { HistoryMenu } from "@/components/history-menu";
 import { matchConversation } from "@/lib/conversation-search";
 import type { Conversation } from "@/lib/types";
@@ -186,7 +187,7 @@ export function ConversationList({
         <input type="checkbox" checked={checked} onChange={(event) => toggle([conversation.id], event.target.checked)} />
         <span>{conversation.title}</span>
       </label> : <>
-        <button className="history-title" onClick={() => onOpen(conversation.id)}>{conversation.title}</button>
+        <button className="history-title" onClick={() => onOpen(conversation.id)}><MarqueeText text={conversation.title} /></button>
         <HistoryMenu title={conversation.title}
           onRename={(title) => onRename(conversation, title)}
           onDelete={() => void onDelete([conversation.id])}

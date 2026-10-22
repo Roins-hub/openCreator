@@ -3018,3 +3018,24 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .hover-peek-extra { color: var(--faint) !important; font-size: 11px !important; }
 @media (hover: none) { .hover-peek { display: none; } }
 @media (prefers-reduced-motion: reduce) { .hover-peek { animation: none; } }
+
+/* ---------- 侧栏标题放不下时,悬停像数码屏一样循环滚动(见 marquee-text.tsx) ---------- */
+.marquee { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.marquee-track { display: inline-block; }
+.marquee-copy { display: inline-block; }
+.marquee-repeat { display: none; margin-left: 36px; }
+.history-row:hover .marquee.is-overflow {
+  text-overflow: clip;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 18px), transparent);
+}
+.history-row:hover .marquee.is-overflow .marquee-repeat { display: inline-block; }
+.history-row:hover .marquee.is-overflow .marquee-track {
+  animation: marquee-run var(--marquee-duration, 6s) linear .4s infinite;
+}
+@keyframes marquee-run { to { transform: translateX(calc(-1 * var(--marquee-distance, 0px))); } }
+@media (prefers-reduced-motion: reduce) {
+  .history-row:hover .marquee.is-overflow .marquee-track { animation: none; }
+  .history-row:hover .marquee.is-overflow { text-overflow: ellipsis; -webkit-mask-image: none; mask-image: none; }
+  .history-row:hover .marquee.is-overflow .marquee-repeat { display: none; }
+}
