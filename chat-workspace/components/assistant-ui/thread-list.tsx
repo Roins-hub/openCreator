@@ -65,6 +65,7 @@ import {
 } from "@/lib/thread-groups";
 import { getThreadGroups, setThreadGroups, useThreadGroups } from "@/lib/thread-groups-store";
 import { useHoverPeek } from "@/components/assistant-ui/hover-peek";
+import { chatActivity } from "@/lib/chat-activity";
 import { startChatInGroup as startNewChatInGroup } from "@/lib/chat-group-nav";
 
 export const ThreadList: FC = () => {
@@ -301,7 +302,8 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
     return hoverPeek.bind(id, {
       title: item?.title || "新聊天",
       group: groupId ? data.groups.find((group) => group.id === groupId)?.name : undefined,
-      time: item?.lastMessageAt,
+      // 这次打开页面后有新消息的,用最新的时间
+      time: chatActivity(item?.remoteId || id) || chatActivity(id) || item?.lastMessageAt,
     });
   };
 

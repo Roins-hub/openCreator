@@ -18,6 +18,21 @@ const BACKUP_FORMAT = "sub2image-chat-backup";
 
 type BackupEntry = { key: string; value: string };
 
+/**
+ * 一批键最后一次写入的时间(只在工作台模式下有,独立部署的 IndexedDB 不记时间,返回空)。
+ * 分批请求,避免地址太长。
+ */
+export async function chatItemTimes(keys: readonly string[]): Promise<Record<string, string>> {
+  if (!MOTE_MODE || !keys.length) return {};
+  const times: Record<string, string> = {};
+  for (let start = 0; start < keys.length; start += 80) {
+    const batch = keys.slice(start, start + 80).map(encodeURIComponent).join(",");
+    const data = await call<{ times?: Record<string, string> }>(`${STORE_API}?times=${batch}`).catch(() => ({ times: {} }));
+    Object.assign(times, data.times || {});
+  }
+  return times;
+}
+
 async function call<T>(input: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(input, {
     ...init,

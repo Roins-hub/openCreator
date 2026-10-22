@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { z } from "zod";
 import { userDir } from "./identity";
 import { readJson, writeJsonAtomic } from "./json-store";
@@ -53,6 +53,22 @@ export async function setChatItem(userId: string, input: unknown) {
 export async function removeChatItem(userId: string, key: string) {
   chatKeySchema.parse(key);
   await serial(`${userId}:${key}`, () => rm(entryFile(userId, key), { force: true }));
+}
+
+export const MAX_TIME_KEYS = 500;
+
+/**
+ * 一批键最后一次写入的时间(聊天列表显示每个聊天的最近时间用)。只看文件修改时间,不读内容;
+ * 不存在的键不返回。
+ */
+export async function chatItemTimes(userId: string, keys: readonly string[]) {
+  const unique = [...new Set(keys)].slice(0, MAX_TIME_KEYS).filter((key) => chatKeySchema.safeParse(key).success);
+  const times: Record<string, string> = {};
+  await Promise.all(unique.map(async (key) => {
+    const info = await stat(entryFile(userId, key)).catch(() => undefined);
+    if (info) times[key] = info.mtime.toISOString();
+  }));
+  return times;
 }
 
 export async function listChatItems(userId: string): Promise<ChatEntry[]> {

@@ -14,7 +14,8 @@ import type {
   MessageFormatRepository,
   ThreadHistoryAdapter,
 } from "@assistant-ui/core";
-import { chatStorage } from "@/lib/chat-storage";
+import { chatItemTimes, chatStorage } from "@/lib/chat-storage";
+import { noteChatActivity } from "@/lib/chat-activity";
 
 const PREFIX = "sub2chat:";
 const mutationTails = new Map<string, Promise<void>>();
@@ -89,6 +90,7 @@ function IndexedDbHistoryProvider({ children }: { children?: React.ReactNode }) 
               else repository.messages.push(item);
               repository.headId = id;
               await chatStorage.setItem(key, JSON.stringify(repository));
+              noteChatActivity(remoteId);
             });
           },
           async update(item, localMessageId) {
@@ -104,6 +106,7 @@ function IndexedDbHistoryProvider({ children }: { children?: React.ReactNode }) 
               else repository.messages.push(item);
               repository.headId = formatAdapter.getId(item.message);
               await chatStorage.setItem(key, JSON.stringify(repository));
+              noteChatActivity(remoteId);
             });
           },
           async delete(items: MessageFormatItem<TMessage>[]) {
@@ -139,5 +142,20 @@ const baseAdapter = createLocalStorageAdapter({
 
 export const indexedDbThreadAdapter = {
   ...baseAdapter,
+  /** 线程列表带上每个聊天最后一条消息的时间(存储里消息记录最后写入的时间),侧栏悬停卡片和日期分段要用 */
+  async list() {
+    const result = await baseAdapter.list();
+    const times = await chatItemTimes(result.threads.map((thread) => `${PREFIX}messages:${thread.remoteId}`)).catch(() => ({}));
+    return {
+      ...result,
+      threads: result.threads.map((thread) => {
+        const time = (times as Record<string, string>)[`${PREFIX}messages:${thread.remoteId}`];
+        if (!time) return thread;
+        const lastMessageAt = new Date(time);
+        noteChatActivity(thread.remoteId, lastMessageAt);
+        return { ...thread, lastMessageAt };
+      }),
+    };
+  },
   unstable_Provider: IndexedDbHistoryProvider,
 };

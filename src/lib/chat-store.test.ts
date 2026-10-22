@@ -32,6 +32,17 @@ describe("chat store", () => {
     expect(await store.getChatItem(alice, "sub2chat:messages:t2")).toBe("5");
   });
 
+  it("returns when each chat was last written, only for the user's own keys", async () => {
+    const store = await import("./chat-store");
+    const before = Date.now() - 1000;
+    await store.setChatItem(alice, { key: "sub2chat:messages:t3", value: "{}" });
+    const times = await store.chatItemTimes(alice, ["sub2chat:messages:t3", "sub2chat:messages:none", "bad-key"]);
+    expect(Object.keys(times)).toEqual(["sub2chat:messages:t3"]);
+    expect(new Date(times["sub2chat:messages:t3"]).getTime()).toBeGreaterThan(before);
+    expect(await store.chatItemTimes(bob, ["sub2chat:messages:t3"])).toEqual({});
+    await store.removeChatItem(alice, "sub2chat:messages:t3");
+  });
+
   it("rejects keys outside the chat namespace", async () => {
     const store = await import("./chat-store");
     await expect(store.setChatItem(alice, { key: "../../etc/passwd", value: "x" })).rejects.toThrow();
