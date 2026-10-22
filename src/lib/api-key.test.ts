@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { apiKeyHeaders, isImageOnly, readApiKey, writeApiKey, writeImageKey } from "./api-key";
+import { apiKeyHeaders, isImageOnly, readApiKey, writeAccountKey, writeApiKey, writeImageKey, writeRelayBase } from "./api-key";
 
 describe("account key", () => {
   beforeEach(() => window.localStorage.clear());
@@ -19,5 +19,17 @@ describe("account key", () => {
     expect(readApiKey()).toBe("sk-video");
     expect(isImageOnly()).toBe(false);
     expect(apiKeyHeaders()).toEqual({ "x-tangzhi-key": "sk-video", "x-tangzhi-image-key": "sk-image" });
+  });
+
+  it("uses the main key on a custom relay, and only there", () => {
+    writeAccountKey("sk-main");
+    writeImageKey("sk-image");
+    expect(readApiKey()).toBe("sk-image");
+    writeRelayBase("https://relay.example.com");
+    expect(readApiKey()).toBe("sk-main");
+    expect(isImageOnly()).toBe(false);
+    expect(apiKeyHeaders()).toMatchObject({ "x-tangzhi-key": "sk-main", "x-tangzhi-account-key": "sk-main", "x-tangzhi-image-key": "sk-image" });
+    writeApiKey("sk-video");
+    expect(apiKeyHeaders()).toMatchObject({ "x-tangzhi-key": "sk-video", "x-tangzhi-account-key": "sk-main" });
   });
 });

@@ -18,6 +18,12 @@ export const API_KEY_HEADER = "x-tangzhi-key";
 /** 图片单独用的 Key(选填);没带时图片也用 API_KEY_HEADER 的 Key */
 export const IMAGE_KEY_HEADER = "x-tangzhi-image-key";
 
+/**
+ * 自定义中转站的「主 Key」(选填):查不到自定义中转站的账号,数据按「地址 + Key」隔离;
+ * 填了主 Key 就固定按它存放对话和资产,换视频 / 图片 Key 不会换空间。默认中转站不看它(按 Key 所属账号)。
+ */
+export const ACCOUNT_KEY_HEADER = "x-tangzhi-account-key";
+
 /** 只填了图片 Key(没有视频 Key):这时 API_KEY_HEADER 里就是图片 Key,只列生图模型、不接视频生成 */
 export const IMAGE_ONLY_HEADER = "x-tangzhi-image-only";
 export const isImageOnly = (request: Request) => request.headers.get(IMAGE_ONLY_HEADER) === "1";
@@ -131,7 +137,9 @@ export async function requireUser(request: Request): Promise<User> {
   const apiKey = request.headers.get(API_KEY_HEADER)?.trim();
   if (!apiKey) throw new Error("请先在设置中填写中转站 API Key");
   const relay = relayOf(request);
-  return { apiKey, relay, userId: await resolveUserId(apiKey, relay) };
+  // 自定义中转站填了主 Key:数据按主 Key 存;调用中转站仍用各自的 Key(apiKey)
+  const accountKey = relay.custom ? request.headers.get(ACCOUNT_KEY_HEADER)?.trim() : undefined;
+  return { apiKey, relay, userId: await resolveUserId(accountKey || apiKey, relay) };
 }
 
 /** 这个用户能访问的媒体前缀:自己的,加上合并进来的旧空间的 */

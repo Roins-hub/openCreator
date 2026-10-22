@@ -17,6 +17,8 @@ export const MIGRATE_URL = process.env.NEXT_PUBLIC_MIGRATE_URL?.trim() || "";
 const MOTE_KEY = "mote.tangzhi.apiKey";
 /** 工作台设置里的「图片」Key(选填);没填视频 Key 时它就是账号 Key */
 const MOTE_IMAGE_KEY = "mote.tangzhi.imageKey";
+/** 自定义中转站的主 Key(选填):对话和资产按它存放,其余 Key 没填时也用它 */
+const MOTE_ACCOUNT_KEY = "mote.tangzhi.accountKey";
 /** 工作台设置里单独给「聊天」填的 Key(选填);没填时用账号 Key */
 const MOTE_CHAT_KEY = "mote.tangzhi.chatKey";
 const MOTE_BASE = "mote.tangzhi.baseUrl";
@@ -32,8 +34,10 @@ const read = (name: string) => {
   }
 };
 
-/** 账号 Key:视频 Key,没填视频 Key 时用图片 Key(和工作台一致) */
-export const moteApiKey = () => read(MOTE_KEY) || read(MOTE_IMAGE_KEY);
+/** 自定义中转站的主 Key;默认中转站不用 */
+const moteAccountKey = () => (read(MOTE_BASE) ? read(MOTE_ACCOUNT_KEY) : "");
+/** 调用中转站的 Key:视频 Key,没填时用主 Key(自定义中转站),再没有用图片 Key(和工作台一致) */
+export const moteApiKey = () => read(MOTE_KEY) || moteAccountKey() || read(MOTE_IMAGE_KEY);
 /** 聊天调用模型用的 Key:工作台设置里的「聊天」Key,没填就用账号 Key。
  * 聊天记录仍按账号 Key 对应的账号存放(见 moteHeaders),换聊天 Key 不会让记录分开。 */
 export const moteChatKey = () => read(MOTE_CHAT_KEY) || moteApiKey();
@@ -44,16 +48,20 @@ export const moteRelayBase = () => read(MOTE_BASE);
 export function moteHeaders(): Record<string, string> {
   const key = moteApiKey();
   const base = moteRelayBase();
+  const account = moteAccountKey();
   return {
     ...(key ? { "x-tangzhi-key": key } : {}),
     ...(base ? { "x-tangzhi-base": base } : {}),
+    // 自定义中转站填了主 Key:聊天记录按主 Key 存放(和工作台同一个空间)
+    ...(base && account ? { "x-tangzhi-account-key": account } : {}),
   };
 }
 
 /** 工作台的 Key / 地址变化(其他标签页改了设置)时回调 */
 export function onMoteSettingsChange(callback: () => void) {
   const onStorage = (event: StorageEvent) => {
-    if (event.key === MOTE_KEY || event.key === MOTE_IMAGE_KEY || event.key === MOTE_CHAT_KEY || event.key === MOTE_BASE) callback();
+    if (event.key === MOTE_KEY || event.key === MOTE_IMAGE_KEY || event.key === MOTE_ACCOUNT_KEY
+      || event.key === MOTE_CHAT_KEY || event.key === MOTE_BASE) callback();
   };
   window.addEventListener("storage", onStorage);
   window.addEventListener(MOTE_KEY_EVENT, callback);

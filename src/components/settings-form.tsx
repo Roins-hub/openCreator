@@ -6,8 +6,8 @@ import {
   ArrowLeft, Check, CircleCheck, CircleX, ExternalLink, Eye, EyeOff, LoaderCircle, Save, TestTube2, X,
 } from "lucide-react";
 import {
-  apiKeyHeaders, openSession, readVideoKey, readAssistKey, readAssistModel, readChatKey, readImageKey, readRelayBase,
-  writeApiKey, writeAssistKey, writeAssistModel, writeChatKey, writeImageKey, writeRelayBase,
+  apiKeyHeaders, openSession, readAccountKey, readVideoKey, readAssistKey, readAssistModel, readChatKey, readImageKey, readRelayBase,
+  writeAccountKey, writeApiKey, writeAssistKey, writeAssistModel, writeChatKey, writeImageKey, writeRelayBase,
 } from "@/lib/api-key";
 import { Dropdown } from "@/components/dropdown";
 import {
@@ -68,12 +68,15 @@ function KeyField({ id, label, note, value, placeholder, check, onChange, onVeri
   );
 }
 
-type KeyKind = "main" | "image" | "chat" | "assist";
+type KeyKind = "account" | "main" | "image" | "chat" | "assist";
 
 export function SettingsForm() {
   const [apiKey, setApiKey] = useState("");
   const [saved, setSaved] = useState("");
   // 图片 / 聊天 / 提示词优化单独用的 Key(选填;图片、聊天空 = 用视频的,提示词优化空 = 先用聊天的,再用视频的)
+  // 自定义中转站的主 Key(选填):对话和资产按它存放,其余 Key 没填时也用它
+  const [accountKey, setAccountKey] = useState("");
+  const [savedAccountKey, setSavedAccountKey] = useState("");
   const [imageKey, setImageKey] = useState("");
   const [savedImageKey, setSavedImageKey] = useState("");
   const [chatKey, setChatKey] = useState("");
@@ -83,7 +86,7 @@ export function SettingsForm() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [checks, setChecks] = useState<Record<KeyKind, KeyCheck | undefined>>({
-    main: undefined, image: undefined, chat: undefined, assist: undefined,
+    account: undefined, main: undefined, image: undefined, chat: undefined, assist: undefined,
   });
   const setCheck = (which: KeyKind, value: KeyCheck | undefined) =>
     setChecks((current) => ({ ...current, [which]: value }));
@@ -118,7 +121,7 @@ export function SettingsForm() {
 
   // 优化模型的选项按提示词优化实际用的 Key 列出(Key 所在分组决定能用哪些模型);保存了别的 Key 后重新读取
   const [ready, setReady] = useState(false);
-  const assistKeyInUse = savedAssistKey || savedChatKey || saved || savedImageKey;
+  const assistKeyInUse = savedAssistKey || savedChatKey || saved || (savedBase ? savedAccountKey : "") || savedImageKey;
   const assistSource = `${savedBase}|${assistKeyInUse}`;
   const assistOptions = assistLoaded?.source === assistSource ? assistLoaded : undefined;
   useEffect(() => {
@@ -137,6 +140,8 @@ export function SettingsForm() {
       const relayBase = readRelayBase();
       setApiKey(key);
       setSaved(key);
+      setAccountKey(readAccountKey());
+      setSavedAccountKey(readAccountKey());
       setImageKey(readImageKey());
       setSavedImageKey(readImageKey());
       setChatKey(readChatKey());
@@ -147,7 +152,7 @@ export function SettingsForm() {
       setBaseInput(relayBase);
       setCustomMode(Boolean(relayBase));
       setAssistModel(readAssistModel());
-      loadModels(relayBase, key, readImageKey());
+      loadModels(relayBase, key || (relayBase ? readAccountKey() : ""), readImageKey());
       setReady(true);
     }, 0);
     return () => clearTimeout(timer);
@@ -156,27 +161,33 @@ export function SettingsForm() {
   const [saving, setSaving] = useState(false);
   const save = async () => {
     const key = apiKey.trim();
-    // 账号 Key:视频 Key,没填时用图片 Key(对话和资产存在它对应的账号下)
-    const accountKey = key || imageKey.trim();
+    // 自定义中转站的主 Key:对话和资产按它存放;视频没填时调用中转站也用它
+    const account = customMode ? accountKey.trim() : "";
+    // 调用中转站的 Key:视频,没填时主 Key,再没有就图片(只填图片时对话和资产存在图片 Key 的空间)
+    const callKey = key || account || imageKey.trim();
     setError("");
     if (customMode && !base) return setError("请填写自定义中转站地址，或切换回默认中转站");
     setSaving(true);
     try {
       // 先用新的地址和 Key 验证并切换到对应的个人空间,成功后才保存
-      await openSession(accountKey, base);
+      await openSession(callKey, base, account);
       writeRelayBase(base);
       writeApiKey(key);
       setApiKey(key);
       setSaved(key);
+      writeAccountKey(accountKey);
+      setSavedAccountKey(accountKey.trim());
       writeImageKey(imageKey);
       writeChatKey(chatKey);
       writeAssistKey(assistKey);
       setSavedImageKey(imageKey.trim());
       setSavedChatKey(chatKey.trim());
       setSavedAssistKey(assistKey.trim());
-      if (base !== savedBase || key !== saved || imageKey.trim() !== savedImageKey) loadModels(base, key, imageKey.trim());
+      if (base !== savedBase || key !== saved || imageKey.trim() !== savedImageKey || accountKey.trim() !== savedAccountKey) {
+        loadModels(base, key || account, imageKey.trim());
+      }
       setSavedBase(base);
-      setStatus(accountKey ? "已保存" : "已清除");
+      setStatus(callKey ? "已保存" : "已清除");
       window.setTimeout(() => setStatus(""), 2000);
     } catch (cause) {
       setError((cause as Error).message);
@@ -187,11 +198,16 @@ export function SettingsForm() {
 
   /** 验证某个 Key:选填的没填时验证它实际会用的 Key(提示词优化 → 聊天 → 视频;图片 → 视频) */
   const verify = async (which: KeyKind) => {
-    const own = (which === "image" ? imageKey : which === "chat" ? chatKey : which === "assist" ? assistKey : apiKey).trim();
+    const own = (which === "account" ? accountKey : which === "image" ? imageKey : which === "chat" ? chatKey
+      : which === "assist" ? assistKey : apiKey).trim();
+    const account = customMode ? accountKey.trim() : "";
     const fallbackToChat = which === "assist" && !own && Boolean(chatKey.trim());
-    // 视频没填时不兜底(只能生图);其余没填的用视频 Key,视频也没填再用图片 Key
-    const key = which === "main" ? own : own || (fallbackToChat ? chatKey.trim() : apiKey.trim() || imageKey.trim());
-    if (which === "main" && !own) {
+    // 没填的按顺序兜底:聊天(提示词优化)→ 视频 → 主 Key(自定义中转站)→ 图片;视频没填又没主 Key 时只能生图
+    const fallback = fallbackToChat ? chatKey.trim() : apiKey.trim() || account || imageKey.trim();
+    const fallbackName = fallbackToChat ? "聊天" : apiKey.trim() ? "视频" : account ? "主" : "图片";
+    const key = which === "account" ? own : which === "main" ? own || account : own || fallback;
+    if (which === "account" && !own) return setCheck("account", { state: "error", message: "请先填写主 Key" });
+    if (which === "main" && !own && !account) {
       return setCheck("main", imageKey.trim()
         ? { state: "error", message: "没有填写视频的 Key：只能生成图片，视频入口不可用" }
         : { state: "error", message: "视频和图片的 Key 至少填一个" });
@@ -203,8 +219,7 @@ export function SettingsForm() {
       const response = await fetch(`/api/key-check?purpose=${which}`, { method: "POST", headers: apiKeyHeaders(key, base, "") });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "验证失败");
-      const fallbackName = fallbackToChat ? "聊天" : apiKey.trim() ? "视频" : "图片";
-      const prefix = which === "main" || own ? "" : `没有单独填写，使用${fallbackName}的 Key：`;
+      const prefix = own || which === "account" ? "" : `没有单独填写，使用${which === "main" ? "主" : fallbackName} Key：`;
       setCheck(which, { state: data.warning ? "error" : "success", message: `${prefix}${data.message}` });
     } catch (cause) {
       setCheck(which, { state: "error", message: (cause as Error).message });
@@ -212,6 +227,7 @@ export function SettingsForm() {
   };
 
   const dirty = apiKey.trim() !== saved || base !== savedBase || imageKey.trim() !== savedImageKey
+    || (customMode && accountKey.trim() !== savedAccountKey)
     || chatKey.trim() !== savedChatKey || assistKey.trim() !== savedAssistKey;
   const saveIfDirty = () => { if (dirty) void save(); };
 
@@ -276,7 +292,19 @@ export function SettingsForm() {
               视频和图片可以用不同分组的 Key；只填图片的 Key 时只能生图。聊天和提示词优化要用文本模型，如果 Key 所在分组没有文本模型，就给它们各填一个能用文本模型的 Key。
             </p>
             <div className="key-fields">
-              <KeyField id="key-main" label="视频" note="和图片至少填一个 · 生成视频，也用来存放你的对话和资产"
+              {customMode && (
+                <KeyField id="key-account" label="主 Key" note="自定义中转站 · 建议填写 · 对话和资产按这个 Key 隔离保存"
+                  value={accountKey} placeholder="sk-…" check={checks.account} onEnter={saveIfDirty}
+                  onChange={(value) => { setAccountKey(value); setCheck("account", undefined); }}
+                  onVerify={() => void verify("account")}>
+                  <p className="key-help">
+                    自定义中转站查不到账号，数据只能按 Key 区分。填了主 Key，对话、资产、分组、提示词库和常用都固定存在它下面，换视频 / 图片 Key 也不会换空间；
+                    下面的视频、图片、聊天 Key 没填时也用它。想沿用以前的数据，就把主 Key 填成以前存数据的那个 Key（一般是原来的视频 Key）。
+                  </p>
+                </KeyField>
+              )}
+              <KeyField id="key-main" label="视频"
+                note={customMode ? "选填 · 不填就用主 Key · 生成视频" : "和图片至少填一个 · 生成视频，也用来存放你的对话和资产"}
                 value={apiKey} placeholder="sk-…" check={checks.main} onEnter={saveIfDirty}
                 onChange={(value) => { setApiKey(value); setCheck("main", undefined); }}
                 onVerify={() => void verify("main")} />

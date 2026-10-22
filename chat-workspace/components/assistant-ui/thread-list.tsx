@@ -151,7 +151,7 @@ type OrganizerContextValue = {
   selected: ReadonlySet<string>;
   toggle: (id: string) => void;
   /** 悬停卡片:鼠标停在某个聊天上时显示完整标题、分组和最后一条消息的时间 */
-  peek?: (id: string) => Pick<React.HTMLAttributes<HTMLElement>, "onMouseEnter" | "onMouseLeave" | "onMouseDown">;
+  peek?: (id: string) => Pick<React.HTMLAttributes<HTMLElement>, "onMouseEnter" | "onMouseLeave" | "onPointerDownCapture">;
 };
 const OrganizerContext = createContext<OrganizerContextValue>({
   managing: false,

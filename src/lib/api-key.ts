@@ -8,6 +8,8 @@ export const API_KEY_HEADER = "x-tangzhi-key";
 export const RELAY_HEADER = "x-tangzhi-base";
 /** 图片单独用的 Key(选填);服务端没收到时图片也用视频的 Key */
 export const IMAGE_KEY_HEADER = "x-tangzhi-image-key";
+/** 自定义中转站的主 Key:对话和资产按它存放(见服务端 identity.ts) */
+export const ACCOUNT_KEY_HEADER = "x-tangzhi-account-key";
 /** 只填了图片 Key(没有视频 Key):服务端只列生图模型、不接视频生成 */
 export const IMAGE_ONLY_HEADER = "x-tangzhi-image-only";
 const CHANGE_EVENT = "mote-api-key-change";
@@ -22,11 +24,29 @@ export function readVideoKey() {
  * 自定义中转站按地址 + Key),也是没单独填 Key 的用途的兜底。
  */
 export function readApiKey() {
-  return readVideoKey() || readImageKey();
+  return readVideoKey() || customAccountKey() || readImageKey();
 }
 
-/** 只填了图片 Key */
-export const isImageOnly = () => !readVideoKey() && Boolean(readImageKey());
+/** 只填了图片 Key(自定义中转站也没有主 Key) */
+export const isImageOnly = () => !readVideoKey() && !customAccountKey() && Boolean(readImageKey());
+
+/**
+ * 自定义中转站的主 Key(选填):填了就按它存放对话和资产,视频 / 图片 / 聊天没单独填 Key 时也用它。
+ * 默认中转站按 Key 所属账号存放,不用主 Key。
+ */
+const ACCOUNT_KEY_STORAGE = "mote.tangzhi.accountKey";
+export function readAccountKey() {
+  try { return window.localStorage.getItem(ACCOUNT_KEY_STORAGE)?.trim() || ""; } catch { return ""; }
+}
+export function writeAccountKey(value: string) {
+  try {
+    if (value.trim()) window.localStorage.setItem(ACCOUNT_KEY_STORAGE, value.trim());
+    else window.localStorage.removeItem(ACCOUNT_KEY_STORAGE);
+  } catch { /* 隐私模式等无法写入时忽略 */ }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+/** 当前生效的主 Key:只有用自定义中转站时才有 */
+export const customAccountKey = () => (readRelayBase() ? readAccountKey() : "");
 
 export function writeApiKey(value: string) {
   try {
@@ -51,7 +71,8 @@ export function writeRelayBase(value: string) {
 
 export function onApiKeyChange(listener: () => void) {
   const storage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY || event.key === BASE_STORAGE_KEY || event.key === IMAGE_KEY_STORAGE) listener();
+    if (event.key === STORAGE_KEY || event.key === BASE_STORAGE_KEY || event.key === IMAGE_KEY_STORAGE
+      || event.key === ACCOUNT_KEY_STORAGE) listener();
   };
   window.addEventListener(CHANGE_EVENT, listener);
   window.addEventListener("storage", storage);
@@ -67,9 +88,11 @@ export function onApiKeyChange(listener: () => void) {
  */
 export function apiKeyHeaders(
   key = readApiKey(), base = readRelayBase(), imageKey = readImageKey(), imageOnly = isImageOnly(),
+  accountKey = customAccountKey(),
 ): Record<string, string> {
   return {
     ...(key ? { [API_KEY_HEADER]: key } : {}),
+    ...(base && accountKey ? { [ACCOUNT_KEY_HEADER]: accountKey } : {}),
     ...(base ? { [RELAY_HEADER]: base } : {}),
     ...(imageKey && imageKey !== key ? { [IMAGE_KEY_HEADER]: imageKey } : {}),
     ...(imageOnly ? { [IMAGE_ONLY_HEADER]: "1" } : {}),
@@ -77,12 +100,13 @@ export function apiKeyHeaders(
 }
 
 /** 用当前 Key 换取看视频/图片用的 Cookie;Key 无效时抛出中转站的提示。 */
-export async function openSession(key = readApiKey(), base = readRelayBase()) {
+/** accountKey:自定义中转站的主 Key(有就按它切到对应的空间) */
+export async function openSession(key = readApiKey(), base = readRelayBase(), accountKey = customAccountKey()) {
   if (!key) {
     await fetch("/api/session", { method: "DELETE" }).catch(() => undefined);
     return;
   }
-  const response = await fetch("/api/session", { method: "POST", headers: apiKeyHeaders(key, base) });
+  const response = await fetch("/api/session", { method: "POST", headers: apiKeyHeaders(key, base, readImageKey(), false, accountKey) });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || "API Key 验证失败");

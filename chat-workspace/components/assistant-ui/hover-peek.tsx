@@ -24,7 +24,7 @@ type Shown = PeekInfo & { top: number; left: number; key: string };
 /**
  * 侧栏对话的悬停卡片:鼠标在某一行停一会儿,在它右边弹出完整标题、所在分组和最近时间,方便按时间找对话。
  * 用法:const peek = useHoverPeek(disabled);行上加 {...peek.bind(key, info)},再渲染 {peek.card}。
- * 移开、滚动、按下鼠标(开始拖动)时收起;disabled(管理 / 拖动中)时不弹。
+ * 移开、滚动、按下指针(开始拖动、点「…」菜单)时收起;这一行的菜单开着时不弹;disabled(管理 / 拖动中)时不弹。
  */
 export function useHoverPeek(disabled = false) {
   const [shown, setShown] = useState<Shown>();
@@ -54,7 +54,8 @@ export function useHoverPeek(disabled = false) {
       // 已经有卡片时(在相邻几行间移动)马上换,不再等
       const delay = shown ? 0 : SHOW_DELAY;
       timer.current = window.setTimeout(() => {
-        if (!target.isConnected) return;
+        // 这一行的「…」菜单开着:卡片会挡住菜单,不弹
+        if (!target.isConnected || target.querySelector('[aria-expanded="true"], [data-state="open"]')) return;
         const rect = target.getBoundingClientRect();
         const left = Math.min(rect.right + 10, window.innerWidth - CARD_WIDTH - 12);
         const top = Math.max(12, Math.min(rect.top - 4, window.innerHeight - 140));
@@ -66,7 +67,8 @@ export function useHoverPeek(disabled = false) {
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => setShown(undefined), LEAVE_GRACE);
     },
-    onMouseDown: hide,
+    // 菜单按钮会拦掉 mousedown,用捕获阶段的 pointerdown 先收起
+    onPointerDownCapture: hide,
   });
 
   const date = shown?.time ? new Date(shown.time) : undefined;

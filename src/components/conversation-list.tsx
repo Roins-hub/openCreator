@@ -31,12 +31,12 @@ const collision: CollisionDetection = (args) => droppablesUnderPointer(args, DRO
 /** 侧边栏的一行对话,按住拖动(原位置留下虚影,拿起的那一行浮在鼠标下) */
 function DraggableRow({ id, disabled, className, children, ...hover }: {
   id: string; disabled: boolean; className: string; children: ReactNode;
-} & Pick<React.HTMLAttributes<HTMLDivElement>, "onMouseEnter" | "onMouseLeave" | "onMouseDown">) {
+} & Pick<React.HTMLAttributes<HTMLDivElement>, "onMouseEnter" | "onMouseLeave" | "onPointerDownCapture">) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id, disabled });
   return (
     <div ref={setNodeRef} {...attributes} {...listeners} tabIndex={-1} role={undefined}
       onMouseEnter={hover.onMouseEnter} onMouseLeave={hover.onMouseLeave}
-      onMouseDownCapture={hover.onMouseDown}
+      onPointerDownCapture={hover.onPointerDownCapture}
       aria-roledescription="可拖动的对话" className={`${className} ${isDragging ? "is-placeholder" : ""}`}>
       {children}
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { apiKeyHeaders, readApiKey, readRelayBase } from "./api-key";
+import { apiKeyHeaders, customAccountKey, readApiKey, readRelayBase } from "./api-key";
 import { applyModelPrefsOp, emptyModelPrefs, parseModelPrefs, type ModelPrefs, type ModelPrefsOp } from "./model-prefs";
 
 /**
@@ -12,7 +12,8 @@ const LEGACY_RECENTS = "mote.modelRecents";
 
 /** 账号的缓存键:用 Key + 中转站地址的哈希,不把 Key 明文当键名 */
 function cacheKey() {
-  const source = `${readApiKey()}|${readRelayBase()}`;
+  // 自定义中转站填了主 Key 时按主 Key 区分账号
+  const source = `${customAccountKey() || readApiKey()}|${readRelayBase()}`;
   let hash = 0x811c9dc5;
   for (let index = 0; index < source.length; index++) {
     hash ^= source.charCodeAt(index);
