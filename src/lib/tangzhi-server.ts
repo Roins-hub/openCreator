@@ -427,8 +427,24 @@ async function textModelsFor(relay: Relay, apiKey?: string) {
 }
 
 /** 设置页「提示词优化模型」的选项:这个 Key 能用的对话模型,以及「自动」现在会先用哪个 */
-export async function assistModelOptions(relay: Relay = DEFAULT_RELAY, apiKey?: string) {
-  const texts = await textModelsFor(relay, apiKey);
+/**
+ * 几个 Key 能用的对话模型合起来,记下每个模型用哪个 Key(先填的 Key 优先)。
+ * 只有一个 Key(或没给 Key)时和以前一样。
+ */
+async function textModelOwners(relay: Relay, apiKeys?: string | readonly string[]) {
+  const keys = keyList(apiKeys);
+  const owners = new Map<string, string | undefined>();
+  if (keys.length <= 1) {
+    for (const id of await textModelsFor(relay, keys[0])) owners.set(id, keys[0]);
+    return owners;
+  }
+  const lists = await Promise.all(keys.map(async (key) => [key, await textModelsFor(relay, key).catch(() => [] as string[])] as const));
+  for (const [key, ids] of lists) for (const id of ids) if (!owners.has(id)) owners.set(id, key);
+  return owners;
+}
+
+export async function assistModelOptions(relay: Relay = DEFAULT_RELAY, apiKeys?: string | readonly string[]) {
+  const texts = [...(await textModelOwners(relay, apiKeys)).keys()].sort(compareModelsNewestFirst);
   const remembered = workingAssistModel.get(relay.base);
   return {
     models: texts,
@@ -459,15 +475,19 @@ const fatal = (error: unknown) => error instanceof Error && /API Key 无效|余�
  * 不指定(自动):轻量模型优先,一个不可用就换下一个。
  */
 export async function assistPrompt(
-  apiKey: string, prompt: string, kind: AssistKind, relay: Relay = DEFAULT_RELAY, chosen?: string,
+  apiKeys: string | readonly string[], prompt: string, kind: AssistKind, relay: Relay = DEFAULT_RELAY, chosen?: string,
 ) {
-  const texts = await textModelsFor(relay, apiKey);
+  // 几个提示词优化 Key 的对话模型合起来;调用某个模型时用能调用它的那个 Key
+  const keys = keyList(apiKeys);
+  const owners = await textModelOwners(relay, keys);
+  const keyFor = (model: string) => owners.get(model) || keys[0];
+  const texts = [...owners.keys()].sort(compareModelsNewestFirst);
   if (chosen) {
     if (!texts.includes(chosen)) {
       throw new Error(`设置里选的优化模型 ${chosen} 已下线或这个 Key 用不了，请到「设置」换一个或改回「自动」`);
     }
     try {
-      return { prompt: await completeOnce(apiKey, relay, chosen, prompt, kind), model: chosen };
+      return { prompt: await completeOnce(keyFor(chosen), relay, chosen, prompt, kind), model: chosen };
     } catch (error) {
       if (fatal(error)) throw error;
       throw new Error(`设置里选的优化模型 ${chosen} 暂时不可用：${(error as Error).message}。可以到「设置」换一个，或改回「自动」`);
@@ -481,15 +501,25 @@ export async function assistPrompt(
   const order = remembered && candidates.includes(remembered)
     ? [remembered, ...candidates.filter((id) => id !== remembered)] : candidates;
   let lastError: unknown;
-  for (const model of order.slice(0, MAX_ASSIST_ATTEMPTS)) {
+  // Key 无效、余额不足:这个 Key 的模型都不用再试;只有这一个 Key 时直接报错
+  const deadKeys = new Set<string>();
+  let attempts = 0;
+  for (const model of order) {
+    if (attempts >= MAX_ASSIST_ATTEMPTS) break;
+    const key = keyFor(model);
+    if (deadKeys.has(key)) continue;
+    attempts += 1;
     try {
-      const text = await completeOnce(apiKey, relay, model, prompt, kind);
+      const text = await completeOnce(key, relay, model, prompt, kind);
       workingAssistModel.set(relay.base, model);
       return { prompt: text, model };
     } catch (error) {
       lastError = error;
-      // Key 无效、余额不足换模型也没用
-      if (fatal(error)) throw error;
+      if (fatal(error)) {
+        if (keys.length <= 1) throw error;
+        deadKeys.add(key);
+        if (deadKeys.size >= keys.length) throw error;
+      }
     }
   }
   throw new Error(`提示词优化暂时不可用：${lastError instanceof Error ? lastError.message : "中转站没有可用的对话模型"}`);

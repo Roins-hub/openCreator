@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
   apiKeyHeaders, openSession, readAccountKey, readVideoKey, readAssistKey, readAssistModel, readChatKey, readImageKey, readRelayBase,
-  writeAccountKey, writeApiKey, writeAssistKey, cleanKeys, extraKeyHeaders, MAX_EXTRA_KEYS, readExtraKeys,
+  writeAccountKey, writeApiKey, writeAssistKey, assistExtraHeaders, cleanKeys, extraKeyHeaders, MAX_EXTRA_KEYS, readExtraKeys,
   writeExtraKeys, type KeyUse, writeAssistModel, writeChatKey, writeImageKey, writeRelayBase,
 } from "@/lib/api-key";
 import { Dropdown } from "@/components/dropdown";
@@ -115,9 +115,9 @@ export function SettingsForm() {
   const [savedAccountKey, setSavedAccountKey] = useState("");
   const [imageKey, setImageKey] = useState("");
   // 自定义中转站:每种用途可以再加几个 Key(模型取合集)
-  const [extras, setExtras] = useState<Record<KeyUse, string[]>>({ video: [], image: [], chat: [] });
-  const [savedExtras, setSavedExtras] = useState<Record<KeyUse, string[]>>({ video: [], image: [], chat: [] });
-  const [extraChecks, setExtraChecks] = useState<Record<KeyUse, (KeyCheck | undefined)[]>>({ video: [], image: [], chat: [] });
+  const [extras, setExtras] = useState<Record<KeyUse, string[]>>({ video: [], image: [], chat: [], assist: [] });
+  const [savedExtras, setSavedExtras] = useState<Record<KeyUse, string[]>>({ video: [], image: [], chat: [], assist: [] });
+  const [extraChecks, setExtraChecks] = useState<Record<KeyUse, (KeyCheck | undefined)[]>>({ video: [], image: [], chat: [], assist: [] });
   const changeExtras = (use: KeyUse) => (list: string[]) => {
     setExtraChecks((current) => ({
       ...current,
@@ -174,17 +174,20 @@ export function SettingsForm() {
   // 优化模型的选项按提示词优化实际用的 Key 列出(Key 所在分组决定能用哪些模型);保存了别的 Key 后重新读取
   const [ready, setReady] = useState(false);
   const assistKeyInUse = savedAssistKey || savedChatKey || saved || (savedBase ? savedAccountKey : "") || savedImageKey;
-  const assistSource = `${savedBase}|${assistKeyInUse}`;
+  const savedAssistExtras = savedBase ? savedExtras.assist.join(",") : "";
+  const assistSource = `${savedBase}|${assistKeyInUse}|${savedAssistExtras}`;
   const assistOptions = assistLoaded?.source === assistSource ? assistLoaded : undefined;
   useEffect(() => {
     if (!ready) return;
     const controller = new AbortController();
-    const source = `${savedBase}|${assistKeyInUse}`;
-    fetch("/api/prompt-assist", { headers: apiKeyHeaders(assistKeyInUse, savedBase), signal: controller.signal })
+    const source = `${savedBase}|${assistKeyInUse}|${savedAssistExtras}`;
+    // 有额外的提示词优化 Key 时一起带上,选项取它们的合集
+    const headers = { ...apiKeyHeaders(assistKeyInUse, savedBase), ...assistExtraHeaders(savedAssistExtras ? savedAssistExtras.split(",") : []) };
+    fetch("/api/prompt-assist", { headers, signal: controller.signal })
       .then(async (response) => setAssistLoaded({ source, ...(response.ok ? await response.json() : { models: [] }) }))
       .catch(() => { if (!controller.signal.aborted) setAssistLoaded({ source, models: [] }); });
     return () => controller.abort();
-  }, [ready, assistKeyInUse, savedBase]);
+  }, [ready, assistKeyInUse, savedBase, savedAssistExtras]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -196,7 +199,9 @@ export function SettingsForm() {
       setSavedAccountKey(readAccountKey());
       setImageKey(readImageKey());
       setSavedImageKey(readImageKey());
-      const stored = { video: readExtraKeys("video"), image: readExtraKeys("image"), chat: readExtraKeys("chat") };
+      const stored = {
+        video: readExtraKeys("video"), image: readExtraKeys("image"), chat: readExtraKeys("chat"), assist: readExtraKeys("assist"),
+      };
       setExtras(stored);
       setSavedExtras(stored);
       setChatKey(readChatKey());
@@ -213,7 +218,7 @@ export function SettingsForm() {
     return () => clearTimeout(timer);
   }, []);
 
-  const extrasChanged = (["video", "image", "chat"] as const)
+  const extrasChanged = (["video", "image", "chat", "assist"] as const)
     .some((use) => cleanKeys(extras[use]).join(",") !== savedExtras[use].join(","));
   const [saving, setSaving] = useState(false);
   const save = async () => {
@@ -233,7 +238,9 @@ export function SettingsForm() {
       setApiKey(key);
       setSaved(key);
       writeAccountKey(accountKey);
-      const nextExtras = { video: cleanKeys(extras.video), image: cleanKeys(extras.image), chat: cleanKeys(extras.chat) };
+      const nextExtras = {
+        video: cleanKeys(extras.video), image: cleanKeys(extras.image), chat: cleanKeys(extras.chat), assist: cleanKeys(extras.assist),
+      };
       (Object.keys(nextExtras) as KeyUse[]).forEach((use) => writeExtraKeys(use, nextExtras[use]));
       setExtras(nextExtras);
       setSavedExtras(nextExtras);
@@ -261,7 +268,8 @@ export function SettingsForm() {
   /** 验证某个 Key:选填的没填时验证它实际会用的 Key(提示词优化 → 聊天 → 视频;图片 → 视频) */
   /** 逐个验证这一栏额外加的 Key(自定义中转站),结果显示在各自那一行下面 */
   const verifyExtras = async (which: KeyKind) => {
-    const use: KeyUse | undefined = which === "main" ? "video" : which === "image" ? "image" : which === "chat" ? "chat" : undefined;
+    const use: KeyUse | undefined = which === "main" ? "video" : which === "image" ? "image" : which === "chat" ? "chat"
+      : which === "assist" ? "assist" : undefined;
     if (!use || !customMode || !extras[use].length) return;
     const list = extras[use];
     const setAt = (index: number, value: KeyCheck | undefined) =>
@@ -416,7 +424,8 @@ export function SettingsForm() {
               <KeyField id="key-assist" label="提示词优化" note="选填 · 不填就用聊天的 Key（聊天也没填则用视频的）"
                 value={assistKey} placeholder="不填则沿用聊天的 Key" check={checks.assist} onEnter={saveIfDirty}
                 onChange={(value) => { setAssistKey(value); setCheck("assist", undefined); }}
-                onVerify={() => void verify("assist")}>
+                onVerify={() => void verify("assist")}
+                {...(customMode ? { extras: extras.assist, onExtrasChange: changeExtras("assist"), extraChecks: extraChecks.assist } : {})}>
                 <div className="assist-setting">
                   <span className="assist-label">优化模型{assistSaved && <em>已保存在当前浏览器</em>}</span>
                   <Dropdown className="assist-dropdown" ariaLabel="提示词优化模型"
@@ -440,7 +449,7 @@ export function SettingsForm() {
                     </p>
                   )}
                   <p className="key-help">
-                    输入框的 ✨ 按钮用它扩写提示词，可选的模型就是这个 Key 能用的对话模型。「自动」会先用轻量便宜的模型（名字带 luna、mini、flash 等），某个模型暂时不可用时自动换下一个；
+                    输入框的 ✨ 按钮用它扩写提示词，可选的模型就是这个 Key 能用的对话模型（加了几个 Key 就是它们的合集，调用时自动用能调用该模型的 Key）。「自动」会先用轻量便宜的模型（名字带 luna、mini、flash 等），某个模型暂时不可用时自动换下一个；
                     选了具体模型后只用它，它不可用时会直接提示。费用按中转站的文本模型价格从这个 Key 扣除。
                   </p>
                 </div>

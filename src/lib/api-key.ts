@@ -15,6 +15,7 @@ export const IMAGE_ONLY_HEADER = "x-tangzhi-image-only";
 /** 同一用途的额外 Key(自定义中转站,逗号分隔):模型取几个 Key 的合集,调用时用能调用该模型的 Key */
 export const VIDEO_KEYS_HEADER = "x-tangzhi-video-keys";
 export const IMAGE_KEYS_HEADER = "x-tangzhi-image-keys";
+export const ASSIST_KEYS_HEADER = "x-tangzhi-assist-keys";
 const CHANGE_EVENT = "mote-api-key-change";
 
 /** 设置里填的视频 Key(可能没填) */
@@ -115,12 +116,13 @@ export function extraKeyHeaders(video: readonly string[], image: readonly string
  * 同一用途的额外 Key(只在自定义中转站用):一个 Key 只能看到它所在分组的模型,多填几个,
  * 模型列表就是这些 Key 的 /v1/models 合起来;调用时自动用能调用这个模型的 Key。最多 7 个额外的。
  */
-export type KeyUse = "video" | "image" | "chat";
+export type KeyUse = "video" | "image" | "chat" | "assist";
 export const MAX_EXTRA_KEYS = 7;
 const EXTRA_KEYS_STORAGE: Record<KeyUse, string> = {
   video: "mote.tangzhi.videoKeysExtra",
   image: "mote.tangzhi.imageKeysExtra",
   chat: "mote.tangzhi.chatKeysExtra",
+  assist: "mote.tangzhi.assistKeysExtra",
 };
 export const cleanKeys = (list: readonly string[]) =>
   [...new Set(list.map((key) => key.trim()).filter((key) => key && !key.includes(",")))].slice(0, MAX_EXTRA_KEYS);
@@ -186,7 +188,10 @@ export const writeAssistKey = (value: string) => writeStored(ASSIST_KEY_STORAGE,
 
 /** 提示词优化实际用的 Key:单独填了就用它,否则用聊天的 Key,聊天也没填再用视频的 Key */
 export const effectiveAssistKey = () => readAssistKey() || readChatKey() || readApiKey();
-export const assistKeyHeaders = () => apiKeyHeaders(effectiveAssistKey());
+/** 提示词优化的请求头:它自己的 Key,自定义中转站再带上额外的提示词优化 Key */
+export const assistKeyHeaders = () => ({ ...apiKeyHeaders(effectiveAssistKey()), ...assistExtraHeaders(readExtraKeys("assist")) });
+export const assistExtraHeaders = (extras: readonly string[]): Record<string, string> =>
+  readRelayBase() && extras.length ? { [ASSIST_KEYS_HEADER]: extras.join(",") } : {};
 
 // 提示词优化用的对话模型:空 = 自动(只存在当前浏览器)
 const ASSIST_MODEL_KEY = "mote.assistModel";

@@ -38,6 +38,8 @@ export const imageKeyOf = (request: Request, fallback?: string) =>
  */
 export const VIDEO_KEYS_HEADER = "x-tangzhi-video-keys";
 export const IMAGE_KEYS_HEADER = "x-tangzhi-image-keys";
+/** 提示词优化的额外 Key(和 API_KEY_HEADER 里的提示词优化 Key 一起用) */
+export const ASSIST_KEYS_HEADER = "x-tangzhi-assist-keys";
 export const MAX_KEYS_PER_USE = 8;
 
 const headerKeys = (request: Request, name: string) =>
@@ -50,6 +52,9 @@ export const videoKeysOf = (request: Request, apiKey?: string) => uniqueKeys([ap
 /** 图片用的全部 Key:图片 Key(没填就是视频的)在前,额外的在后 */
 export const imageKeysOf = (request: Request, apiKey?: string) =>
   uniqueKeys([imageKeyOf(request, apiKey), ...headerKeys(request, IMAGE_KEYS_HEADER)]);
+
+/** 提示词优化用的全部 Key:请求头里的 Key 在前,额外的在后 */
+export const assistKeysOf = (request: Request, apiKey?: string) => uniqueKeys([apiKey, ...headerKeys(request, ASSIST_KEYS_HEADER)]);
 
 /** Key 的指纹(只存这个,不存 Key 本身):记在视频任务上,查询 / 下载时找回提交它的那个 Key */
 export const keyHint = (key: string) => createHash("sha256").update(key).digest("hex").slice(0, 12);
