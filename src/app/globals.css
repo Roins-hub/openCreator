@@ -3058,3 +3058,6 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
   transition: color .15s, border-color .15s, background .15s;
 }
 .key-add:hover { color: var(--ink); border-color: var(--focus); background: var(--warm); }
+
+/* 额外 Key 的验证结果紧跟在它那一行下面 */
+.key-extra > .model-test-result { display: flex; align-items: center; gap: 6px; margin: -4px 0 10px; }
