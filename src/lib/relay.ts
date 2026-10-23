@@ -103,7 +103,7 @@ export async function relayFetch(relay: Relay, path: string, init: RequestInit =
  * 下载中转站返回的公网结果地址(生图结果有时给 URL 而不是 base64)。
  * 不带 API Key;只允许 http/https 公网地址,不跟随跳转,连接时同样做内网防护。
  */
-export async function publicFetch(input: string, timeoutMs = 60_000): Promise<Response> {
+export async function publicFetch(input: string, timeoutMs = 60_000, hops = 0): Promise<Response> {
   let url: URL;
   try { url = new URL(input); } catch { throw new Error("中转站返回的图片地址无效"); }
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("中转站返回的图片地址无效");
@@ -111,7 +111,13 @@ export async function publicFetch(input: string, timeoutMs = 60_000): Promise<Re
   const host = url.hostname.replace(/^\[|\]$/g, "");
   if (isIP(host) && isPrivateAddress(host)) throw new Error("中转站返回的图片地址指向内网，已拒绝");
   const response = await undiciFetch(url, {
-    redirect: "error", dispatcher: customAgent, signal: AbortSignal.timeout(timeoutMs),
+    redirect: "manual", dispatcher: customAgent, signal: AbortSignal.timeout(timeoutMs),
   } as Parameters<typeof undiciFetch>[1]);
+  // 图片存储常先 302 到带签名的真实地址:手动跟最多 3 次,每一跳都重新检查地址(不会被跳到内网)
+  const location = response.headers.get("location");
+  if (response.status >= 300 && response.status < 400 && location) {
+    if (hops >= 3) throw new Error("中转站返回的图片地址跳转次数过多");
+    return publicFetch(new URL(location, url).toString(), timeoutMs, hops + 1);
+  }
   return response as unknown as Response;
 }

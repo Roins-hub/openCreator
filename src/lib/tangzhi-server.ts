@@ -284,7 +284,43 @@ export interface ImageResult {
   mimeType: string;
 }
 
-async function imageResponse(response: Response, relay: Relay): Promise<ImageResult> {
+/** 按文件头认出图片类型(有的存储把图片标成 application/octet-stream) */
+export function sniffImageType(bytes: Uint8Array) {
+  const ascii = (start: number, end: number) => String.fromCharCode(...bytes.subarray(start, end));
+  if (bytes[0] === 0x89 && ascii(1, 4) === "PNG") return "image/png";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (ascii(0, 4) === "GIF8") return "image/gif";
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "image/webp";
+  if (ascii(4, 8) === "ftyp" && /^(avif|avis)$/.test(ascii(8, 12))) return "image/avif";
+  return "";
+}
+
+/**
+ * 取回中转站给的图片:data: 内嵌图直接解码;相对地址或中转站自己域名下的地址带上 Key 去取
+ * (有的中转站图片要鉴权);其他地址按公网规则下载(跟跳转、拒绝内网)。
+ * 类型标错时按文件头识别;失败时报出状态码和类型,方便排查。
+ */
+export async function downloadRelayImage(url: string, relay: Relay, apiKey?: string): Promise<ImageResult> {
+  const inline = url.match(/^data:(image\/[\w+.-]+);base64,([\s\S]+)$/);
+  if (inline) return { bytes: new Uint8Array(Buffer.from(inline[2], "base64")), mimeType: inline[1] };
+  let target: URL;
+  try { target = new URL(url, `${relay.base}/`); } catch { throw new Error("中转站返回的图片地址无效"); }
+  const ownHost = target.host === new URL(relay.base).host;
+  const download = ownHost && apiKey
+    ? await relayFetch(relay, `${target.pathname}${target.search}`, {
+      headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(120_000),
+    })
+    : await publicFetch(target.toString(), 120_000);
+  if (!download.ok) throw new Error(`无法下载中转站返回的图片（HTTP ${download.status}）`);
+  const bytes = new Uint8Array(await download.arrayBuffer());
+  if (bytes.byteLength > 50 * 1024 * 1024) throw new Error("图片超过 50MB 限制");
+  const declared = (download.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  const type = declared.startsWith("image/") ? declared : sniffImageType(bytes);
+  if (!type) throw new Error(`中转站返回的不是图片（${declared || "未知类型"}，${bytes.byteLength} 字节）`);
+  return { bytes, mimeType: type };
+}
+
+async function imageResponse(response: Response, relay: Relay, apiKey?: string): Promise<ImageResult> {
   const data = await response.json().catch(() => ({})) as { data?: Array<{ b64_json?: string; url?: string; mime_type?: string }> };
   if (!response.ok) {
     if (response.status === 401) throw new Error("API Key 无效或已过期，请在设置中检查");
@@ -293,14 +329,10 @@ async function imageResponse(response: Response, relay: Relay): Promise<ImageRes
   const item = data.data?.find((entry) => entry.b64_json || entry.url);
   if (!item) throw new Error("中转站没有返回图片");
   if (item.b64_json) {
-    return { bytes: new Uint8Array(Buffer.from(item.b64_json, "base64")), mimeType: item.mime_type || "" };
+    const bytes = new Uint8Array(Buffer.from(item.b64_json.replace(/^data:image\/[\w+.-]+;base64,/, ""), "base64"));
+    return { bytes, mimeType: item.mime_type || sniffImageType(bytes) };
   }
-  const download = await publicFetch(item.url as string);
-  const type = download.headers.get("content-type") || "";
-  if (!download.ok || !type.startsWith("image/")) throw new Error("无法读取中转站返回的图片");
-  const bytes = new Uint8Array(await download.arrayBuffer());
-  if (bytes.byteLength > 50 * 1024 * 1024) throw new Error("图片超过 50MB 限制");
-  return { bytes, mimeType: type };
+  return downloadRelayImage(item.url as string, relay, apiKey);
 }
 
 // 工作台自己的任务 ID(img.…):中转站把它记进使用日志,生图日志里能按它对上这次生成
@@ -311,7 +343,7 @@ export async function generateImage(apiKey: string, body: Record<string, unknown
     method: "POST", body: JSON.stringify(body), signal: AbortSignal.timeout(300_000),
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", ...taskHeader(taskId) },
   });
-  return imageResponse(response, relay);
+  return imageResponse(response, relay, apiKey);
 }
 
 /**
@@ -341,11 +373,11 @@ export async function chatImage(
       extra_body: { google: { image_config: { aspect_ratio: request.aspectRatio, image_size: request.imageSize } } },
     }),
   });
-  return chatImageResult(data);
+  return chatImageResult(data, relay, apiKey);
 }
 
 /** 从对话回复里取出第一张图:data URL、图片链接,或 message.images 里的图 */
-export async function chatImageResult(data: Record<string, unknown>): Promise<ImageResult> {
+export async function chatImageResult(data: Record<string, unknown>, relay: Relay = DEFAULT_RELAY, apiKey?: string): Promise<ImageResult> {
   const message = (data.choices as Array<{ message?: { content?: unknown; images?: Array<{ image_url?: { url?: string } }> } }> | undefined)?.[0]?.message;
   const content = typeof message?.content === "string" ? message.content
     : Array.isArray(message?.content) ? (message.content as Array<{ text?: string; image_url?: { url?: string } }>)
@@ -357,14 +389,7 @@ export async function chatImageResult(data: Record<string, unknown>): Promise<Im
     const text = content.trim().slice(0, 200);
     throw new Error(text ? `模型没有返回图片：${text}` : "中转站没有返回图片");
   }
-  const inline = url.match(/^data:(image\/[\w+.-]+);base64,(.+)$/);
-  if (inline) return { bytes: new Uint8Array(Buffer.from(inline[2], "base64")), mimeType: inline[1] };
-  const download = await publicFetch(url);
-  const type = download.headers.get("content-type") || "";
-  if (!download.ok || !type.startsWith("image/")) throw new Error("无法读取中转站返回的图片");
-  const bytes = new Uint8Array(await download.arrayBuffer());
-  if (bytes.byteLength > 50 * 1024 * 1024) throw new Error("图片超过 50MB 限制");
-  return { bytes, mimeType: type };
+  return downloadRelayImage(url, relay, apiKey);
 }
 
 export async function editImage(apiKey: string, form: FormData, relay: Relay = DEFAULT_RELAY, taskId?: string) {
@@ -372,7 +397,7 @@ export async function editImage(apiKey: string, form: FormData, relay: Relay = D
     method: "POST", body: form, signal: AbortSignal.timeout(300_000),
     headers: { Authorization: `Bearer ${apiKey}`, ...taskHeader(taskId) },
   });
-  return imageResponse(response, relay);
+  return imageResponse(response, relay, apiKey);
 }
 
 // ---- 提示词优化:用中转站的对话模型扩写提示词
