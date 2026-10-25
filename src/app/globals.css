@@ -619,21 +619,29 @@ a { color: inherit; text-decoration: none; }
   position: relative; flex: 0 0 auto; width: 36px; height: var(--tick, 16px); padding: 0; background: transparent;
 }
 .conversation-map-rail button::before {
-  content: ""; position: absolute; right: 0; top: calc(50% - 1px); width: 27px; height: 2px;
+  content: ""; position: absolute; right: 0; top: calc(50% - 1px); width: var(--w, 9px); height: 2px;
   border-radius: 2px; background: var(--faint);
   transition: width .16s, background .16s;
 }
-.conversation-map-rail button:hover::before { width: 34px; background: var(--muted); }
-.conversation-map-rail button.active::before { width: 34px; background: var(--ink); }
+/* 刻度:离焦点越近越长(长度由 --w 决定,随鼠标平滑变化);当前读到的那根最深 */
+.conversation-map-rail button::before { transition: width .22s cubic-bezier(.16, 1, .3, 1), background .16s; }
+.conversation-map-rail button.pointed::before { background: var(--muted); }
+.conversation-map-rail button.active::before { background: var(--ink); }
+@media (prefers-reduced-motion: reduce) {
+  .conversation-map-card, .conversation-map-card.is-open { transition: opacity .1s; }
+}
 .conversation-map-card {
   position: absolute; right: 44px; top: 50%; width: 330px; padding: 8px;
   border: 1px solid var(--line); border-radius: 15px; background: var(--paper);
   box-shadow: 0 14px 42px oklch(20% .02 80 / .12);
-  transform: translateY(-50%);
-  animation: map-card-in .16s cubic-bezier(.16, 1, .3, 1);
+  /* 收起:淡出并往右缩回;展开:带一点回弹地弹出(从细线那边长出来) */
+  transform: translate(12px, -50%) scale(.94); transform-origin: right center;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity .16s ease, transform .2s ease, visibility 0s linear .2s;
 }
-@keyframes map-card-in {
-  from { opacity: 0; transform: translate(7px, -50%) scale(.985); }
+.conversation-map-card.is-open {
+  transform: translateY(-50%); opacity: 1; visibility: visible; pointer-events: auto;
+  transition: opacity .2s ease, transform .38s cubic-bezier(.34, 1.56, .64, 1), visibility 0s;
 }
 .conversation-map-card button {
   width: 100%; height: 43px; display: block; overflow: hidden; padding: 0 12px;

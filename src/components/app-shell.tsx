@@ -15,6 +15,7 @@ import { ConversationList, type ConversationGroup } from "@/components/conversat
 import { GroupPicker } from "@/components/group-picker";
 import { BackToTop } from "@/components/back-to-top";
 import { ThemeQuickPicker } from "@/components/theme-quick-picker";
+import { readWorkspaceCache, writeWorkspaceCache, type WorkspaceSnapshot } from "@/lib/workspace-cache";
 import { AssetsIcon, ChatIcon, CreateIcon, DocsIcon, SettingsIcon } from "@/components/rail-icons";
 import { ConversationNavigator } from "@/components/conversation-navigator";
 import { EmptyStatePrompt } from "@/components/empty-state-prompt";
@@ -241,29 +242,59 @@ export function AppShell() {
       await openSession("");
       return;
     }
-    await openSession(key);
-    const [nextConversations, nextFavorites, nextPrompts, nextGroups, nextLayout] = await Promise.all([
+    // 先显示这个账号上次的数据(浏览器缓存),不用等服务端;下面取到最新的再整体替换
+    const apply = (snapshot: WorkspaceSnapshot) => {
+      setFavorites(new Set(snapshot.favorites));
+      setCustomPrompts(snapshot.prompts);
+      setPromptLayout(snapshot.layout);
+      knownGroupIdsRef.current = new Set(snapshot.groups.map((group) => group.id));
+      setGroups(snapshot.groups);
+      setConversations(snapshot.conversations);
+      pickActive(snapshot.conversations);
+    };
+    const pickActive = (list: Conversation[]) => {
+      if (!list.length) { setActiveId(undefined); return; }
+      const requested = typeof window === "undefined" ? null :
+        new URLSearchParams(window.location.search).get("conversation");
+      setActiveId((id) =>
+        requested && list.some((item) => item.id === requested)
+          ? requested : id && list.some((item) => item.id === id) ? id : list[0].id);
+    };
+    const cached = readWorkspaceCache();
+    if (cached) apply(cached);
+    // 换看图片 / 视频用的 Cookie 和读数据同时进行,少等一轮
+    const [, nextConversations, nextFavorites, nextPrompts, nextGroups, nextLayout] = await Promise.all([
+      openSession(key),
       request<Conversation[]>("/api/conversations"),
       request<string[]>("/api/favorites").catch(() => []),
       request<PromptTemplate[]>("/api/prompts").catch(() => []),
       request<ConversationGroup[]>("/api/groups").catch(() => []),
       request<PromptLayout>("/api/prompt-library").catch(() => emptyPromptLayout()),
     ]);
+    const fresh: WorkspaceSnapshot = {
+      conversations: nextConversations, favorites: nextFavorites, prompts: nextPrompts, groups: nextGroups, layout: nextLayout,
+    };
+    writeWorkspaceCache(fresh);
     setFavorites(new Set(nextFavorites));
     setCustomPrompts(nextPrompts);
     setPromptLayout(nextLayout);
     knownGroupIdsRef.current = new Set(nextGroups.map((group) => group.id));
     setGroups(nextGroups);
-    setConversations(nextConversations);
-    if (nextConversations.length) {
-      const requested = typeof window === "undefined" ? null :
-        new URLSearchParams(window.location.search).get("conversation");
-      setActiveId((id) =>
-        requested && nextConversations.some((item) => item.id === requested)
-          ? requested : id && nextConversations.some((item) => item.id === id) ? id : nextConversations[0].id);
-    } else {
-      setActiveId(undefined);
-    }
+    // 缓存显示期间本机刚建、还没存到服务端的对话先留着(和切回页面时的同步一样)
+    setConversations((current) => {
+      const serverIds = new Set(nextConversations.map((item) => item.id));
+      const pending = cached ? current.filter((item) => !serverIds.has(item.id) && !cached.conversations.some((old) => old.id === item.id)) : [];
+      return [...pending, ...nextConversations];
+    });
+    const requested = typeof window === "undefined" ? null :
+      new URLSearchParams(window.location.search).get("conversation");
+    setActiveId((id) => {
+      if (requested && nextConversations.some((item) => item.id === requested)) return requested;
+      // 缓存显示期间新建的对话(服务端还没有)保持打开
+      const createdMeanwhile = id && cached && !cached.conversations.some((item) => item.id === id);
+      if (id && (nextConversations.some((item) => item.id === id) || createdMeanwhile)) return id;
+      return nextConversations[0]?.id;
+    });
   }, []);
 
   // 切回这个标签页 / 窗口时,拉一次最新的对话和分组(另一台设备可能刚改过);15 秒内不重复拉

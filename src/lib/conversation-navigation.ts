@@ -23,6 +23,10 @@ export function navigationNodes(messages: Message[]): NavigationNode[] {
   });
 }
 
+/** 细线刻度长度:离焦点越近越长(像放大镜),远处是短刻度 */
+export const TICK_WIDTHS = [30, 22, 17, 13];
+export const tickWidth = (index: number, focus: number) => TICK_WIDTHS[Math.abs(index - focus)] ?? 9;
+
 /** 目录搜索:提示词里包含所有关键词(空格分隔,不分大小写)的项 */
 export function searchNavigation(nodes: NavigationNode[], query: string) {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);

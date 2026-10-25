@@ -15,6 +15,9 @@ interface NavNode {
 }
 
 const MIN_NODES = 3;
+/** 细线刻度长度:离焦点越近越长(像放大镜),远处是短刻度(和视频工作台一致) */
+const TICK_WIDTHS = [30, 22, 17, 13];
+const tickWidth = (index: number, focus: number) => TICK_WIDTHS[Math.abs(index - focus)] ?? 9;
 
 export const messageAnchorId = (id: string) => `chat-msg-${id}`;
 
@@ -92,6 +95,9 @@ export function ThreadNavigator() {
 
   // 条数多、细线放不下时右侧细线可以滚动:让当前这条留在中间(只滚细线自己)
   const railRef = useRef<HTMLDivElement>(null);
+  // 鼠标在细线上指着哪一根:放大效果跟着鼠标走;移开后回到当前读到的那根
+  const [pointed, setPointed] = useState<number>();
+  const focusIndex = pointed ?? activeIndex;
   useEffect(() => {
     const rail = railRef.current;
     const active = rail?.querySelector<HTMLElement>("button.active");
@@ -118,8 +124,12 @@ export function ThreadNavigator() {
         if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
       }}
     >
-      {expanded && (
-        <div className={`thread-map-card ${searching ? "searching" : ""}`}>
+      {/* 卡片一直挂着,用 is-open 切换:弹出、收起都有过渡 */}
+      <div
+          className={`thread-map-card ${searching ? "searching" : ""} ${expanded ? "is-open" : ""}`}
+          inert={!expanded}
+          aria-hidden={!expanded}
+        >
           <label className="thread-map-search">
             <SearchIcon className="size-3.5" />
             <input
@@ -172,18 +182,20 @@ export function ThreadNavigator() {
             })}
           </div>
         </div>
-      )}
       {/* 条数越多细线越密(每根 16px 到 4px),最多占屏幕高度的六成,再多就滚动 */}
       <div
         className="thread-map-rail"
         ref={railRef}
+        onMouseLeave={() => setPointed(undefined)}
         style={{ "--tick": `clamp(4px, calc(60vh / ${nodes.length}), 16px)` } as React.CSSProperties}
       >
         {nodes.map((node, index) => (
           <button
             type="button"
             key={node.id}
-            className={index === activeIndex ? "active" : ""}
+            className={`${index === activeIndex ? "active" : ""} ${index === pointed ? "pointed" : ""}`}
+            style={{ "--w": `${tickWidth(index, focusIndex)}px` } as React.CSSProperties}
+            onMouseEnter={() => setPointed(index)}
             onClick={() => jump(node.id)}
             aria-label={`跳转到第 ${index + 1} 条：${node.preview}`}
           />

@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Search, X } from "lucide-react";
 import type { Message } from "@/lib/types";
-import { navigationNodes, searchNavigation } from "@/lib/conversation-navigation";
+import { navigationNodes, searchNavigation, tickWidth } from "@/lib/conversation-navigation";
 
 export function ConversationNavigator({
   messages,
@@ -24,6 +24,9 @@ export function ConversationNavigator({
   const matches = useMemo(() => searchNavigation(nodes, query), [nodes, query]);
   const expanded = hovered || focused || searching;
   const railRef = useRef<HTMLDivElement>(null);
+  // 鼠标在细线上指着哪一根:放大效果跟着鼠标走;移开后回到当前读到的那根
+  const [pointed, setPointed] = useState<number>();
+  const focusIndex = pointed ?? activeIndex;
 
   // 条数多、细线放不下时右侧细线可以滚动:让当前这条留在中间(只滚细线自己)
   useEffect(() => {
@@ -80,7 +83,9 @@ export function ConversationNavigator({
     onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
     }}>
-    {expanded && <div className={`conversation-map-card ${searching ? "searching" : ""}`}>
+    {/* 卡片一直挂着,用 is-open 切换:弹出、收起都有过渡 */}
+    <div className={`conversation-map-card ${searching ? "searching" : ""} ${expanded ? "is-open" : ""}`}
+      inert={!expanded} aria-hidden={!expanded}>
       <label className="conversation-map-search">
         <Search size={13} />
         <input ref={searchRef} type="search" value={query} placeholder={`搜索本对话的 ${nodes.length} 条提示词`}
@@ -104,13 +109,15 @@ export function ConversationNavigator({
           </button>;
         })}
       </div>
-    </div>}
+    </div>
     {/* 条数越多细线越密(每根 16px 到 4px),最多占屏幕高度的六成,再多就滚动 */}
-    <div className="conversation-map-rail" ref={railRef}
+    <div className="conversation-map-rail" ref={railRef} onMouseLeave={() => setPointed(undefined)}
       style={{ "--tick": `clamp(4px, calc(60vh / ${nodes.length}), 16px)` } as React.CSSProperties}>
       {nodes.map((node, index) => (
         <button type="button" key={node.id}
-          className={index === activeIndex ? "active" : ""}
+          className={`${index === activeIndex ? "active" : ""} ${index === pointed ? "pointed" : ""}`}
+          style={{ "--w": `${tickWidth(index, focusIndex)}px` } as React.CSSProperties}
+          onMouseEnter={() => setPointed(index)}
           onClick={() => jump(node.id)}
           aria-label={`跳转到第 ${index + 1} 条：${node.preview}`} />
       ))}

@@ -1222,22 +1222,21 @@ html[data-mote-theme] {
   position: absolute;
   top: calc(50% - 1px);
   right: 0;
-  width: 27px;
+  width: var(--w, 9px);
   height: 2px;
   border-radius: 2px;
   background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
   transition:
-    width 0.16s,
+    width 0.22s cubic-bezier(0.16, 1, 0.3, 1),
     background 0.16s;
 }
 
-.thread-map-rail button:hover::before {
-  width: 34px;
+/* 刻度:离焦点越近越长(长度由 --w 决定,随鼠标平滑变化);当前读到的那根最深 */
+.thread-map-rail button.pointed::before {
   background: var(--muted-foreground);
 }
 
 .thread-map-rail button.active::before {
-  width: 34px;
   background: var(--foreground);
 }
 
@@ -1251,15 +1250,27 @@ html[data-mote-theme] {
   border-radius: 15px;
   background: var(--background);
   box-shadow: 0 14px 42px color-mix(in oklab, var(--foreground) 12%, transparent);
-  transform: translateY(-50%);
-  animation: thread-map-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  /* 收起:淡出并往右缩回;展开:带一点回弹地弹出(从细线那边长出来) */
+  transform: translate(12px, -50%) scale(0.94);
+  transform-origin: right center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.16s ease,
+    transform 0.2s ease,
+    visibility 0s linear 0.2s;
 }
 
-@keyframes thread-map-in {
-  from {
-    opacity: 0;
-    transform: translate(7px, -50%) scale(0.985);
-  }
+.thread-map-card.is-open {
+  transform: translateY(-50%);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity 0.2s ease,
+    transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1),
+    visibility 0s;
 }
 
 .thread-map-list {

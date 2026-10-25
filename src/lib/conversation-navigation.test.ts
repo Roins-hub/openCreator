@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { navigationNodes, searchNavigation } from "./conversation-navigation";
+import { navigationNodes, searchNavigation, tickWidth } from "./conversation-navigation";
 import type { Message } from "./types";
 
 const message = (id: string, role: Message["role"], content: string): Message => ({
@@ -31,6 +31,11 @@ describe("conversation navigation", () => {
       { id: "v1", preview: "海边的灯塔", text: "海边的灯塔" },
       { id: "u2", preview: "提交失败的提示词", text: "提交失败的提示词" },
     ]);
+  });
+
+  it("draws longer ticks near the focus, like a magnifier", () => {
+    expect([0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => tickWidth(index, 4))).toEqual([9, 13, 17, 22, 30, 22, 17, 13, 9]);
+    expect(tickWidth(20, 4)).toBe(9);
   });
 
   it("searches the full prompt with every keyword", () => {
