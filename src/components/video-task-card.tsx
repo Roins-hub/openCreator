@@ -171,6 +171,8 @@ export function VideoTaskCard({
           {copied && <span className="task-toast">{copied}</span>}
           <div className="task-actions">
             <button type="button" onClick={onReedit} title="重新编辑" aria-label="重新编辑"><Pencil size={15} /></button>
+            <button type="button" onClick={onRegenerate} title="重新生成（同样的提示词和参数再生成一次，会再次计费）"
+              aria-label="重新生成"><RefreshCw size={15} /></button>
             {videos[0]
               ? <a href={`/api/media/${videos[0].path}?download=${encodeURIComponent(videos[0].name)}`} download={videos[0].name} title="下载视频" aria-label="下载视频"><Download size={15} /></a>
               : <button type="button" disabled title="暂无可下载的视频" aria-label="下载视频"><Download size={15} /></button>}
@@ -187,8 +189,6 @@ export function VideoTaskCard({
                 <div className="task-menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => void copy(prompt, "已复制提示词")}><Copy size={14} />复制提示词</button>
                   {taskId && <button type="button" role="menuitem" onClick={() => void copy(taskId, "已复制任务 ID")}><Copy size={14} />复制任务 ID</button>}
-                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onRegenerate(); }}>
-                    <RefreshCw size={14} />重新生成</button>
                   <Link role="menuitem" href="/assets" onClick={() => setMenuOpen(false)}><FolderOpen size={14} />在资产库查看</Link>
                   <hr />
                   <button type="button" role="menuitem" className="danger"

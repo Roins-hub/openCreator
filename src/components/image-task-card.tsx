@@ -96,6 +96,8 @@ export function ImageTaskCard({
           {copied && <span className="task-toast">{copied}</span>}
           <div className="task-actions">
             <button type="button" onClick={onReedit} title="重新编辑" aria-label="重新编辑"><Pencil size={15} /></button>
+            <button type="button" onClick={onRegenerate} title="重新生成（同样的提示词和参数再生成一次，会再次计费）"
+              aria-label="重新生成"><RefreshCw size={15} /></button>
             <button type="button" onClick={downloadAll} disabled={!images.length}
               title={images.length > 1 ? "下载全部图片" : "下载图片"} aria-label="下载图片"><Download size={15} /></button>
             <button type="button" className={favorite ? "is-on" : ""} onClick={onToggleFavorite}
@@ -110,8 +112,6 @@ export function ImageTaskCard({
               {menuOpen && (
                 <div className="task-menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => void copy(prompt, "已复制提示词")}><Copy size={14} />复制提示词</button>
-                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onRegenerate(); }}>
-                    <RefreshCw size={14} />重新生成</button>
                   <Link role="menuitem" href="/assets" onClick={() => setMenuOpen(false)}><FolderOpen size={14} />在资产库查看</Link>
                   <hr />
                   <button type="button" role="menuitem" className="danger"
