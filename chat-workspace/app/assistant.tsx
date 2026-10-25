@@ -15,6 +15,7 @@ import { AuiConfig } from "@assistant-ui/store";
 import { McpLocalStorage, McpManagerResource, McpOAuthCallback } from "@assistant-ui/react-mcp";
 import { lastAssistantMessageIsCompleteWithToolCalls, type UIMessage } from "ai";
 import { useRouter } from "next/navigation";
+import { ChatCacheSync } from "@/components/chat-cache-sync";
 import { Thread } from "@/components/assistant-ui/thread";
 import { WorkspaceSidebar } from "@/components/workspace-sidebar";
 import { WorkspaceHeader } from "@/components/workspace-header";
@@ -136,6 +137,7 @@ function ChatRuntime({ children }: { children: React.ReactNode }) {
 
   return (
     <AssistantRuntimeProvider runtime={runtime} config={assistantConfig}>
+      {MOTE_MODE && <ChatCacheSync />}
       {children}
     </AssistantRuntimeProvider>
   );

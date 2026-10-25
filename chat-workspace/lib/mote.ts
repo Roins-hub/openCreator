@@ -74,6 +74,19 @@ export function moteHeaders(): Record<string, string> {
   };
 }
 
+/** 当前账号的哈希(主 Key 或 Key + 中转站地址):各种浏览器缓存按它分开,不把 Key 明文当键名 */
+export function moteAccountHash() {
+  const headers = moteHeaders();
+  const account = headers["x-tangzhi-account-key"] || headers["x-tangzhi-key"] || "";
+  const source = `${account}|${headers["x-tangzhi-base"] || ""}`;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < source.length; index++) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16);
+}
+
 /** 工作台的 Key / 地址变化(其他标签页改了设置)时回调 */
 export function onMoteSettingsChange(callback: () => void) {
   const onStorage = (event: StorageEvent) => {

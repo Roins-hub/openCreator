@@ -15,7 +15,18 @@ import {
   reasoningEffortsForModel,
   type ReasoningEffort,
 } from "@/lib/reasoning";
-import { MOTE_MODE, moteChatKey, moteChatKeys, moteRelayBase, onMoteSettingsChange, withBasePath } from "@/lib/mote";
+import {
+  MOTE_MODE, moteAccountHash, moteChatKey, moteChatKeys, moteRelayBase, onMoteSettingsChange, withBasePath,
+} from "@/lib/mote";
+
+/** 聊天模型列表的缓存(按账号):打开就能选模型,后台再刷新 */
+const modelsCacheKey = () => `sub2chat:models-cache:${moteAccountHash()}`;
+function readModelsCache(): { models: string[]; owners: Record<string, string> } | undefined {
+  try {
+    const value = JSON.parse(localStorage.getItem(modelsCacheKey()) || "null");
+    return value && Array.isArray(value.models) ? value : undefined;
+  } catch { return undefined; }
+}
 import { compareModelsNewestFirst } from "@/lib/chat-models";
 
 type LoadState = "idle" | "loading" | "success" | "error";
@@ -86,10 +97,11 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
     setCustomUrlState(base);
     setApiKeyState(moteChatKey());
     setChatKeys(moteChatKeys());
-    setModelKeys({});
+    const cachedModels = readModelsCache();
+    setModelKeys(cachedModels?.owners ?? {});
     setRememberKeyState(true);
     setModelState(localStorage.getItem(modelName(next)) ?? "");
-    setModelsByProvider({});
+    setModelsByProvider(cachedModels ? { [next]: cachedModels.models } : {});
     setLoadState("idle");
     setLoadError("");
   }, []);
@@ -222,6 +234,9 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
       }
       setModelKeys(owners);
       const nextModels = Object.keys(owners).sort(compareModelsNewestFirst);
+      if (MOTE_MODE) {
+        try { localStorage.setItem(modelsCacheKey(), JSON.stringify({ models: nextModels, owners })); } catch { /* 存不下就算了 */ }
+      }
       setModelsByProvider((current) => ({ ...current, [provider]: nextModels }));
       if (nextModels.length > 0 && !nextModels.includes(model)) {
         setModel(nextModels[0]!);
@@ -235,7 +250,8 @@ export function ChatSettingsProvider({ children }: { children: React.ReactNode }
 
   // 工作台模式下 Key 已经有了,打开就拉模型列表,不用手动点「获取模型」
   useEffect(() => {
-    if (MOTE_MODE && apiKey && loadState === "idle" && !modelsByProvider[provider]) void loadModels();
+    // 有缓存的模型列表也照样在后台刷新一次
+    if (MOTE_MODE && apiKey && loadState === "idle") void loadModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, provider, loadState]);
 
