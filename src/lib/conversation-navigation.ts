@@ -23,19 +23,6 @@ export function navigationNodes(messages: Message[]): NavigationNode[] {
   });
 }
 
-export function navigationWindow(
-  nodes: NavigationNode[],
-  activeIndex: number,
-  maximum = 7,
-) {
-  if (nodes.length <= maximum) return nodes;
-  const start = Math.min(
-    Math.max(0, activeIndex - Math.floor(maximum / 2)),
-    nodes.length - maximum,
-  );
-  return nodes.slice(start, start + maximum);
-}
-
 /** 目录搜索:提示词里包含所有关键词(空格分隔,不分大小写)的项 */
 export function searchNavigation(nodes: NavigationNode[], query: string) {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);

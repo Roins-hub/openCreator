@@ -1199,12 +1199,20 @@ html[data-mote-theme] {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.thread-map-rail::-webkit-scrollbar {
+  display: none;
 }
 
 .thread-map-rail button {
   position: relative;
+  flex: 0 0 auto;
   width: 36px;
-  height: 16px;
+  height: var(--tick, 16px);
   padding: 0;
   background: transparent;
 }
@@ -1212,7 +1220,7 @@ html[data-mote-theme] {
 .thread-map-rail button::before {
   content: "";
   position: absolute;
-  top: 7px;
+  top: calc(50% - 1px);
   right: 0;
   width: 27px;
   height: 2px;

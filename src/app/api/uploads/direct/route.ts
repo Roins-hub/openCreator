@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { recordAsset } from "@/lib/asset-store";
 import { failure, ok } from "@/lib/http";
 import { mediaPrefix, requireUser } from "@/lib/identity";
 import { checkUpload } from "@/lib/media-files";
@@ -37,6 +38,12 @@ export async function POST(request: Request) {
       await deleteObject(input.path).catch(() => undefined);
       throw new Error(`单个文件不能超过 ${maxBytes / 1024 / 1024}MB`);
     }
-    return ok({ kind, path: input.path, name: input.name, mimeType: input.type });
+    // 输入框里上传的素材也记进资产库(「我上传的」),下次按 @ 或在资产库里直接拿;聊天附件由聊天自己登记
+    if (input.purpose !== "chat") {
+      await recordAsset(userId, {
+        kind, path: input.path, name: input.name, mimeType: input.type, size, createdAt: new Date().toISOString(), source: "upload",
+      }).catch(() => undefined);
+    }
+    return ok({ kind, path: input.path, name: input.name, mimeType: input.type, size });
   } catch (error) { return failure(error); }
 }

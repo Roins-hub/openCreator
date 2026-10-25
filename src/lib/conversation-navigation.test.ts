@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { navigationNodes, navigationWindow, searchNavigation } from "./conversation-navigation";
+import { navigationNodes, searchNavigation } from "./conversation-navigation";
 import type { Message } from "./types";
 
 const message = (id: string, role: Message["role"], content: string): Message => ({
@@ -31,16 +31,6 @@ describe("conversation navigation", () => {
       { id: "v1", preview: "海边的灯塔", text: "海边的灯塔" },
       { id: "u2", preview: "提交失败的提示词", text: "提交失败的提示词" },
     ]);
-  });
-
-  it("keeps a bounded window centered near the active turn", () => {
-    const nodes = Array.from({ length: 12 }, (_, index) => ({
-      id: `u${index}`, preview: `问题 ${index}`, text: `问题 ${index}`,
-    }));
-    expect(navigationWindow(nodes, 6, 7).map((node) => node.id))
-      .toEqual(["u3", "u4", "u5", "u6", "u7", "u8", "u9"]);
-    expect(navigationWindow(nodes, 11, 7).map((node) => node.id))
-      .toEqual(["u5", "u6", "u7", "u8", "u9", "u10", "u11"]);
   });
 
   it("searches the full prompt with every keyword", () => {

@@ -15,7 +15,6 @@ interface NavNode {
 }
 
 const MIN_NODES = 3;
-const WINDOW = 7;
 
 export const messageAnchorId = (id: string) => `chat-msg-${id}`;
 
@@ -35,12 +34,6 @@ function navNodes(messages: readonly ThreadMessageLike[]): NavNode[] {
       const full = text || fallback;
       return { id: message.id, text: full, preview: full.length > 72 ? `${full.slice(0, 72)}…` : full };
     });
-}
-
-function windowAround(nodes: NavNode[], activeIndex: number) {
-  if (nodes.length <= WINDOW) return nodes;
-  const start = Math.min(Math.max(0, activeIndex - Math.floor(WINDOW / 2)), nodes.length - WINDOW);
-  return nodes.slice(start, start + WINDOW);
 }
 
 /** 包含全部关键词(空格分隔,不分大小写) */
@@ -97,13 +90,21 @@ export function ThreadNavigator() {
     };
   }, [enough, nodes]);
 
+  // 条数多、细线放不下时右侧细线可以滚动:让当前这条留在中间(只滚细线自己)
+  const railRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const rail = railRef.current;
+    const active = rail?.querySelector<HTMLElement>("button.active");
+    if (!rail || !active || rail.scrollHeight <= rail.clientHeight) return;
+    rail.scrollTop = active.offsetTop - rail.clientHeight / 2 + active.offsetHeight / 2;
+  }, [activeIndex, nodes.length]);
+
   if (!enough) return null;
 
   const jump = (id: string) =>
     document.getElementById(messageAnchorId(id))?.scrollIntoView({ behavior: "smooth", block: "start" });
   const indexOf = (id: string) => nodes.findIndex((node) => node.id === id);
-  const visible = windowAround(nodes, activeIndex);
-  // 卡片里列出全部提示词(可滚动),输入关键词时只列匹配项;右侧细线只画当前位置附近的几条
+  // 卡片里列出全部提示词(可滚动),输入关键词时只列匹配项;右侧细线每条提示词一根,一一对应
   const list = searching ? matches : nodes;
 
   return (
@@ -172,19 +173,21 @@ export function ThreadNavigator() {
           </div>
         </div>
       )}
-      <div className="thread-map-rail">
-        {visible.map((node) => {
-          const index = indexOf(node.id);
-          return (
-            <button
-              type="button"
-              key={node.id}
-              className={index === activeIndex ? "active" : ""}
-              onClick={() => jump(node.id)}
-              aria-label={`跳转到：${node.preview}`}
-            />
-          );
-        })}
+      {/* 条数越多细线越密(每根 16px 到 4px),最多占屏幕高度的六成,再多就滚动 */}
+      <div
+        className="thread-map-rail"
+        ref={railRef}
+        style={{ "--tick": `clamp(4px, calc(60vh / ${nodes.length}), 16px)` } as React.CSSProperties}
+      >
+        {nodes.map((node, index) => (
+          <button
+            type="button"
+            key={node.id}
+            className={index === activeIndex ? "active" : ""}
+            onClick={() => jump(node.id)}
+            aria-label={`跳转到第 ${index + 1} 条：${node.preview}`}
+          />
+        ))}
       </div>
     </nav>
   );

@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Search, X } from "lucide-react";
 import type { Message } from "@/lib/types";
-import { navigationNodes, navigationWindow, searchNavigation } from "@/lib/conversation-navigation";
+import { navigationNodes, searchNavigation } from "@/lib/conversation-navigation";
 
 export function ConversationNavigator({
   messages,
@@ -20,10 +20,18 @@ export function ConversationNavigator({
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searching = query.trim().length > 0;
-  // 卡片里列出全部提示词(可滚动),输入关键词时只列匹配项;右侧细线只画当前位置附近的几条
+  // 卡片里列出全部提示词(可滚动),输入关键词时只列匹配项;右侧细线每条提示词一根,一一对应
   const matches = useMemo(() => searchNavigation(nodes, query), [nodes, query]);
-  const visible = navigationWindow(nodes, activeIndex);
   const expanded = hovered || focused || searching;
+  const railRef = useRef<HTMLDivElement>(null);
+
+  // 条数多、细线放不下时右侧细线可以滚动:让当前这条留在中间(只滚细线自己)
+  useEffect(() => {
+    const rail = railRef.current;
+    const active = rail?.querySelector<HTMLElement>("button.active");
+    if (!rail || !active || rail.scrollHeight <= rail.clientHeight) return;
+    rail.scrollTop = active.offsetTop - rail.clientHeight / 2 + active.offsetHeight / 2;
+  }, [activeIndex, nodes.length]);
 
   // 展开时把列表滚到当前读到的那条(只滚列表自己,不带动页面)
   useLayoutEffect(() => {
@@ -97,14 +105,15 @@ export function ConversationNavigator({
         })}
       </div>
     </div>}
-    <div className="conversation-map-rail">
-      {visible.map((node) => {
-        const index = indexOf(node.id);
-        return <button type="button" key={node.id}
+    {/* 条数越多细线越密(每根 16px 到 4px),最多占屏幕高度的六成,再多就滚动 */}
+    <div className="conversation-map-rail" ref={railRef}
+      style={{ "--tick": `clamp(4px, calc(60vh / ${nodes.length}), 16px)` } as React.CSSProperties}>
+      {nodes.map((node, index) => (
+        <button type="button" key={node.id}
           className={index === activeIndex ? "active" : ""}
           onClick={() => jump(node.id)}
-          aria-label={`跳转到：${node.preview}`} />;
-      })}
+          aria-label={`跳转到第 ${index + 1} 条：${node.preview}`} />
+      ))}
     </div>
   </nav>;
 }
