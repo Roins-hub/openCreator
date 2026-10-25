@@ -161,6 +161,10 @@ export function AppShell() {
   // 输入框里已添加的素材放大查看(第几个)
   const [attachmentPreview, setAttachmentPreview] = useState<number | null>(null);
   const [referenceAssets, setReferenceAssets] = useState<(Asset & { kind: MediaKind })[]>([]);
+  // 素材库列表:打开页面后先在后台读一次,点 @ 时直接用,同时再刷新一次(不用等它才弹出)
+  const [referenceLoading, setReferenceLoading] = useState(false);
+  // 列表是哪个 Key 读的:换了账号就不再显示上一个账号的素材
+  const [referenceLoadedFor, setReferenceLoadedFor] = useState<string>();
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [customPrompts, setCustomPrompts] = useState<PromptTemplate[]>([]);
   const [promptLayout, setPromptLayout] = useState<PromptLayout>(emptyPromptLayout);
@@ -470,7 +474,9 @@ export function AppShell() {
   const captureReferenceAnchor = () => {
     const editor = editorRef.current;
     const selection = window.getSelection();
-    const range = selection && selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+    // 只认输入框里的光标:之前在页面别处(比如卡片里的文字)点过时,选区还留在那里,弹框会跑过去
+    const current = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+    const range = current && editor?.contains(current.startContainer) ? current.cloneRange() : null;
     referenceRangeRef.current = range;
     const rangeRect = range?.getBoundingClientRect();
     referenceAnchorRef.current = rangeRect && (rangeRect.width || rangeRect.height || rangeRect.top || rangeRect.left)
@@ -483,7 +489,28 @@ export function AppShell() {
     return () => window.cancelAnimationFrame(frame);
   }, [draft, referencePickerOpen, positionReferencePicker]);
 
-  const openReferencePicker = async () => {
+  const referenceLoaded = Boolean(apiKey) && referenceLoadedFor === apiKey;
+  const loadReferenceAssets = useCallback(async () => {
+    setReferenceLoading(true);
+    const key = readApiKey();
+    try {
+      const assets = await request<Asset[]>("/api/assets");
+      // 聊天里的文档附件不能当生成素材
+      setReferenceAssets(assets.filter((asset): asset is Asset & { kind: MediaKind } => !asset.trashed && asset.kind !== "file"));
+      setReferenceLoadedFor(key);
+    } finally {
+      setReferenceLoading(false);
+    }
+  }, []);
+
+  // 有 Key 后在后台先读一次素材库,第一次点 @ 也不用等
+  useEffect(() => {
+    if (!apiKey || referenceLoaded) return;
+    const timer = window.setTimeout(() => { void loadReferenceAssets().catch(() => undefined); }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [apiKey, loadReferenceAssets, referenceLoaded]);
+
+  const openReferencePicker = () => {
     if (!modeKinds.length) return;
     if (referencePickerOpen) {
       referenceRangeRef.current = null;
@@ -491,15 +518,12 @@ export function AppShell() {
       setReferencePickerOpen(false);
       return;
     }
-    try {
-      const assets = await request<Asset[]>("/api/assets");
-      // 聊天里的文档附件不能当生成素材
-      setReferenceAssets(assets.filter((asset): asset is Asset & { kind: MediaKind } => !asset.trashed && asset.kind !== "file"));
-      setReferenceQuery("");
-      setReferencePickerOpen(true);
-    } catch (cause) {
-      setError((cause as Error).message);
-    }
+    // 先用手上的列表马上弹出,再在后台刷新(期间新上传、新生成的会补进来)
+    setReferenceQuery("");
+    setReferencePickerOpen(true);
+    void loadReferenceAssets().catch((cause) => {
+      if (!referenceLoaded) setError((cause as Error).message);
+    });
   };
 
   // 当前对话的素材实时并入(选择框打开期间新上传的也会出现);只列出当前模型和模式能用的素材类型。
@@ -508,7 +532,7 @@ export function AppShell() {
       id: `current:${item.path}`, kind: item.kind, path: item.path, name: item.name,
       mimeType: item.mimeType || "image/jpeg",
     })),
-    ...referenceAssets,
+    ...(referenceLoaded ? referenceAssets : []),
   ]
     .filter((asset) => modeKinds.includes(asset.kind))
     .filter((asset, index, list) => list.findIndex((candidate) => candidate.path === asset.path) === index);
@@ -1481,7 +1505,7 @@ export function AppShell() {
                   if (event.key === "@" && !event.ctrlKey && !event.metaKey) {
                     event.preventDefault();
                     captureReferenceAnchor();
-                    void openReferencePicker();
+                    openReferencePicker();
                     return;
                   }
                   if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
@@ -1514,7 +1538,7 @@ export function AppShell() {
                 }} />
               <button className={`icon-button reference-trigger ${referencePickerOpen ? "active" : ""}`} onClick={() => {
                 captureReferenceAnchor();
-                void openReferencePicker();
+                openReferencePicker();
               }}
                 disabled={!modeKinds.length} aria-label="选择参考内容" title="选择本地参考内容">
                 <AtSign size={18} />
@@ -1575,7 +1599,8 @@ export function AppShell() {
               style={referencePickerPosition}>
               <div className="reference-picker-head"><strong>选择参考内容</strong><button className="icon-button" onClick={() => setReferencePickerOpen(false)} aria-label="关闭"><X size={15} /></button></div>
               <input className="reference-picker-search" value={referenceQuery} onChange={(event) => setReferenceQuery(event.target.value)} placeholder="搜索参考内容" autoFocus />
-              {pickerAssets.length === 0 ? <p className="reference-picker-empty">还没有可引用的素材，先上传或拖入一个。</p> :
+              {pickerAssets.length === 0 ? <p className="reference-picker-empty">
+                {referenceLoading && !referenceLoaded ? "正在加载素材…" : "还没有可引用的素材，先上传或拖入一个。"}</p> :
                 <div className="reference-picker-grid">{pickerAssets.filter((asset) => !referenceQuery.trim() || asset.name.toLowerCase().includes(referenceQuery.trim().toLowerCase())).map((asset) => {
                   const selectedReference = attachments.some((item) => item.path === asset.path);
                   return <button className={`reference-picker-item ${selectedReference ? "selected" : ""}`} key={asset.id}
