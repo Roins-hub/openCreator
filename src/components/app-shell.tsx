@@ -7,7 +7,7 @@ import {
   Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Sparkles, Undo2, X, BookMarked, Pencil, Trash2,
 } from "lucide-react";
 import type { Conversation, GenerationMeta, ImageOptions, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
-import type { Asset } from "@/lib/asset-store";
+import type { Asset, AssetFolder } from "@/lib/asset-store";
 import { createClientId } from "@/lib/client-id";
 import { GenerationStatus } from "@/components/generation-status";
 import { ImageControls, VideoControls } from "@/components/generation-controls";
@@ -49,6 +49,8 @@ import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-
 import { MediaThumb, PosterVideo, ThumbImage } from "@/components/media-thumb";
 import { MediaPreview } from "@/components/media-preview";
 import { thumbUrl } from "@/lib/media-url";
+import { ReferencePicker, type PickerAsset } from "@/components/reference-picker";
+import { usePresence } from "@/components/use-presence";
 import { ModelPicker } from "@/components/model-picker";
 import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
 import { uploadMedia } from "@/lib/direct-upload";
@@ -56,7 +58,6 @@ import { downloadFiles } from "@/lib/download-files";
 import { applyPromptPreset } from "@/lib/prompt-preset";
 import { PromptPresetBar, usePromptPreset } from "@/components/prompt-preset";
 
-type PickerAsset = { id: string; kind: MediaKind; path: string; name: string; mimeType: string };
 /** /api/models 返回的视频模型和生图模型 */
 type CatalogModel = VideoModel | ImageModel;
 /** 输入框里的素材:上传完成前用本地 blob 预览,上传完成后换成服务器路径(仍保留 blob 预览避免闪烁)。 */
@@ -162,6 +163,7 @@ export function AppShell() {
   // 输入框里已添加的素材放大查看(第几个)
   const [attachmentPreview, setAttachmentPreview] = useState<number | null>(null);
   const [referenceAssets, setReferenceAssets] = useState<(Asset & { kind: MediaKind })[]>([]);
+  const [referenceFolders, setReferenceFolders] = useState<AssetFolder[]>([]);
   // 素材库列表:打开页面后先在后台读一次,点 @ 时直接用,同时再刷新一次(不用等它才弹出)
   const [referenceLoading, setReferenceLoading] = useState(false);
   // 列表是哪个 Key 读的:换了账号就不再显示上一个账号的素材
@@ -182,7 +184,6 @@ export function AppShell() {
   const [beforeOptimize, setBeforeOptimize] = useState<{ html: string; draft: string }>();
   // 从「对话」页带过来的提示词(/?compose=...&kind=image),模型和 Key 就绪后填进输入框
   const composeRef = useRef<{ prompt: string; kind: string } | null>(null);
-  const [referenceQuery, setReferenceQuery] = useState("");
   const [referencePickerPosition, setReferencePickerPosition] = useState<{ left: number; top?: number; bottom?: number }>({ left: 10, top: 8 });
   const referenceRangeRef = useRef<Range | null>(null);
   const referenceAnchorRef = useRef<DOMRect | null>(null);
@@ -495,9 +496,13 @@ export function AppShell() {
     setReferenceLoading(true);
     const key = readApiKey();
     try {
-      const assets = await request<Asset[]>("/api/assets");
+      const [assets, folders] = await Promise.all([
+        request<Asset[]>("/api/assets"),
+        request<AssetFolder[]>("/api/asset-folders").catch(() => undefined),
+      ]);
       // 聊天里的文档附件不能当生成素材
       setReferenceAssets(assets.filter((asset): asset is Asset & { kind: MediaKind } => !asset.trashed && asset.kind !== "file"));
+      if (folders) setReferenceFolders(folders);
       setReferenceLoadedFor(key);
     } finally {
       setReferenceLoading(false);
@@ -511,6 +516,31 @@ export function AppShell() {
     return () => window.clearTimeout(timer);
   }, [apiKey, loadReferenceAssets, referenceLoaded]);
 
+  const referencePresence = usePresence(referencePickerOpen);
+  const closeReferencePicker = useCallback(() => {
+    referenceRangeRef.current = null;
+    referenceAnchorRef.current = null;
+    setReferencePickerOpen(false);
+  }, []);
+  // 点选择框以外的地方(打开别的弹框、点页面)就收起,不和别的弹框叠在一起;输入框和 @ 按钮除外
+  useEffect(() => {
+    if (!referencePickerOpen) return;
+    const pointer = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || editorRef.current?.contains(target) || target.closest?.(".reference-picker, .reference-trigger")) return;
+      closeReferencePicker();
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) closeReferencePicker();
+    };
+    document.addEventListener("mousedown", pointer);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", pointer);
+      document.removeEventListener("keydown", key);
+    };
+  }, [referencePickerOpen, closeReferencePicker]);
+
   const openReferencePicker = () => {
     if (!modeKinds.length) return;
     if (referencePickerOpen) {
@@ -520,7 +550,6 @@ export function AppShell() {
       return;
     }
     // 先用手上的列表马上弹出,再在后台刷新(期间新上传、新生成的会补进来)
-    setReferenceQuery("");
     setReferencePickerOpen(true);
     void loadReferenceAssets().catch((cause) => {
       if (!referenceLoaded) setError((cause as Error).message);
@@ -528,15 +557,60 @@ export function AppShell() {
   };
 
   // 当前对话的素材实时并入(选择框打开期间新上传的也会出现);只列出当前模型和模式能用的素材类型。
+  const libraryAssets = referenceLoaded ? referenceAssets : [];
+  const libraryByPath = new Map(libraryAssets.map((asset) => [asset.path, asset]));
   const pickerAssets: PickerAsset[] = [
-    ...attachments.filter((item) => !item.uploading).map((item) => ({
-      id: `current:${item.path}`, kind: item.kind, path: item.path, name: item.name,
-      mimeType: item.mimeType || "image/jpeg",
-    })),
-    ...(referenceLoaded ? referenceAssets : []),
+    ...attachments.filter((item) => !item.uploading).map((item) => {
+      // 素材库里也有的,按素材库的记录(能改名、分组、删除)
+      const known = libraryByPath.get(item.path);
+      return {
+        id: `current:${item.path}`, kind: item.kind, path: item.path, name: known?.name || item.name,
+        mimeType: item.mimeType || "image/jpeg", folder: known?.folder, managed: Boolean(known),
+      };
+    }),
+    ...libraryAssets.map((asset) => ({ ...asset, managed: true })),
   ]
     .filter((asset) => modeKinds.includes(asset.kind))
     .filter((asset, index, list) => list.findIndex((candidate) => candidate.path === asset.path) === index);
+
+  // ---- 在 @ 选择框里整理素材库:改名、删除(移到回收站)、分组 ----
+  const reportError = (cause: unknown) => { setError((cause as Error).message); throw cause; };
+  const patchAssets = (body: Record<string, unknown>) => request<{ name?: string; paths?: string[] }>("/api/assets", {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const renameReference = (path: string, name: string) => patchAssets({ action: "rename", path, name }).then((result) => {
+    const next = result.name || name;
+    setReferenceAssets((items) => items.map((asset) => asset.path === path ? { ...asset, name: next } : asset));
+    setAttachments((items) => items.some((item) => item.path === path)
+      ? items.map((item) => item.path === path ? { ...item, name: next } : item) : items);
+  }, reportError);
+  const trashReferences = (paths: string[]) => patchAssets({ action: "trash", paths }).then(() => {
+    const removed = new Set(paths);
+    setReferenceAssets((items) => items.filter((asset) => !removed.has(asset.path)));
+  }, reportError);
+  const moveReferences = (paths: string[], folder: string | null) => patchAssets({ action: "move", paths, folder }).then(() => {
+    const moved = new Set(paths);
+    setReferenceAssets((items) => items.map((asset) => moved.has(asset.path) ? { ...asset, folder: folder || undefined } : asset));
+  }, reportError);
+  const createReferenceFolder = (name: string, paths: string[]) => request<AssetFolder>("/api/asset-folders", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, ...(paths.length ? { paths } : {}) }),
+  }).then((folder) => {
+    setReferenceFolders((items) => [...items, folder]);
+    const moved = new Set(paths);
+    if (paths.length) setReferenceAssets((items) => items.map((asset) => moved.has(asset.path) ? { ...asset, folder: folder.id } : asset));
+    return folder;
+  }, reportError);
+  const renameReferenceFolder = (id: string, name: string) => request<{ name: string }>("/api/asset-folders", {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, name }),
+  }).then((result) => {
+    setReferenceFolders((items) => items.map((folder) => folder.id === id ? { ...folder, name: result.name } : folder));
+  }, reportError);
+  const deleteReferenceFolder = (id: string) => request(`/api/asset-folders?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+    .then(() => {
+      setReferenceFolders((items) => items.filter((folder) => folder.id !== id));
+      setReferenceAssets((items) => items.map((asset) => asset.folder === id ? { ...asset, folder: undefined } : asset));
+    }, reportError);
 
   const selectReferenceAsset = (asset: PickerAsset) => {
     if (!modeKinds.includes(asset.kind)) return;
@@ -926,9 +1000,17 @@ export function AppShell() {
       (generation.type === "image" ? imageModels[0] : videoModels[0]);
   };
 
-  /** 把记录的模型和参数放回输入框(一次保存,避免两次保存互相覆盖) */
-  const restoreSettings = (generation?: GenerationMeta) => {
-    const model = modelForRecord(generation);
+  /** 记录里用的那个模型本身(已下线时为空) */
+  const recordedModel = (generation?: GenerationMeta): CatalogModel | undefined =>
+    generation && generation.type !== "chat"
+      ? models.find((item) => item.id === generation.modelId && item.type === generation.type) : undefined;
+
+  /**
+   * 把记录的模型和参数放回输入框(一次保存,避免两次保存互相覆盖)。
+   * exact:换回记录里的那个模型(重新编辑时);否则同类模型时保留当前选的(拿生成的图当参考图时)
+   */
+  const restoreSettings = (generation?: GenerationMeta, exact = false) => {
+    const model = (exact ? recordedModel(generation) : undefined) || modelForRecord(generation);
     if (!active || !model || !generation) return;
     const updated = {
       ...withModel({
@@ -997,7 +1079,8 @@ export function AppShell() {
       if (ref) editor.append(createReferenceCard(ref.path, ref.name, labels[position], ref.kind));
     }
     setDraft(editor.innerText);
-    restoreSettings(generation);
+    // 模型、比例、分辨率、时长、生成方式等全部换回这条记录当时用的
+    restoreSettings(generation, true);
     focusEditorEnd();
   };
 
@@ -1597,21 +1680,12 @@ export function AppShell() {
                 <ArrowUp size={17} strokeWidth={2.4} />
               </button>
             </div>
-            {referencePickerOpen && <div className="reference-picker" role="dialog" aria-label="选择参考内容"
-              style={referencePickerPosition}>
-              <div className="reference-picker-head"><strong>选择参考内容</strong><button className="icon-button" onClick={() => setReferencePickerOpen(false)} aria-label="关闭"><X size={15} /></button></div>
-              <input className="reference-picker-search" value={referenceQuery} onChange={(event) => setReferenceQuery(event.target.value)} placeholder="搜索参考内容" autoFocus />
-              {pickerAssets.length === 0 ? <p className="reference-picker-empty">
-                {referenceLoading && !referenceLoaded ? "正在加载素材…" : "还没有可引用的素材，先上传或拖入一个。"}</p> :
-                <div className="reference-picker-grid">{pickerAssets.filter((asset) => !referenceQuery.trim() || asset.name.toLowerCase().includes(referenceQuery.trim().toLowerCase())).map((asset) => {
-                  const selectedReference = attachments.some((item) => item.path === asset.path);
-                  return <button className={`reference-picker-item ${selectedReference ? "selected" : ""}`} key={asset.id}
-                    type="button" onClick={() => selectReferenceAsset(asset)} title={asset.name}>
-                    <span className="reference-picker-thumb"><MediaThumb media={asset} /></span>
-                    <span>{asset.name}</span>
-                  </button>;
-                })}</div>}
-            </div>}
+            {referencePresence.mounted && <ReferencePicker style={referencePickerPosition} closing={referencePresence.closing} assets={pickerAssets}
+              folders={referenceFolders} loading={referenceLoading && !referenceLoaded}
+              isAttached={(path) => attachments.some((item) => item.path === path)}
+              onPick={selectReferenceAsset} onClose={closeReferencePicker}
+              onRename={renameReference} onTrash={trashReferences} onMove={moveReferences}
+              onCreateFolder={createReferenceFolder} onRenameFolder={renameReferenceFolder} onDeleteFolder={deleteReferenceFolder} />}
           </div>
           </div>
           <p className="composer-note">由 {relayHost || `${TANGZHI_PROVIDER_NAME} `}中转站生成 · Enter 发送，Shift + Enter 换行</p>

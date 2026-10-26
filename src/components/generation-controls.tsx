@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
 import { useSlidingIndicator } from "@/components/sliding-indicator";
+import { usePresence } from "@/components/use-presence";
 import type { ImageOptions, VideoOptions } from "@/lib/types";
 import {
   BACKGROUND_LABEL, nearestChatRatio, IMAGE_BACKGROUNDS, IMAGE_FORMATS, IMAGE_RATIOS, IMAGE_RESOLUTIONS, imageSize, isPresetRatio,
@@ -81,6 +82,8 @@ export function VideoControls({
   const { containerRef: ratioSliderRef, indicator: ratioIndicator } = useSlidingIndicator<HTMLDivElement>();
   const close = () => { setModeOpen(false); setOptionsOpen(false); };
   const ref = useDismiss(modeOpen || optionsOpen, close);
+  const modePresence = usePresence(modeOpen);
+  const optionsPresence = usePresence(optionsOpen);
   const mode = normalizeReferenceMode(value.referenceMode);
   const { durations, limits } = model;
   const minDuration = durations[0];
@@ -102,7 +105,7 @@ export function VideoControls({
         aria-expanded={modeOpen} onClick={() => { setModeOpen((open) => !open); setOptionsOpen(false); }}>
         {attachmentCount ? modeLabels[mode] : "文生视频"} <ChevronDown size={13} />
       </button>
-      {modeOpen && <div className="mode-popover">
+      {modePresence.mounted && <div className={`mode-popover ${modePresence.closing ? "is-closing" : ""}`} inert={modePresence.closing}>
         <small>上传素材后的生成方式 · 不上传素材即为文生视频</small>
         {([
           ["references", "参考生成", `用素材控制主体、动作、风格或声音；最多 ${media}，合计不超过 ${limits.total} 个`],
@@ -122,7 +125,8 @@ export function VideoControls({
         <span>{ratioLabel(value.ratio)}</span><i /><span>{value.resolution.toUpperCase()}</span><i />
         <span>{value.duration}秒</span><i /><span>{value.count}条</span>
       </button>
-      {optionsOpen && <div className="parameter-popover video-parameter-popover">
+      {optionsPresence.mounted && <div className={`parameter-popover video-parameter-popover ${optionsPresence.closing ? "is-closing" : ""}`}
+        inert={optionsPresence.closing}>
         <section><h3>视频比例{value.ratio === "adaptive" && <small>按第一张参考图的比例；没有参考图时按提示词（如「竖屏」「宽银幕」），默认 16:9</small>}</h3>
           <div className="ratio-grid video-ratios has-slider" ref={ratioSliderRef}>
             {ratioIndicator}
@@ -187,6 +191,7 @@ export function ImageControls({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
+  const presence = usePresence(open);
   const { width, height } = imageSize(value.ratio, value.resolution, model.sizes);
   // 模型描述里锁定的比例 / 档位;没写的不限制
   const ratioAllowed = (ratio: string) => (!model.ratios?.length || model.ratios.includes(ratio)) && !model.excludedRatios.includes(ratio);
@@ -216,7 +221,8 @@ export function ImageControls({
         <span>{chatRatio}</span><i /><span>{value.resolution.toUpperCase()}</span><i />
         {!chatApi && <><span>{value.format.toUpperCase()}</span><i /></>}<span>{value.count}张</span>
       </button>
-      {open && <div className="parameter-popover video-parameter-popover image-parameter-popover">
+      {presence.mounted && <div className={`parameter-popover video-parameter-popover image-parameter-popover ${presence.closing ? "is-closing" : ""}`}
+        inert={presence.closing}>
         <section><h3>图片比例<small>{chatApi ? `按 ${chatRatio} · ${value.resolution.toUpperCase()} 请求，实际尺寸以模型返回为准`
           : `按 ${width} × ${height} 请求，实际尺寸以中转站返回为准`}</small></h3>
           <div className="ratio-grid image-ratios has-slider" ref={ratioSliderRef}>

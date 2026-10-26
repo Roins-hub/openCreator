@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  listAssets, permanentlyDeleteAssets, recordAsset, setAssetsTrashed, type Asset, type AssetRecord,
+  listAssets, moveAssets, permanentlyDeleteAssets, recordAsset, renameAsset, setAssetsTrashed, type Asset, type AssetRecord,
 } from "@/lib/asset-store";
 import { syncChatAttachments } from "@/lib/chat-attachments";
 import { listConversations } from "@/lib/conversation-store";
@@ -69,15 +69,32 @@ export async function POST(request: Request) {
   }
 }
 
-/** 移入 / 移出回收站,支持批量:{ action, paths } 或 { action, path } */
+const renameSchema = z.string().trim().min(1, "名称不能为空").max(300);
+const folderSchema = z.string().min(1).max(100).nullable();
+
+/**
+ * 批量操作:{ action, paths } 或 { action, path }
+ * - trash / restore:移入 / 移出回收站
+ * - rename:改名(带 name)
+ * - move:移到分组(带 folder,null 是移出分组)
+ */
 export async function PATCH(request: Request) {
   try {
     const { userId } = await requireUser(request);
-    const input = await request.json() as { action?: string; path?: unknown; paths?: unknown };
+    const input = await request.json() as { action?: string; path?: unknown; paths?: unknown; name?: unknown; folder?: unknown };
     const paths = pathsOf(input);
     if (input.action === "trash" || input.action === "restore") {
       const changed = await setAssetsTrashed(userId, paths, input.action === "trash");
       return ok({ path: paths[0], paths: changed });
+    }
+    if (input.action === "rename") {
+      const name = await renameAsset(userId, paths[0], renameSchema.parse(input.name));
+      return ok({ path: paths[0], name });
+    }
+    if (input.action === "move") {
+      const folder = folderSchema.parse(input.folder ?? null);
+      const moved = await moveAssets(userId, paths, folder || undefined);
+      return ok({ paths: moved, folder });
     }
     throw new Error("不支持的资产操作");
   } catch (error) {

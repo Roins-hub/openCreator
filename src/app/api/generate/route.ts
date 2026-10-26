@@ -1,4 +1,5 @@
 import { getConversation, updateConversation } from "@/lib/conversation-store";
+import { recordModelUse } from "@/lib/model-prefs-store";
 import { failure, ok } from "@/lib/http";
 import { generateRequestSchema } from "@/lib/schemas";
 import {
@@ -58,6 +59,7 @@ async function generateImages(
       prompt: input.prompt, options, references: input.attachments,
     });
   }
+  await recordModelUse(userId, model.id, "image");
   return ok({ conversation: saved, assistant });
 }
 
@@ -134,6 +136,7 @@ export async function POST(request: Request) {
       current.updatedAt = new Date().toISOString();
     });
     if (!taskIds.length) throw submitError;
+    await recordModelUse(userId, model.id, "video");
     return ok({ conversation: saved, assistant });
   } catch (error) { return failure(error); }
 }

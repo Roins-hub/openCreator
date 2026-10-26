@@ -26,6 +26,7 @@ import {
 } from "@/lib/prompt-layout";
 import type { VideoOptions } from "@/lib/types";
 import { Dropdown } from "@/components/dropdown";
+import { usePresence } from "@/components/use-presence";
 import { dragPointer, droppablesUnderPointer, startDragPointer, stopDragPointer } from "@/lib/drag-pointer";
 
 const APPLY_PARAMS_KEY = "mote-prompt-apply-params";
@@ -130,6 +131,8 @@ export function PromptLibrary({
   layout: PromptLayout;
   onLayoutChange: (layout: PromptLayout) => void;
 }) {
+  // 收起时先播放收起动画再卸载
+  const presence = usePresence(open);
   const [category, setCategory] = useState<LibraryFilter>("all");
   const [query, setQuery] = useState("");
   const [categoryQuery, setCategoryQuery] = useState("");
@@ -224,7 +227,7 @@ export function PromptLibrary({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!presence.mounted) return null;
 
   const flash = (text: string) => {
     setNotice(text);
@@ -545,7 +548,8 @@ export function PromptLibrary({
   const overlayCategory = activeDrag?.kind === "category" ? categories.find((item) => item.id === activeDrag.id) : undefined;
 
   return (
-    <div className={`prompt-library ${activeDrag ? "is-dragging" : ""}`} role="dialog" aria-label="提示词库" ref={panelRef}>
+    <div className={`prompt-library ${activeDrag ? "is-dragging" : ""} ${presence.closing ? "is-closing" : ""}`} role="dialog" aria-label="提示词库"
+      ref={panelRef} inert={presence.closing}>
       <header className="prompt-library-head">
         <strong><BookMarked size={15} />提示词库</strong>
         <label className="prompt-library-search">

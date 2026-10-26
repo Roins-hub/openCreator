@@ -20,6 +20,11 @@ function serial<T>(userId: string, task: () => Promise<T>) {
   return result;
 }
 
+/** 用某个模型提交了一次生成(连续 3 次后进常用);只是记录,出错不影响生成 */
+export async function recordModelUse(userId: string, id: string, kind: "video" | "image") {
+  await updateModelPrefs(userId, { type: "use", id, kind }).catch(() => undefined);
+}
+
 export async function updateModelPrefs(userId: string, value: unknown) {
   const op = modelPrefsOpSchema.parse(value);
   return serial(userId, async () => {

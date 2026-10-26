@@ -740,11 +740,78 @@ a { color: inherit; text-decoration: none; }
 .reference-picker-head .icon-button { width: 26px; height: 26px; }
 .reference-picker-empty { padding: 26px 12px; color: var(--faint); font-size: 11px; text-align: center; }
 .reference-picker-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; max-height: 260px; overflow-y: auto; }
-.reference-picker-item { min-width: 0; padding: 4px; border: 1px solid transparent; border-radius: 8px; color: var(--muted); background: transparent; text-align: left; }
+.reference-picker-item { position: relative; min-width: 0; padding: 4px; border: 1px solid transparent; border-radius: 8px; color: var(--muted); background: transparent; }
 .reference-picker-item:hover, .reference-picker-item.selected { border-color: var(--line); color: var(--ink); background: var(--warm); }
+.reference-picker-item.picked { border-color: var(--ink); color: var(--ink); background: var(--warm); }
+.reference-picker-pick { display: block; width: 100%; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; }
+.reference-picker-name { display: block; overflow: hidden; margin-top: 4px; font-size: 9px; white-space: nowrap; text-overflow: ellipsis; }
+.reference-picker-rename {
+  display: block; width: 100%; height: 18px; margin-top: 3px; padding: 0 4px; border: 1px solid var(--focus); border-radius: 4px;
+  outline: 0; color: var(--ink); background: var(--paper); font-size: 9px;
+}
+/* 素材上的改名 / 删除:鼠标移上去才出现 */
+.reference-picker-actions { position: absolute; top: 7px; right: 7px; display: flex; gap: 3px; opacity: 0; transition: opacity .15s; }
+.reference-picker-item:hover .reference-picker-actions, .reference-picker-actions:focus-within { opacity: 1; }
+.reference-picker-actions button {
+  display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 6px; color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 88%, transparent); box-shadow: 0 1px 4px oklch(20% .02 80 / .18); font-size: 9px;
+}
+.reference-picker-actions button:hover { background: var(--paper); }
+@media (hover: none) { .reference-picker-actions { opacity: 1; } }
+.reference-picker-check {
+  position: absolute; top: 8px; left: 8px; display: grid; place-items: center; width: 17px; height: 17px; pointer-events: none;
+  border: 1.5px solid var(--paper); border-radius: 5px; color: var(--paper); background: oklch(20% .02 80 / .3);
+  box-shadow: 0 1px 3px oklch(20% .02 80 / .25);
+}
+.reference-picker-item.picked .reference-picker-check { border-color: var(--dark); background: var(--dark); }
+.reference-picker-head-actions { display: flex; align-items: center; gap: 4px; }
+.reference-picker-manage { height: 24px; padding: 0 9px; border-radius: 7px; color: var(--muted); background: transparent; font-size: 11px; }
+.reference-picker-manage:hover, .reference-picker-manage.active { color: var(--ink); background: var(--warm); }
+/* 分组:一排可横向滚动的标签,素材拖到标签上就移进去 */
+.reference-folders { display: flex; gap: 5px; margin: -2px 0 8px; padding-bottom: 1px; overflow-x: auto; scrollbar-width: none; }
+.reference-folders::-webkit-scrollbar { display: none; }
+.reference-folder {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 9px;
+  border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: transparent; font-size: 11px; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s, transform .15s, box-shadow .15s;
+}
+.reference-folder i { color: var(--faint); font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
+.reference-folder:hover { color: var(--ink); background: var(--warm); }
+.reference-folder.active { border-color: var(--dark); color: var(--paper); background: var(--dark); }
+.reference-folder.active i { color: color-mix(in srgb, var(--paper) 65%, transparent); }
+.reference-folder.add { border-style: dashed; }
+.reference-folder.drop {
+  border-style: solid; border-color: var(--focus); color: var(--ink); background: var(--warm);
+  transform: scale(1.06); box-shadow: 0 0 0 3px oklch(70% .02 82 / .18);
+}
+.reference-folder-input {
+  flex: 0 0 128px; height: 25px; padding: 0 10px; border: 1px solid var(--focus); border-radius: 999px; outline: 0;
+  color: var(--ink); background: var(--paper); font-size: 11px;
+}
+.reference-folder-tools { display: flex; align-items: center; gap: 4px; margin: -3px 0 8px; color: var(--faint); font-size: 10px; }
+.reference-folder-tools span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.reference-folder-tools button {
+  display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 7px; border-radius: 6px;
+  color: var(--muted); background: transparent; font-size: 10px;
+}
+.reference-folder-tools button:hover { color: var(--ink); background: var(--warm); }
+.reference-folder-tools button.danger, .reference-picker-actions button.danger, .reference-picker-bar button.danger { color: #fff; background: var(--danger); }
+/* 管理模式的底栏:全选、已选数、移到分组、删除 */
+.reference-picker-bar { display: flex; align-items: center; gap: 6px; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); font-size: 11px; }
+.reference-picker-bar button {
+  display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px; border-radius: 7px;
+  color: var(--ink); background: var(--warm); font-size: 11px; white-space: nowrap;
+}
+.reference-picker-bar .danger-soft { color: var(--danger); }
+.reference-picker-bar button:disabled, .reference-picker-bar select:disabled { opacity: .45; cursor: default; }
+.reference-picker-bar-count { flex: 1; min-width: 0; overflow: hidden; color: var(--faint); white-space: nowrap; text-overflow: ellipsis; }
+.reference-picker-bar-count b { color: var(--ink); }
+.reference-picker-bar select {
+  max-width: 118px; height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: 7px;
+  color: var(--ink); background: var(--paper); font-size: 11px;
+}
 .reference-picker-thumb { display: block; aspect-ratio: 1; overflow: hidden; border-radius: 6px; background: var(--warm); }
 .reference-picker-thumb img, .reference-picker-thumb video { width: 100%; height: 100%; display: block; object-fit: cover; }
-.reference-picker-item > span:last-child { display: block; overflow: hidden; margin-top: 4px; font-size: 9px; white-space: nowrap; text-overflow: ellipsis; }
 .composer-spacer { flex: 1; min-width: 0; color: var(--faint); font-size: 10px; }
 .send-button {
   display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 9px;
@@ -3099,3 +3166,20 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 
 /* 额外 Key 的验证结果紧跟在它那一行下面 */
 .key-extra > .model-test-result { display: flex; align-items: center; gap: 6px; margin: -4px 0 10px; }
+
+/* ---------- 输入框这一排按钮的弹框(@ 选择素材、提示词库、生成方式、参数):弹簧式弹出,收起时快速淡出 ---------- */
+.reference-picker, .parameter-popover, .mode-popover, .prompt-library {
+  animation: composer-pop-in .34s cubic-bezier(.34, 1.4, .64, 1) both;
+}
+.reference-picker, .mode-popover { transform-origin: 24px 100%; }
+.parameter-popover { transform-origin: calc(100% - 48px) 100%; }
+.prompt-library { --pop-scale: .97; transform-origin: 50% 100%; }
+.reference-picker.is-closing, .parameter-popover.is-closing, .mode-popover.is-closing, .prompt-library.is-closing {
+  animation: composer-pop-out .16s cubic-bezier(.4, 0, 1, 1) forwards; pointer-events: none;
+}
+@keyframes composer-pop-in { from { opacity: 0; transform: translateY(10px) scale(var(--pop-scale, .92)); } }
+@keyframes composer-pop-out { to { opacity: 0; transform: translateY(6px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) {
+  .reference-picker, .parameter-popover, .mode-popover, .prompt-library,
+  .reference-picker.is-closing, .parameter-popover.is-closing, .mode-popover.is-closing, .prompt-library.is-closing { animation: none; }
+}

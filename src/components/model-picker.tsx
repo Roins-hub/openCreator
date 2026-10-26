@@ -256,7 +256,7 @@ export function ModelPicker({
   };
 
   const choose = (id: string) => {
-    changePrefs({ type: "use", id });
+    // 只是点选不进常用:提交生成时服务端记次数,连续用同一个模型 3 次才加进来
     closePanel();
     if (id !== value) onChange(id);
     triggerRef.current?.focus();

@@ -1,0 +1,56 @@
+import { z } from "zod";
+import {
+  createAssetFolder, deleteAssetFolder, listAssetFolders, renameAssetFolder,
+} from "@/lib/asset-store";
+import { failure, ok } from "@/lib/http";
+import { requireUser } from "@/lib/identity";
+
+/** 素材分组:在 @ 选择素材时整理用(新建、改名、删除;删分组不删里面的素材) */
+export async function GET(request: Request) {
+  try {
+    const { userId } = await requireUser(request);
+    return ok(await listAssetFolders(userId));
+  } catch (error) {
+    return failure(error, 401);
+  }
+}
+
+const nameSchema = z.string().trim().min(1, "分组名称不能为空").max(40);
+const createSchema = z.object({
+  name: nameSchema,
+  /** 拖到「新建分组」上时,新分组建好后把这些素材移进去 */
+  paths: z.array(z.string().min(1).max(400)).max(500).optional(),
+});
+
+export async function POST(request: Request) {
+  try {
+    const { userId } = await requireUser(request);
+    const input = createSchema.parse(await request.json());
+    return ok(await createAssetFolder(userId, input.name, input.paths));
+  } catch (error) {
+    return failure(error, 400);
+  }
+}
+
+const renameSchema = z.object({ id: z.string().min(1).max(100), name: nameSchema });
+
+export async function PATCH(request: Request) {
+  try {
+    const { userId } = await requireUser(request);
+    const input = renameSchema.parse(await request.json());
+    return ok({ id: input.id, name: await renameAssetFolder(userId, input.id, input.name) });
+  } catch (error) {
+    return failure(error, 400);
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { userId } = await requireUser(request);
+    const id = z.string().min(1).max(100).parse(new URL(request.url).searchParams.get("id"));
+    await deleteAssetFolder(userId, id);
+    return ok({ id });
+  } catch (error) {
+    return failure(error, 400);
+  }
+}

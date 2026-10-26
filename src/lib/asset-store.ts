@@ -22,6 +22,15 @@ export interface Asset {
   favorite?: boolean;
   /** upload:在资产页手动上传的素材;chat:聊天里上传的附件;没有这个字段的是生成结果 */
   source?: "upload" | "chat";
+  /** 所在分组的 ID(在 @ 选择素材时整理的分组);没有就是未分组 */
+  folder?: string;
+}
+
+/** 素材分组 */
+export interface AssetFolder {
+  id: string;
+  name: string;
+  createdAt: string;
 }
 
 export type AssetRecord = Omit<Asset, "id" | "conversationTitle" | "prompt" | "favorite">;
@@ -155,5 +164,97 @@ export async function permanentlyDeleteAssets(userId: string, paths: readonly st
     }
     if (deleted.size) await writeJsonAtomic(indexFile(userId), records.filter((item) => !deleted.has(item.path)));
     return { deleted: [...deleted], failed };
+  });
+}
+
+/** 改名(只改显示名;没写扩展名时沿用原来的,下载下来还能直接打开) */
+export async function renameAsset(userId: string, path: string, name: string) {
+  const trimmed = name.trim().slice(0, 300);
+  if (!trimmed) throw new Error("名称不能为空");
+  return serial(userId, async () => {
+    const records = await readIndex(userId);
+    const target = records.find((item) => item.path === path);
+    if (!target) throw new Error("资产不存在");
+    const extension = /\.[a-z0-9]{1,6}$/i.exec(target.name)?.[0] || "";
+    const next = extension && !trimmed.toLowerCase().endsWith(extension.toLowerCase()) ? `${trimmed}${extension}` : trimmed;
+    await writeJsonAtomic(indexFile(userId), records.map((item) => item.path === path ? { ...item, name: next } : item));
+    return next;
+  });
+}
+
+// ---- 素材分组:分组列表单独存一个文件,资产记录里只记分组 ID ----
+const foldersFile = (userId: string) => inside(userDir(userId), "asset-folders.json");
+const MAX_FOLDERS = 200;
+
+async function readFolders(userId: string) {
+  const value = await readJson<AssetFolder[]>(foldersFile(userId), []);
+  return Array.isArray(value) ? value.filter((item) => item && typeof item.id === "string" && typeof item.name === "string") : [];
+}
+
+export async function listAssetFolders(userId: string) {
+  return readFolders(userId);
+}
+
+const folderName = (name: string) => {
+  const trimmed = name.trim().slice(0, 40);
+  if (!trimmed) throw new Error("分组名称不能为空");
+  return trimmed;
+};
+
+/** 新建分组;带 paths 时顺便把这些素材移进去(拖到「新建分组」上) */
+export async function createAssetFolder(userId: string, name: string, paths: readonly string[] = []) {
+  const folder: AssetFolder = { id: crypto.randomUUID(), name: folderName(name), createdAt: new Date().toISOString() };
+  await serial(userId, async () => {
+    const folders = await readFolders(userId);
+    if (folders.length >= MAX_FOLDERS) throw new Error(`最多 ${MAX_FOLDERS} 个分组`);
+    await writeJsonAtomic(foldersFile(userId), [...folders, folder]);
+  });
+  if (paths.length) await moveAssets(userId, paths, folder.id);
+  return folder;
+}
+
+export async function renameAssetFolder(userId: string, id: string, name: string) {
+  const next = folderName(name);
+  return serial(userId, async () => {
+    const folders = await readFolders(userId);
+    if (!folders.some((item) => item.id === id)) throw new Error("分组不存在");
+    await writeJsonAtomic(foldersFile(userId), folders.map((item) => item.id === id ? { ...item, name: next } : item));
+    return next;
+  });
+}
+
+/** 删除分组:里面的素材不删,回到未分组 */
+export async function deleteAssetFolder(userId: string, id: string) {
+  await serial(userId, async () => {
+    const folders = await readFolders(userId);
+    await writeJsonAtomic(foldersFile(userId), folders.filter((item) => item.id !== id));
+    const records = await readIndex(userId);
+    if (records.some((item) => item.folder === id)) {
+      await writeJsonAtomic(indexFile(userId), records.map((item) => {
+        if (item.folder !== id) return item;
+        const { folder: _folder, ...rest } = item;
+        void _folder;
+        return rest;
+      }));
+    }
+  });
+}
+
+/** 把素材移到分组(folder 为 undefined 时移出分组);返回实际移动的路径 */
+export async function moveAssets(userId: string, paths: readonly string[], folder: string | undefined) {
+  const wanted = new Set(paths);
+  return serial(userId, async () => {
+    if (folder && !(await readFolders(userId)).some((item) => item.id === folder)) throw new Error("分组不存在");
+    const records = await readIndex(userId);
+    const moved = records.filter((item) => wanted.has(item.path) && item.folder !== folder).map((item) => item.path);
+    if (moved.length) {
+      await writeJsonAtomic(indexFile(userId), records.map((item) => {
+        if (!wanted.has(item.path)) return item;
+        const { folder: _folder, ...rest } = item;
+        void _folder;
+        return folder ? { ...rest, folder } : rest;
+      }));
+    }
+    return moved;
   });
 }
