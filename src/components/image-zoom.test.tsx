@@ -3,12 +3,16 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ImageZoom } from "./image-zoom";
+import { reportClientIssue } from "@/lib/client-log";
+
+vi.mock("@/lib/client-log", () => ({ reportClientIssue: vi.fn() }));
+const wait = (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 
 beforeEach(() => {
   URL.createObjectURL = vi.fn(() => "blob:full-image");
   URL.revokeObjectURL = vi.fn();
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.mocked(reportClientIssue).mockClear(); });
 
 describe("ImageZoom", () => {
   it("zooms with the buttons and keys, and resets to fit", () => {
@@ -59,11 +63,32 @@ describe("ImageZoom loading", () => {
     expect(container.querySelector(".image-zoom-preview")).toBeNull();
   });
 
-  it("falls back to loading the image directly when it cannot be downloaded", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("cors"); }));
+  it("retries once, then falls back to loading the image directly and reports it", async () => {
+    const fetchMock = vi.fn(async () => { throw new TypeError("cors"); });
+    vi.stubGlobal("fetch", fetchMock);
     const { container } = render(<ImageZoom src="/api/media/b.png" alt="dog" />);
     expect(container.querySelector(".image-zoom-placeholder")).toBeTruthy();
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await wait(700);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(container.querySelector("img[alt=dog]")?.getAttribute("src")).toBe("/api/media/b.png");
+    expect(reportClientIssue).toHaveBeenCalledWith("image-progress-fallback", "network", { attempts: 2 });
+  });
+
+  it("recovers on the retry without falling back", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("offline"))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2]), { headers: { "content-length": "2", "content-type": "image/png" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(<ImageZoom src="/api/media/c.png" alt="bird" />);
+    await wait(700);
+    expect(container.querySelector("img[alt=bird]")?.getAttribute("src")).toBe("blob:full-image");
+    expect(reportClientIssue).not.toHaveBeenCalled();
+  });
+
+  it("reports the HTTP status when the server refuses both times", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 403 })));
+    render(<ImageZoom src="/api/media/d.png" alt="fish" />);
+    await wait(700);
+    expect(reportClientIssue).toHaveBeenCalledWith("image-progress-fallback", "http-403", { attempts: 2 });
   });
 });

@@ -3,6 +3,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import { LoadProgress } from "@/components/load-progress";
+import { reportClientIssue } from "@/lib/client-log";
+
+/** 下载原图失败的原因:http-<状态码> / network(连不上,含跨域不放行) / stream(下到一半断了) / no-body */
+class DownloadError extends Error {}
+const ATTEMPTS = 2;
+const RETRY_DELAY_MS = 600;
 
 const MIN = 1;
 const MAX = 8;
@@ -28,32 +34,52 @@ export function ImageZoom({ src, alt, preview }: { src: string; alt: string; pre
     if (direct) return;
     const controller = new AbortController();
     let objectUrl: string | undefined;
-    void (async () => {
-      try {
-        const response = await fetch(src, { signal: controller.signal });
-        if (!response.ok || !response.body) throw new Error("load failed");
-        const total = Number(response.headers.get("content-length")) || undefined;
-        const reader = response.body.getReader();
-        const chunks: Uint8Array[] = [];
-        let received = 0;
-        let lastPaint = 0;
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          received += value.length;
-          // 进度最多每 80ms 刷新一次
-          if (performance.now() - lastPaint > 80) {
-            lastPaint = performance.now();
-            setProgress({ loaded: received, total });
-          }
+    const download = async () => {
+      const response = await fetch(src, { signal: controller.signal }).catch((error) => {
+        throw controller.signal.aborted ? error : new DownloadError("network");
+      });
+      if (!response.ok) throw new DownloadError(`http-${response.status}`);
+      if (!response.body) throw new DownloadError("no-body");
+      const total = Number(response.headers.get("content-length")) || undefined;
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      let lastPaint = 0;
+      for (;;) {
+        const { done, value } = await reader.read().catch((error) => {
+          throw controller.signal.aborted ? error : new DownloadError("stream");
+        });
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        // 进度最多每 80ms 刷新一次
+        if (performance.now() - lastPaint > 80) {
+          lastPaint = performance.now();
+          setProgress({ loaded: received, total });
         }
-        setProgress({ loaded: received, total: total || received });
-        objectUrl = URL.createObjectURL(new Blob(chunks as BlobPart[], { type: response.headers.get("content-type") || "" }));
-        setFull(objectUrl);
-      } catch {
-        if (!controller.signal.aborted) setFull(src);
       }
+      setProgress({ loaded: received, total: total || received });
+      return URL.createObjectURL(new Blob(chunks as BlobPart[], { type: response.headers.get("content-type") || "" }));
+    };
+    void (async () => {
+      let reason = "unknown";
+      // 下载失败(断网、下到一半断了)先等一下重试一次,还不行才改成直接加载
+      for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+        try {
+          objectUrl = await download();
+          setFull(objectUrl);
+          return;
+        } catch (error) {
+          if (controller.signal.aborted) return;
+          reason = error instanceof DownloadError ? error.message : "unknown";
+          setProgress({ loaded: 0 });
+          if (attempt < ATTEMPTS) await new Promise((resolve) => window.setTimeout(resolve, RETRY_DELAY_MS));
+          if (controller.signal.aborted) return;
+        }
+      }
+      setFull(src);
+      // 记一笔:这种情况多了说明存储的跨域规则、访问域名或网络有问题
+      reportClientIssue("image-progress-fallback", reason, { attempts: ATTEMPTS });
     })();
     return () => {
       controller.abort();
