@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
+import { LoadProgress } from "@/components/load-progress";
 
 const MIN = 1;
 const MAX = 8;
@@ -19,6 +20,47 @@ export function ImageZoom({ src, alt, preview }: { src: string; alt: string; pre
   const stageRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>(FIT);
   const [loaded, setLoaded] = useState(false);
+  // 原图由页面自己下载(能算出进度),下载完换成本地地址;下载不了(跨域、本地存储)时直接让 <img> 加载
+  const direct = src.startsWith("blob:") || src.startsWith("data:");
+  const [full, setFull] = useState<string>();
+  const [progress, setProgress] = useState<{ loaded: number; total?: number }>({ loaded: 0 });
+  useEffect(() => {
+    if (direct) return;
+    const controller = new AbortController();
+    let objectUrl: string | undefined;
+    void (async () => {
+      try {
+        const response = await fetch(src, { signal: controller.signal });
+        if (!response.ok || !response.body) throw new Error("load failed");
+        const total = Number(response.headers.get("content-length")) || undefined;
+        const reader = response.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let received = 0;
+        let lastPaint = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          // 进度最多每 80ms 刷新一次
+          if (performance.now() - lastPaint > 80) {
+            lastPaint = performance.now();
+            setProgress({ loaded: received, total });
+          }
+        }
+        setProgress({ loaded: received, total: total || received });
+        objectUrl = URL.createObjectURL(new Blob(chunks as BlobPart[], { type: response.headers.get("content-type") || "" }));
+        setFull(objectUrl);
+      } catch {
+        if (!controller.signal.aborted) setFull(src);
+      }
+    })();
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src, direct]);
+  const shown = direct ? src : full;
   const [dragging, setDragging] = useState(false);
   // 原生监听(滚轮、键盘)里读最新的缩放
   const viewRef = useRef(view);
@@ -108,13 +150,18 @@ export function ImageZoom({ src, alt, preview }: { src: string; alt: string; pre
   return <div className={`image-zoom ${zoomed ? "is-zoomed" : ""} ${dragging ? "is-dragging" : ""}`}>
     <div className="image-zoom-stage" ref={stageRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
       onPointerUp={endDrag} onPointerCancel={endDrag} onDoubleClick={onDoubleClick}>
+      {/* 原图下载完之前:先显示卡片里已经有缓存的缩略图(稍微模糊),没有缩略图时占个位置,不会一片空白 */}
+      {!loaded && (preview
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img className="image-viewer-img image-zoom-preview" src={preview} alt="" draggable={false}
+          style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }} />
+        : <div className="image-zoom-placeholder" />)}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img className="image-viewer-img" src={src} alt={alt} draggable={false} onLoad={() => setLoaded(true)}
-        style={{
-          transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
-          // 原图(可能好几 MB)下载完之前,先把卡片里已经有缓存的缩略图垫在下面
-          ...(preview && !loaded ? { backgroundImage: `url("${preview}")`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" } : {}),
-        }} />
+      {shown && <img className="image-viewer-img" src={shown} alt={alt} draggable={false} onLoad={() => setLoaded(true)}
+        style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, ...(loaded ? {} : { display: "none" }) }} />}
+      {!loaded && <LoadProgress label="加载原图"
+        percent={progress.total ? (progress.loaded / progress.total) * 100 : undefined}
+        loaded={progress.total ? progress.loaded : undefined} total={progress.total} />}
     </div>
     <div className="image-zoom-bar" onDoubleClick={(event) => event.stopPropagation()}>
       <button type="button" onClick={() => zoomBy(1 / STEP)} disabled={!zoomed} aria-label="缩小" title="缩小（-）">

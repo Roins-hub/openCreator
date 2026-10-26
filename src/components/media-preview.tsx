@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Download, Music, X } from "lucide-react";
 import { ImageZoom } from "@/components/image-zoom";
+import { ProgressVideo } from "@/components/load-progress";
 import { mediaUrl, thumbUrl } from "@/lib/media-url";
 import type { MediaRef } from "@/lib/types";
 
@@ -59,7 +60,7 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
       onMouseDown={(event) => event.stopPropagation()}>
       <div className="video-viewer-body" onClick={(event) => event.stopPropagation()}>
         {current.kind === "image" && <ImageZoom key={current.src} src={current.src} alt={current.name} preview={current.preview} />}
-        {current.kind === "video" && <video key={current.src} src={current.src} controls autoPlay playsInline />}
+        {current.kind === "video" && <ProgressVideo key={current.src} src={current.src} controls autoPlay playsInline />}
         {current.kind === "audio" && (
           <div className="media-preview-audio" key={current.src}>
             <Music size={34} />
