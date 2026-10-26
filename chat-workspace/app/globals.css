@@ -901,6 +901,7 @@ html[data-mote-theme] {
 .ws-action span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ws-action:hover { color: var(--ws-ink); background: var(--ws-warm); }
 .ws-action.is-danger { color: var(--destructive); }
+.ws-action.is-danger.is-confirming, .ws-action.is-danger.is-confirming:hover { color: #fff; background: var(--destructive); }
 .ws-action.is-danger:hover { background: color-mix(in oklch, var(--destructive) 7%, var(--ws-paper)); }
 .ws-hint { margin: 4px 9px 6px; color: var(--ws-faint); font-size: 11px; }
 .ws-group-items { padding-left: 14px; }

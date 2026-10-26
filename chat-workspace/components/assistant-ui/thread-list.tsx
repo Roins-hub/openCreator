@@ -185,6 +185,8 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
   const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState<string>();
   const [groupMenu, setGroupMenu] = useState<string>();
+  // 「删除文件夹和里面的聊天」要点两次:记下第一次点的是哪个分组
+  const [confirmGroupDelete, setConfirmGroupDelete] = useState<string>();
   const [moveOpen, setMoveOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -265,6 +267,28 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
     update(moveThreads(data, [...selected], groupId));
     setMoveOpen(false);
     setPicked(new Set());
+  };
+
+  // 分组里的全部聊天(不受搜索过滤影响)
+  const groupThreads = (groupId: string) => threadIds.filter((id) => data.assign[id] === groupId);
+
+  /** 删除文件夹,连同里面的聊天一起删掉(要点两次确认) */
+  const deleteGroupWithChats = async (groupId: string) => {
+    if (confirmGroupDelete !== groupId) {
+      setConfirmGroupDelete(groupId);
+      return;
+    }
+    setConfirmGroupDelete(undefined);
+    setGroupMenu(undefined);
+    setBusy(true);
+    try {
+      for (const id of groupThreads(groupId)) {
+        await Promise.resolve(aui.threads.item({ id }).delete());
+      }
+      update(dissolveGroup(data, groupId));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const deleteSelected = async () => {
@@ -526,7 +550,10 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
                       className="ws-more"
                       aria-label={`${group.name}分组的更多操作`}
                       aria-expanded={groupMenu === group.id}
-                      onClick={() => setGroupMenu((current) => (current === group.id ? undefined : group.id))}
+                      onClick={() => {
+                        setConfirmGroupDelete(undefined);
+                        setGroupMenu((current) => (current === group.id ? undefined : group.id));
+                      }}
                     >
                       <MoreHorizontalIcon />
                     </button>
@@ -548,13 +575,27 @@ const ThreadListOrganizer: FC<{ searchQuery?: string }> = ({ searchQuery }) => {
                         <button
                           type="button"
                           title="聊天不会被删除，会回到「未分组」"
-                          className="ws-action is-danger"
+                          className="ws-action"
                           onClick={() => {
                             setGroupMenu(undefined);
                             update(dissolveGroup(data, group.id));
                           }}
                         >
                           <XIcon /> 解散分组
+                        </button>
+                        <button
+                          type="button"
+                          title="删除这个文件夹和里面的全部聊天（不能恢复）"
+                          className={cn("ws-action is-danger", confirmGroupDelete === group.id && "is-confirming")}
+                          disabled={busy}
+                          onClick={() => void deleteGroupWithChats(group.id)}
+                        >
+                          <TrashIcon />
+                          {confirmGroupDelete === group.id
+                            ? groupThreads(group.id).length
+                              ? `再点一次，删除 ${groupThreads(group.id).length} 个聊天`
+                              : "再点一次删除文件夹"
+                            : "删除文件夹和聊天"}
                         </button>
                       </div>
                     )}

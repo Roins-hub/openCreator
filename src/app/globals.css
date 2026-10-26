@@ -433,6 +433,7 @@ a { color: inherit; text-decoration: none; }
 .history-action:hover { color: var(--ink); background: var(--warm); }
 .history-delete { color: var(--danger); }
 .history-delete:hover { background: color-mix(in oklch, var(--danger) 7%, var(--paper)); }
+.history-delete.is-confirming, .history-delete.is-confirming:hover { color: #fff; background: var(--danger); }
 .history-confirm, .history-rename { padding: 7px; }
 .history-confirm strong { display: block; font-size: 11px; }
 .history-confirm > span { display: block; margin-top: 2px; color: var(--faint); font-size: 9px; }
@@ -768,7 +769,10 @@ a { color: inherit; text-decoration: none; }
 .reference-picker-manage { height: 24px; padding: 0 9px; border-radius: 7px; color: var(--muted); background: transparent; font-size: 11px; }
 .reference-picker-manage:hover, .reference-picker-manage.active { color: var(--ink); background: var(--warm); }
 /* 分组:一排可横向滚动的标签,素材拖到标签上就移进去 */
-.reference-folders { display: flex; gap: 5px; margin: -2px 0 8px; padding-bottom: 1px; overflow-x: auto; scrollbar-width: none; }
+/* 横向滚动的容器上下也会裁切:四周留出空白(用负外边距抵消,位置不变),拖动吸附时放大、发光的标签能完整「跳出来」 */
+.reference-folders {
+  display: flex; gap: 5px; margin: -14px -10px -4px; padding: 12px 10px 12px; overflow-x: auto; scrollbar-width: none;
+}
 .reference-folders::-webkit-scrollbar { display: none; }
 .reference-folder {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 9px;

@@ -77,6 +77,8 @@ export function ConversationList({
   const [newName, setNewName] = useState("");
   const [renamingGroup, setRenamingGroup] = useState<string>();
   const [groupMenu, setGroupMenu] = useState<string>();
+  // 「删除文件夹和里面的对话」要点两次:记下第一次点的是哪个分组
+  const [confirmGroupDelete, setConfirmGroupDelete] = useState<string>();
   const [dropTarget, setDropTarget] = useState<string>();
   const [draggingId, setDraggingId] = useState<string>();
   // 鼠标停在某个对话上时,旁边显示完整标题、分组和最近更新时间;管理、拖动时不弹
@@ -148,11 +150,26 @@ export function ConversationList({
   const updateGroup = (id: string, patch: Partial<ConversationGroup>) =>
     onGroupsChange(groups.map((group) => group.id === id ? { ...group, ...patch } : group));
 
+  // 按全部对话算(不受搜索框过滤影响)
+  const groupMembers = (id: string) => allConversations.filter((item) => item.groupId === id).map((item) => item.id);
+
   const dissolveGroup = (id: string) => {
     setGroupMenu(undefined);
-    const members = conversations.filter((item) => item.groupId === id).map((item) => item.id);
+    const members = groupMembers(id);
     onGroupsChange(groups.filter((group) => group.id !== id));
     if (members.length) void onMove(members, undefined);
+  };
+
+  /** 删除文件夹,连同里面的对话一起删掉(要点两次确认) */
+  const deleteGroupWithChats = (id: string) => {
+    if (confirmGroupDelete !== id) { setConfirmGroupDelete(id); return; }
+    setConfirmGroupDelete(undefined);
+    setGroupMenu(undefined);
+    const members = groupMembers(id);
+    void run(async () => {
+      if (members.length) await onDelete(members);
+      onGroupsChange(groups.filter((group) => group.id !== id));
+    });
   };
 
   // 拖到别的分组(或「未分组」)上松手就移过去;拖回原分组不做任何事
@@ -285,7 +302,10 @@ export function ConversationList({
               </button>}
               <button type="button" className="history-more" aria-label={`${group.name}分组的更多操作`}
                 aria-expanded={groupMenu === group.id}
-                onClick={() => setGroupMenu((current) => current === group.id ? undefined : group.id)}>
+                onClick={() => {
+                  setConfirmGroupDelete(undefined);
+                  setGroupMenu((current) => current === group.id ? undefined : group.id);
+                }}>
                 <MoreHorizontal size={15} />
               </button>
               {groupMenu === group.id && <div className="history-popover">
@@ -297,9 +317,17 @@ export function ConversationList({
                   onClick={() => { setGroupMenu(undefined); setRenamingGroup(group.id); }}>
                   <Pencil size={14} /> 重命名分组
                 </button>
-                <button type="button" className="history-action history-delete" onClick={() => dissolveGroup(group.id)}
+                <button type="button" className="history-action" onClick={() => dissolveGroup(group.id)}
                   title="对话不会被删除，会回到「未分组」">
                   <X size={14} /> 解散分组
+                </button>
+                <button type="button" className={`history-action history-delete ${confirmGroupDelete === group.id ? "is-confirming" : ""}`}
+                  disabled={busy} onClick={() => deleteGroupWithChats(group.id)}
+                  title="删除这个文件夹和里面的全部对话（不能恢复）">
+                  <Trash2 size={14} />
+                  {confirmGroupDelete === group.id
+                    ? (groupMembers(group.id).length ? `再点一次，删除 ${groupMembers(group.id).length} 个对话` : "再点一次删除文件夹")
+                    : "删除文件夹和对话"}
                 </button>
               </div>}
             </div>}

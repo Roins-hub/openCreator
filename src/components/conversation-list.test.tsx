@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConversationList } from "./conversation-list";
 import type { Conversation } from "@/lib/types";
@@ -104,5 +104,17 @@ describe("ConversationList", () => {
     expect(p.onGroupsChange).toHaveBeenCalledWith([]);
     expect(p.onMove).toHaveBeenCalledWith(["a"], undefined);
     expect(p.onDelete).not.toHaveBeenCalled();
+  });
+
+  it("deletes a folder together with its conversations after a second click", async () => {
+    const p = props();
+    render(<ConversationList {...p} />);
+    fireEvent.click(screen.getByRole("button", { name: "电影感分组的更多操作" }));
+    fireEvent.click(screen.getByRole("button", { name: /删除文件夹和对话/ }));
+    expect(p.onDelete).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /再点一次，删除 1 个对话/ })); });
+    expect(p.onDelete).toHaveBeenCalledWith(["a"]);
+    expect(p.onGroupsChange).toHaveBeenCalledWith([]);
+    expect(p.onMove).not.toHaveBeenCalled();
   });
 });
