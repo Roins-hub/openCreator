@@ -782,12 +782,28 @@ a { color: inherit; text-decoration: none; }
 .reference-folder.add { border-style: dashed; }
 /* 拖动素材时:能放的分组轻轻提示;卡片移到上面时分组放大、亮起(带回弹) */
 .reference-folder.can-drop { border-style: dashed; border-color: var(--line-strong); }
+/* 卡片吸到分组上:标签「跳出来」——弹跳放大、变深色、外圈发光,盖在旁边的标签上面 */
 .reference-folder.drop {
-  border-style: solid; border-color: var(--focus); color: var(--ink); background: var(--warm);
-  transform: scale(1.16); box-shadow: 0 0 0 4px oklch(70% .02 82 / .22), 0 8px 20px oklch(20% .02 80 / .16);
-  transition: transform .26s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s, background .15s, border-color .15s;
+  position: relative; z-index: 3; border-style: solid; border-color: var(--dark); color: var(--paper); background: var(--dark);
+  transform: translateY(-2px) scale(1.2);
+  box-shadow: 0 0 0 5px oklch(70% .02 82 / .28), 0 12px 26px oklch(20% .02 80 / .28);
+  animation: folder-pop .42s cubic-bezier(.34, 1.56, .64, 1);
 }
-.reference-folder.active.drop { color: var(--paper); background: var(--dark); }
+.reference-folder.drop i { color: color-mix(in srgb, var(--paper) 70%, transparent); }
+@keyframes folder-pop {
+  0% { transform: scale(1); }
+  45% { transform: translateY(-4px) scale(1.32); }
+  72% { transform: translateY(-1px) scale(1.14); }
+  100% { transform: translateY(-2px) scale(1.2); }
+}
+/* 放进去之后:像把卡片「吞下」一样回弹一下 */
+.reference-folder.landed { animation: folder-land .5s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes folder-land {
+  0% { transform: scale(1.2); }
+  35% { transform: scale(.88); }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
 .reference-folder-input {
   flex: 0 0 128px; height: 25px; padding: 0 10px; border: 1px solid var(--focus); border-radius: 999px; outline: 0;
   color: var(--ink); background: var(--paper); font-size: 11px;
@@ -3214,7 +3230,15 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
   animation: drag-card-lift .22s cubic-bezier(.34, 1.56, .64, 1);
 }
 .reference-drag-card.is-snapped .reference-drag-card-body {
-  transform: rotate(0) scale(.5); box-shadow: 0 8px 20px oklch(20% .02 80 / .24);
+  transform: rotate(0) scale(.46); box-shadow: 0 10px 22px oklch(20% .02 80 / .3);
+  animation: drag-card-snap .38s cubic-bezier(.34, 1.56, .64, 1);
+}
+/* 被吸住时弹一下:先压扁再弹回 */
+@keyframes drag-card-snap {
+  0% { transform: rotate(-4deg) scale(.62); }
+  40% { transform: rotate(2deg) scale(.4, .5); }
+  70% { transform: rotate(-1deg) scale(.5, .43); }
+  100% { transform: rotate(0) scale(.46); }
 }
 .reference-drag-card.is-drop .reference-drag-card-body { transform: scale(.12); opacity: 0; transition-duration: .22s; }
 .reference-drag-card.is-cancel .reference-drag-card-body { transform: none; opacity: 0; transition: transform .26s ease, opacity .26s ease .06s; }
@@ -3229,5 +3253,6 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
   border: 2px solid var(--paper); border-radius: 999px; color: var(--paper); background: var(--dark); font-size: 11px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .reference-drag-card, .reference-drag-card-body, .reference-folder.drop { transition: none; animation: none; }
+  .reference-drag-card, .reference-drag-card-body, .reference-drag-card.is-snapped .reference-drag-card-body,
+  .reference-folder.drop, .reference-folder.landed { transition: none; animation: none; }
 }

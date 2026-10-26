@@ -31,8 +31,8 @@ type CardDrag = {
   grabX: number; grabY: number;
   origin: { left: number; top: number; width: number };
   target?: string;
-  /** 吸附 / 飞入的目标中心 */
-  anchor?: { x: number; y: number };
+  /** 吸附的分组标签:中心点和上沿(吸附时卡片停在标签正上方,不挡住标签;松手时飞进中心) */
+  anchor?: { x: number; y: number; top: number };
   phase: "drag" | "drop" | "cancel";
 };
 const DRAG_THRESHOLD = 6;
@@ -41,7 +41,7 @@ const targetAt = (x: number, y: number) => {
   const target = element?.closest<HTMLElement>("[data-drop-target]");
   if (!target?.dataset.dropTarget) return undefined;
   const rect = target.getBoundingClientRect();
-  return { id: target.dataset.dropTarget, anchor: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } };
+  return { id: target.dataset.dropTarget, anchor: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, top: rect.top } };
 };
 
 /**
@@ -79,6 +79,8 @@ export function ReferencePicker({
   const [confirm, setConfirm] = useState<string>();
   const [dropTarget, setDropTarget] = useState<string>();
   const [drag, setDrag] = useState<CardDrag>();
+  // 刚放进去的分组:播放一下「吞下」的回弹
+  const [landed, setLanded] = useState<string>();
   // 拖完松手后浏览器还会补一个 click,别把它当成「选中素材」:记下松手的时间,紧跟着的 click 跳过
   const suppressClickRef = useRef(0);
 
@@ -157,7 +159,11 @@ export function ReferencePicker({
       setDropTarget(undefined);
       const into = dropped ? target : undefined;
       setDrag((current) => current && { ...current, phase: into ? "drop" : "cancel" });
-      if (into) dropOn(into, paths);
+      if (into) {
+        dropOn(into, paths);
+        setLanded(into);
+        window.setTimeout(() => setLanded((value) => value === into ? undefined : value), 520);
+      }
       window.setTimeout(() => setDrag(undefined), 280);
     };
     const move = (moved: PointerEvent) => {
@@ -216,7 +222,7 @@ export function ReferencePicker({
 
   const folderChip = (id: string, label: string, droppable = false) =>
     <button type="button" key={id} role="tab" aria-selected={current === id}
-      className={`reference-folder ${current === id ? "active" : ""} ${dropTarget === id ? "drop" : ""} ${drag && droppable ? "can-drop" : ""}`}
+      className={`reference-folder ${current === id ? "active" : ""} ${dropTarget === id ? "drop" : ""} ${drag && droppable ? "can-drop" : ""} ${landed === id ? "landed" : ""}`}
       onClick={() => setFilter(id)}
       onDoubleClick={() => { if (folderIds.has(id)) setFolderEdit({ id, text: label }); }}
       title={folderIds.has(id) ? "双击改名，可把素材拖到这里" : droppable ? "可把素材拖到这里" : undefined}
@@ -250,7 +256,7 @@ export function ReferencePicker({
       {folderChip(UNGROUPED, "未分组", true)}
       {folders.map((folder) => editingFolder(folder.id) || folderChip(folder.id, folder.name, true))}
       {editingFolder(NEW_FOLDER) || <button type="button"
-        className={`reference-folder add ${dropTarget === NEW_FOLDER ? "drop" : ""} ${drag ? "can-drop" : ""}`}
+        className={`reference-folder add ${dropTarget === NEW_FOLDER ? "drop" : ""} ${drag ? "can-drop" : ""} ${landed === NEW_FOLDER ? "landed" : ""}`}
         title="新建分组（也可以把素材拖到这里）"
         onClick={() => setFolderEdit({ id: NEW_FOLDER, text: "" })}
         data-drop-target={NEW_FOLDER}>
@@ -343,18 +349,20 @@ function DragCard({ drag }: { drag: CardDrag }) {
   const { origin, phase } = drag;
   const free = { x: drag.x - drag.grabX, y: drag.y - drag.grabY };
   const half = origin.width / 2;
-  // 吸附:卡片中心落在分组中心附近,只保留一点点跟手的偏移
+  // 吸附:卡片缩小后停在分组标签正上方(不挡住放大的标签),只保留一点点跟手的偏移
+  const SNAP_SCALE = .46;
   const snapped = drag.anchor && {
-    x: drag.anchor.x + (drag.x - drag.anchor.x) * .18 - half,
-    y: drag.anchor.y + (drag.y - drag.anchor.y) * .18 - half,
+    x: drag.anchor.x + (drag.x - drag.anchor.x) * .12 - half,
+    y: drag.anchor.top - 10 - origin.width * SNAP_SCALE / 2 - half + (drag.y - drag.anchor.y) * .08,
   };
   const position = phase === "cancel" ? { x: origin.left, y: origin.top }
     : phase === "drop" && drag.anchor ? { x: drag.anchor.x - half, y: drag.anchor.y - half }
       : snapped || free;
   const state = phase === "drag" ? (snapped ? "is-snapped" : "is-free") : `is-${phase}`;
+  // 换了吸附目标时重新挂载内层,再播一次「被吸住」的弹跳
   return <div className={`reference-drag-card ${state}`} aria-hidden="true"
     style={{ width: origin.width, transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}>
-    <div className={`reference-drag-card-body ${drag.paths.length > 1 ? "is-stack" : ""}`}>
+    <div key={phase === "drag" ? drag.target || "free" : "end"} className={`reference-drag-card-body ${drag.paths.length > 1 ? "is-stack" : ""}`}>
       <span className="reference-picker-thumb"><MediaThumb media={drag.asset} /></span>
       <span className="reference-picker-name">{drag.asset.name}</span>
       {drag.paths.length > 1 && <b className="reference-drag-count">{drag.paths.length}</b>}
