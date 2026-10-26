@@ -1478,6 +1478,9 @@ html[data-mote-theme] {
   transition: background-color .15s, border-color .15s;
 }
 .chat-group-new-chat:hover { border-color: var(--ring); background: var(--muted); }
+/* 当前已经是空的新聊天:不再新开,提示直接输入 */
+.chat-group-new-chat.is-current { border-style: solid; color: var(--muted-foreground); font-weight: 500; }
+.chat-group-new-chat.is-current span { margin-left: auto; color: var(--foreground); font-size: 11px; font-weight: 600; }
 .chat-group-chat-list { display: flex; flex-direction: column; max-height: min(260px, 40vh); overflow-y: auto; }
 .chat-group-chat-list > button {
   width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px;

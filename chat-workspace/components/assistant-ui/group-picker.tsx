@@ -24,6 +24,7 @@ export const ComposerGroupPicker: FC = () => {
   const aui = useAui();
   const data = useThreadGroups();
   const mainThreadId = useAuiState((s) => s.threads.mainThreadId);
+  const newThreadId = useAuiState((s) => s.threads.newThreadId);
   const threadIds = useAuiState((s) => s.threads.threadIds);
   const threadItems = useAuiState((s) => s.threads.threadItems);
   const [open, setOpen] = useState(false);
@@ -48,6 +49,9 @@ export const ComposerGroupPicker: FC = () => {
   const countIn = (groupId: string) => listed.filter((id) => groupOf(id) === groupId).length;
   const titleOf = (id: string) => titles.get(id) || "新聊天";
   const browsingName = browsing ? data.groups.find((group) => group.id === browsing)?.name || "" : "未分组";
+  // 当前就是还没发过消息的新聊天,而且就在这个文件夹:同一时间只能有一个空的新聊天,
+  // 再点新建不会另开一个,所以按钮改成「直接输入」(在别的文件夹点,会把它挪过去)
+  const freshHere = Boolean(mainThreadId) && mainThreadId === newThreadId && activeGroup === browsing;
 
   const close = () => {
     setClosing(true);
@@ -147,10 +151,21 @@ export const ComposerGroupPicker: FC = () => {
             <div className="chat-group-chats" aria-label={`${browsingName} 里的聊天`}>
               <small>{browsingName} 里的聊天</small>
               <div className="chat-group-pane" key={browsing || "ungrouped"}>
-                <button type="button" className="chat-group-new-chat"
-                  onClick={() => { close(); startChatInGroup(aui, browsing || undefined, true); }}>
-                  <MessageSquarePlusIcon className="size-3.5" /> 在这里新建聊天
-                </button>
+                {freshHere ? (
+                  <button type="button" className="chat-group-new-chat is-current" title="还没发消息的新聊天只会有一个"
+                    onClick={() => {
+                      close();
+                      document.querySelector<HTMLTextAreaElement>(".aui-composer-input")?.focus();
+                    }}>
+                    <MessageSquarePlusIcon className="size-3.5" /> 当前就是新聊天
+                    <span>直接输入</span>
+                  </button>
+                ) : (
+                  <button type="button" className="chat-group-new-chat"
+                    onClick={() => { close(); startChatInGroup(aui, browsing || undefined, true); }}>
+                    <MessageSquarePlusIcon className="size-3.5" /> 在这里新建聊天
+                  </button>
+                )}
                 <div className="chat-group-chat-list" role="listbox">
                   {members.length ? members.map((id) => (
                     <button type="button" key={id} role="option" aria-selected={id === mainThreadId} title={titleOf(id)}
