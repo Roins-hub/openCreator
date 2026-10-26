@@ -1450,7 +1450,8 @@ export function AppShell() {
                     onReedit: () => reedit(prompt, references, generation),
                     onRegenerate: () => void submit(prompt, references, {
                       clearComposer: false, videoOptions: generation?.videoOptions, imageOptions: generation?.imageOptions,
-                      model: modelForRecord(generation),
+                      // 用这条记录当时的模型重新生成(已下线才退回同类模型),不跟着输入框当前选的模型走
+                      model: recordedModel(generation) || modelForRecord(generation),
                     }),
                     onToggleFavorite: () => void toggleFavorite(mediaPaths, !favorite),
                     onDelete: () => deleteTurn(message.id, userMessage?.id),
