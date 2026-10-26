@@ -23,8 +23,8 @@ const VERSION = 1;
 // localStorage 一般 5MB 上限,留出余量给其他设置
 const MAX_CHARS = 2_500_000;
 
-/** 按账号区分(Key + 中转站地址的哈希,不把 Key 明文当键名) */
-function cacheKey() {
+/** 浏览器缓存的键:按账号区分(Key + 中转站地址的哈希,不把 Key 明文当键名);没填 Key 时为空 */
+export function accountCacheKey(prefix: string) {
   const account = customAccountKey() || readApiKey();
   if (!account) return "";
   const source = `${account}|${readRelayBase()}`;
@@ -33,8 +33,10 @@ function cacheKey() {
     hash ^= source.charCodeAt(index);
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return `mote.workspace.${hash.toString(16)}`;
+  return `${prefix}.${hash.toString(16)}`;
 }
+
+const cacheKey = () => accountCacheKey("mote.workspace");
 
 export function readWorkspaceCache(): WorkspaceSnapshot | undefined {
   const key = cacheKey();

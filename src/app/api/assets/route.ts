@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  listAssets, moveAssets, permanentlyDeleteAssets, recordAsset, renameAsset, setAssetsTrashed, type Asset, type AssetRecord,
+  listAssets, listPickerAssets, moveAssets, permanentlyDeleteAssets, recordAsset, renameAsset, setAssetsTrashed, type Asset, type AssetRecord,
 } from "@/lib/asset-store";
 import { syncChatAttachments } from "@/lib/chat-attachments";
 import { listConversations } from "@/lib/conversation-store";
@@ -24,8 +24,11 @@ function pathsOf(input: { path?: unknown; paths?: unknown }) {
 export async function GET(request: Request) {
   try {
     const { userId } = await requireUser(request);
+    const params = new URL(request.url).searchParams;
+    // @ 选择素材:精简列表
+    if (params.get("view") === "picker") return ok(await listPickerAssets(userId));
     // 附件页:先把以前在聊天里上传、还没登记的图片补进来
-    if (new URL(request.url).searchParams.get("scope") === "chat") await syncChatAttachments(userId).catch(() => undefined);
+    if (params.get("scope") === "chat") await syncChatAttachments(userId).catch(() => undefined);
     const [conversations, favorites] = await Promise.all([
       listConversations(userId), listFavorites(userDir(userId)),
     ]);

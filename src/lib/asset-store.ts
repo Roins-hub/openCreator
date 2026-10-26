@@ -112,6 +112,20 @@ export function enrichAssets(records: AssetRecord[], conversations: Conversation
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+/**
+ * @ 选择素材用的精简列表:只要能当参考素材的(不含回收站里的、文档附件),
+ * 不读对话、不带提示词和来源对话,数据小、返回快。
+ */
+export async function listPickerAssets(userId: string) {
+  return (await readIndex(userId))
+    .filter((record) => !isExpired(record) && !record.trashed && record.kind !== "file")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(({ kind, path, name, mimeType, size, createdAt, folder, source }) => ({
+      id: path, kind, path, name, mimeType, size, createdAt,
+      ...(folder ? { folder } : {}), ...(source ? { source } : {}),
+    }));
+}
+
 export async function listAssets(userId: string, conversations: Conversation[], favorites: string[]) {
   return enrichAssets(await readIndex(userId), conversations, favorites);
 }

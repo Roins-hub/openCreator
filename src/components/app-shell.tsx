@@ -51,6 +51,7 @@ import { MediaPreview } from "@/components/media-preview";
 import { thumbUrl } from "@/lib/media-url";
 import { ReferencePicker, type PickerAsset } from "@/components/reference-picker";
 import { usePresence } from "@/components/use-presence";
+import { readReferenceCache, writeReferenceCache } from "@/lib/reference-cache";
 import { ModelPicker } from "@/components/model-picker";
 import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
 import { uploadMedia } from "@/lib/direct-upload";
@@ -492,12 +493,25 @@ export function AppShell() {
   }, [draft, referencePickerOpen, positionReferencePicker]);
 
   const referenceLoaded = Boolean(apiKey) && referenceLoadedFor === apiKey;
+  // 这个账号的浏览器缓存已经用过了(之后以内存里的为准,不再拿旧缓存覆盖刚改的名字、分组)
+  const referenceCacheUsedRef = useRef<string>(undefined);
   const loadReferenceAssets = useCallback(async () => {
-    setReferenceLoading(true);
     const key = readApiKey();
+    // 先把上次缓存的列表放上(打开就有内容),再向服务端取最新的
+    if (referenceCacheUsedRef.current !== key) {
+      referenceCacheUsedRef.current = key;
+      const cached = readReferenceCache();
+      if (cached) {
+        setReferenceAssets(cached.assets);
+        setReferenceFolders(cached.folders);
+        setReferenceLoadedFor(key);
+      }
+    }
+    setReferenceLoading(true);
     try {
       const [assets, folders] = await Promise.all([
-        request<Asset[]>("/api/assets"),
+        // 精简列表:不读对话、不带提示词,数据小
+        request<Asset[]>("/api/assets?view=picker"),
         request<AssetFolder[]>("/api/asset-folders").catch(() => undefined),
       ]);
       // 聊天里的文档附件不能当生成素材
@@ -508,6 +522,11 @@ export function AppShell() {
       setReferenceLoading(false);
     }
   }, []);
+
+  // 列表有变化(取到最新的、改名、分组、删除)就存一份到浏览器,下次打开先显示它
+  useEffect(() => {
+    if (referenceLoaded) writeReferenceCache({ assets: referenceAssets, folders: referenceFolders });
+  }, [referenceLoaded, referenceAssets, referenceFolders]);
 
   // 有 Key 后在后台先读一次素材库,第一次点 @ 也不用等
   useEffect(() => {

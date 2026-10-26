@@ -48,5 +48,13 @@ describe("asset names and folders", () => {
     ]);
     expect(await store.moveAssets(owner, [path("c.mp4")], undefined)).toEqual([path("c.mp4")]);
     expect((await byPath()).get(path("c.mp4"))?.folder).toBeUndefined();
+
+    // @ 选择素材的精简列表:不含回收站里的,只带需要的字段
+    await store.moveAssets(owner, [path("a.png")], people.id);
+    await store.setAssetsTrashed(owner, [path("b.png")], true);
+    const picker = await store.listPickerAssets(owner);
+    expect(picker.map((asset) => asset.name).sort()).toEqual(["c.mp4", "古风女孩.png"]);
+    expect(picker.find((asset) => asset.path === path("a.png"))).toMatchObject({ id: path("a.png"), kind: "image", folder: people.id, source: "upload" });
+    expect(Object.keys(picker[0])).not.toContain("prompt");
   });
 });
