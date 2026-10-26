@@ -136,11 +136,18 @@ export const ComposerGroupPicker: FC = () => {
                 </button>
               ))}
               {creating ? (
-                <form className="chat-group-new" onSubmit={(event) => { event.preventDefault(); createGroup(); }}>
+                // 不能用 <form>:这个弹框在输入框的 <form> 里面,嵌套表单点「创建」会直接提交外层表单、整页刷新
+                <div className="chat-group-new" role="group" aria-label="新建文件夹">
                   <input autoFocus maxLength={30} value={name} placeholder="文件夹名称" aria-label="新文件夹名称"
-                    onChange={(event) => setName(event.target.value)} />
-                  <button type="submit" disabled={!name.trim()}>创建</button>
-                </form>
+                    onChange={(event) => setName(event.target.value)}
+                    onKeyDown={(event) => {
+                      // 输入法选字时的回车不算
+                      if (event.nativeEvent.isComposing) return;
+                      if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); createGroup(); }
+                      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setCreating(false); setName(""); }
+                    }} />
+                  <button type="button" disabled={!name.trim()} onClick={createGroup}>创建</button>
+                </div>
               ) : (
                 <button type="button" className="chat-group-create" onClick={() => setCreating(true)}
                   disabled={data.groups.length >= MAX_THREAD_GROUPS}>
