@@ -81,4 +81,25 @@ describe("ReferencePicker", () => {
     await act(async () => { fireEvent.keyDown(rename, { key: "Enter" }); });
     expect(handlers.onRenameFolder).toHaveBeenCalledWith("f1", "角色");
   });
+
+  it("drags an asset card onto a folder chip and moves it there", async () => {
+    const handlers = setup();
+    const chip = screen.getByRole("tab", { name: /人物/ });
+    const original = document.elementFromPoint;
+    document.elementFromPoint = () => chip;
+    try {
+      const tile = screen.getByTitle("b.png").parentElement as HTMLElement;
+      fireEvent.pointerDown(tile, { button: 0, pointerType: "mouse", clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(window, { clientX: 40, clientY: 40 });
+      expect(chip.className).toContain("drop");
+      expect(document.querySelector(".reference-drag-card.is-snapped")).toBeTruthy();
+      await act(async () => { fireEvent.pointerUp(window, { clientX: 40, clientY: 40 }); });
+      expect(handlers.onMove).toHaveBeenCalledWith(["users/x/uploads/b.png"], "f1");
+      // 拖完补上的 click 不算选中素材
+      fireEvent.click(screen.getByTitle("b.png"));
+      expect(handlers.onPick).not.toHaveBeenCalled();
+    } finally {
+      document.elementFromPoint = original;
+    }
+  });
 });

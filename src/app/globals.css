@@ -780,10 +780,14 @@ a { color: inherit; text-decoration: none; }
 .reference-folder.active { border-color: var(--dark); color: var(--paper); background: var(--dark); }
 .reference-folder.active i { color: color-mix(in srgb, var(--paper) 65%, transparent); }
 .reference-folder.add { border-style: dashed; }
+/* 拖动素材时:能放的分组轻轻提示;卡片移到上面时分组放大、亮起(带回弹) */
+.reference-folder.can-drop { border-style: dashed; border-color: var(--line-strong); }
 .reference-folder.drop {
   border-style: solid; border-color: var(--focus); color: var(--ink); background: var(--warm);
-  transform: scale(1.06); box-shadow: 0 0 0 3px oklch(70% .02 82 / .18);
+  transform: scale(1.16); box-shadow: 0 0 0 4px oklch(70% .02 82 / .22), 0 8px 20px oklch(20% .02 80 / .16);
+  transition: transform .26s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s, background .15s, border-color .15s;
 }
+.reference-folder.active.drop { color: var(--paper); background: var(--dark); }
 .reference-folder-input {
   flex: 0 0 128px; height: 25px; padding: 0 10px; border: 1px solid var(--focus); border-radius: 999px; outline: 0;
   color: var(--ink); background: var(--paper); font-size: 11px;
@@ -2997,7 +3001,9 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 }
 .image-zoom-stage .image-viewer-img {
   display: block; border-radius: 0; background: transparent; box-shadow: none; transform-origin: center;
-  transition: transform .28s cubic-bezier(.16, 1, .3, 1); will-change: transform; cursor: zoom-in;
+  /* 不加 will-change:大图(手机照片几千像素)会被当成一整个合成层分块缩放,块之间露出横竖细线;
+     不常驻合成层时浏览器按当前缩放重新绘制,没有接缝,放大后也更清晰 */
+  transition: transform .28s cubic-bezier(.16, 1, .3, 1); cursor: zoom-in;
 }
 .image-zoom.is-zoomed .image-viewer-img { cursor: grab; }
 .image-zoom.is-dragging .image-viewer-img { cursor: grabbing; transition: none; }
@@ -3184,4 +3190,44 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   .reference-picker, .parameter-popover, .mode-popover, .prompt-library,
   .reference-picker.is-closing, .parameter-popover.is-closing, .mode-popover.is-closing, .prompt-library.is-closing { animation: none; }
+}
+
+/* ---------- @ 选择框里拖动素材:卡片式拖动,到分组上被吸过去 ---------- */
+body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; user-select: none; }
+.reference-picker-item.is-movable { cursor: grab; }
+.reference-picker-item { transition: opacity .18s ease, transform .22s cubic-bezier(.16, 1, .3, 1), border-color .15s, background .15s; }
+/* 被拿起的原卡片留一个淡淡的位置 */
+.reference-picker-item.is-lifted { opacity: .32; transform: scale(.94); }
+.reference-drag-card {
+  position: fixed; z-index: 200; left: 0; top: 0; pointer-events: none; will-change: transform;
+  transition: transform .05s linear;
+}
+/* 吸附:位置带弹性地滑向分组中心 */
+.reference-drag-card.is-snapped { transition: transform .26s cubic-bezier(.2, 1.35, .4, 1); }
+.reference-drag-card.is-drop { transition: transform .22s cubic-bezier(.4, 0, .2, 1); }
+.reference-drag-card.is-cancel { transition: transform .26s cubic-bezier(.2, .9, .3, 1.1); }
+.reference-drag-card-body {
+  position: relative; padding: 4px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--paper);
+  box-shadow: 0 18px 40px oklch(20% .02 80 / .28), 0 3px 10px oklch(20% .02 80 / .14);
+  transform: rotate(-4deg) scale(1.06); transform-origin: 50% 50%;
+  transition: transform .28s cubic-bezier(.34, 1.56, .64, 1), opacity .2s ease, box-shadow .2s;
+  animation: drag-card-lift .22s cubic-bezier(.34, 1.56, .64, 1);
+}
+.reference-drag-card.is-snapped .reference-drag-card-body {
+  transform: rotate(0) scale(.5); box-shadow: 0 8px 20px oklch(20% .02 80 / .24);
+}
+.reference-drag-card.is-drop .reference-drag-card-body { transform: scale(.12); opacity: 0; transition-duration: .22s; }
+.reference-drag-card.is-cancel .reference-drag-card-body { transform: none; opacity: 0; transition: transform .26s ease, opacity .26s ease .06s; }
+@keyframes drag-card-lift { from { transform: rotate(0) scale(1); } }
+/* 一次拖好几张:后面叠两张卡片的边 */
+.reference-drag-card-body.is-stack {
+  box-shadow: 5px 5px 0 -1px var(--paper), 5px 5px 0 0 var(--line), 10px 10px 0 -1px var(--paper), 10px 10px 0 0 var(--line),
+    0 18px 40px oklch(20% .02 80 / .28);
+}
+.reference-drag-count {
+  position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; padding: 0 6px; display: grid; place-items: center;
+  border: 2px solid var(--paper); border-radius: 999px; color: var(--paper); background: var(--dark); font-size: 11px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reference-drag-card, .reference-drag-card-body, .reference-folder.drop { transition: none; animation: none; }
 }

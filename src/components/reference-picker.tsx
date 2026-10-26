@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { Check, FolderPlus, Pencil, Trash2, X } from "lucide-react";
 import type { AssetFolder } from "@/lib/asset-store";
 import type { MediaKind } from "@/lib/tangzhi";
@@ -14,13 +15,34 @@ export type PickerAsset = {
   managed: boolean;
 };
 
-const DRAG_TYPE = "application/x-tz-asset-paths";
 const NEW_FOLDER = "__new__";
 const UNGROUPED = "__none__";
 /** 筛选:all 全部、UNGROUPED 未分组,其他是分组 ID */
 type Filter = string;
 
 const baseName = (name: string) => name.replace(/\.[a-z0-9]{1,6}$/i, "");
+
+/** 拖动中的卡片:跟着鼠标走;移到分组上时被吸过去并缩小,松手后飞进分组(drop)或飞回原处(cancel) */
+type CardDrag = {
+  paths: string[];
+  asset: PickerAsset;
+  x: number; y: number;
+  /** 按下的位置相对卡片左上角的偏移(卡片不跳到鼠标中心) */
+  grabX: number; grabY: number;
+  origin: { left: number; top: number; width: number };
+  target?: string;
+  /** 吸附 / 飞入的目标中心 */
+  anchor?: { x: number; y: number };
+  phase: "drag" | "drop" | "cancel";
+};
+const DRAG_THRESHOLD = 6;
+const targetAt = (x: number, y: number) => {
+  const element = document.elementFromPoint?.(x, y) as HTMLElement | null;
+  const target = element?.closest<HTMLElement>("[data-drop-target]");
+  if (!target?.dataset.dropTarget) return undefined;
+  const rect = target.getBoundingClientRect();
+  return { id: target.dataset.dropTarget, anchor: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } };
+};
 
 /**
  * 输入框 @ 弹出的「选择参考内容」:点一下引用素材;也能在这里整理素材库——
@@ -56,6 +78,9 @@ export function ReferencePicker({
   // 删除要点两次:记下第一次点的是哪个(asset:路径 / folder:ID / batch),3 秒后复原
   const [confirm, setConfirm] = useState<string>();
   const [dropTarget, setDropTarget] = useState<string>();
+  const [drag, setDrag] = useState<CardDrag>();
+  // 拖完松手后浏览器还会补一个 click,别把它当成「选中素材」:记下松手的时间,紧跟着的 click 跳过
+  const suppressClickRef = useRef(0);
 
   useEffect(() => {
     if (!confirm) return;
@@ -92,36 +117,73 @@ export function ReferencePicker({
 
   // ---- 拖动:管理模式下拖已选中的一张,带着全部选中的一起走 ----
   const dragPaths = (asset: PickerAsset) => managing && picked.has(asset.path) ? pickedPaths : [asset.path];
-  const readDrag = (event: DragEvent) => {
-    try {
-      const value = JSON.parse(event.dataTransfer.getData(DRAG_TYPE) || "[]") as unknown;
-      return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-    } catch { return []; }
-  };
-  const dropZone = (target: string, onDrop: (paths: string[]) => void) => ({
-    onDragOver: (event: DragEvent) => {
-      if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      if (dropTarget !== target) setDropTarget(target);
-    },
-    onDragLeave: () => setDropTarget((value) => value === target ? undefined : value),
-    onDrop: (event: DragEvent) => {
-      const paths = readDrag(event);
-      setDropTarget(undefined);
-      if (!paths.length) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onDrop(paths);
-    },
-  });
-
   const createFolder = (name: string, paths: string[]) => run(async () => {
     const folder = await onCreateFolder(name, paths);
     setFilter(folder.id);
     // 拖进来新建的先用默认名,马上进入改名
     if (paths.length) setFolderEdit({ id: folder.id, text: folder.name });
   });
+
+  const dropOn = (target: string, paths: string[]) => {
+    if (target === NEW_FOLDER) createFolder(`新分组 ${folders.length + 1}`, paths);
+    else run(() => onMove(paths, target === UNGROUPED ? null : target));
+  };
+
+  /**
+   * 按住素材拖动(鼠标 / 触控笔;手指保留滚动)。移动超过几像素才算拖动,
+   * 卡片挂在 body 上跟着鼠标走,下面是哪个分组由 data-drop-target 判断。
+   */
+  const beginDrag = (event: ReactPointerEvent<HTMLDivElement>, asset: PickerAsset) => {
+    if (event.button !== 0 || event.pointerType === "touch" || !asset.managed || renaming?.path === asset.path) return;
+    if ((event.target as HTMLElement).closest(".reference-picker-actions, input")) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const paths = dragPaths(asset);
+    let started = false;
+    let target: string | undefined;
+    const base = {
+      paths, asset, grabX: startX - rect.left, grabY: startY - rect.top,
+      origin: { left: rect.left, top: rect.top, width: rect.width },
+    };
+    const finish = (dropped: boolean) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", key, true);
+      document.body.classList.remove("is-card-dragging");
+      if (!started) return;
+      suppressClickRef.current = Date.now();
+      setDropTarget(undefined);
+      const into = dropped ? target : undefined;
+      setDrag((current) => current && { ...current, phase: into ? "drop" : "cancel" });
+      if (into) dropOn(into, paths);
+      window.setTimeout(() => setDrag(undefined), 280);
+    };
+    const move = (moved: PointerEvent) => {
+      if (!started) {
+        if (Math.hypot(moved.clientX - startX, moved.clientY - startY) < DRAG_THRESHOLD) return;
+        started = true;
+        document.body.classList.add("is-card-dragging");
+      }
+      const hit = targetAt(moved.clientX, moved.clientY);
+      target = hit?.id;
+      setDropTarget(target);
+      setDrag({ ...base, x: moved.clientX, y: moved.clientY, target, anchor: hit?.anchor, phase: "drag" });
+    };
+    const up = () => finish(true);
+    const cancel = () => finish(false);
+    const key = (pressed: globalThis.KeyboardEvent) => {
+      if (pressed.key !== "Escape" || !started) return;
+      pressed.preventDefault();
+      pressed.stopPropagation();
+      finish(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("keydown", key, true);
+  };
 
   const saveFolderEdit = () => {
     const edit = folderEdit;
@@ -152,13 +214,13 @@ export function ReferencePicker({
     setPicked((items) => new Set([...items].filter((path) => !paths.includes(path))));
   });
 
-  const folderChip = (id: string, label: string, drop?: (paths: string[]) => void) =>
+  const folderChip = (id: string, label: string, droppable = false) =>
     <button type="button" key={id} role="tab" aria-selected={current === id}
-      className={`reference-folder ${current === id ? "active" : ""} ${dropTarget === id ? "drop" : ""}`}
+      className={`reference-folder ${current === id ? "active" : ""} ${dropTarget === id ? "drop" : ""} ${drag && droppable ? "can-drop" : ""}`}
       onClick={() => setFilter(id)}
       onDoubleClick={() => { if (folderIds.has(id)) setFolderEdit({ id, text: label }); }}
-      title={folderIds.has(id) ? "双击改名，可把素材拖到这里" : drop ? "可把素材拖到这里" : undefined}
-      {...(drop ? dropZone(id, drop) : {})}>
+      title={folderIds.has(id) ? "双击改名，可把素材拖到这里" : droppable ? "可把素材拖到这里" : undefined}
+      data-drop-target={droppable ? id : undefined}>
       {label}<i>{id === "all" ? matched.length : countIn(id)}</i>
     </button>;
 
@@ -185,14 +247,13 @@ export function ReferencePicker({
 
     <div className="reference-folders" role="tablist" aria-label="素材分组">
       {folderChip("all", "全部")}
-      {folderChip(UNGROUPED, "未分组", (paths) => run(() => onMove(paths, null)))}
-      {folders.map((folder) => editingFolder(folder.id) ||
-        folderChip(folder.id, folder.name, (paths) => run(() => onMove(paths, folder.id))))}
+      {folderChip(UNGROUPED, "未分组", true)}
+      {folders.map((folder) => editingFolder(folder.id) || folderChip(folder.id, folder.name, true))}
       {editingFolder(NEW_FOLDER) || <button type="button"
-        className={`reference-folder add ${dropTarget === NEW_FOLDER ? "drop" : ""}`}
+        className={`reference-folder add ${dropTarget === NEW_FOLDER ? "drop" : ""} ${drag ? "can-drop" : ""}`}
         title="新建分组（也可以把素材拖到这里）"
         onClick={() => setFolderEdit({ id: NEW_FOLDER, text: "" })}
-        {...dropZone(NEW_FOLDER, (paths) => createFolder(`新分组 ${folders.length + 1}`, paths))}>
+        data-drop-target={NEW_FOLDER}>
         <FolderPlus size={12} />新建分组
       </button>}
     </div>
@@ -216,15 +277,15 @@ export function ReferencePicker({
         const attached = isAttached(asset.path);
         const isPicked = managing && picked.has(asset.path);
         const deleting = confirm === `asset:${asset.path}`;
-        return <div key={asset.id} draggable={asset.managed && renaming?.path !== asset.path}
-          className={`reference-picker-item ${attached ? "selected" : ""} ${isPicked ? "picked" : ""}`}
-          onDragStart={(event) => {
-            event.dataTransfer.setData(DRAG_TYPE, JSON.stringify(dragPaths(asset)));
-            event.dataTransfer.effectAllowed = "move";
-          }}
-          onDragEnd={() => setDropTarget(undefined)}>
+        const lifted = drag?.phase === "drag" && drag.paths.includes(asset.path);
+        return <div key={asset.id}
+          className={`reference-picker-item ${attached ? "selected" : ""} ${isPicked ? "picked" : ""} ${asset.managed ? "is-movable" : ""} ${lifted ? "is-lifted" : ""}`}
+          onPointerDown={(event) => beginDrag(event, asset)}>
           <button type="button" className="reference-picker-pick" title={asset.name}
-            onClick={() => { if (!managing) onPick(asset); else if (asset.managed) toggle(asset.path); }}>
+            onClick={() => {
+              if (Date.now() - suppressClickRef.current < 400) return;
+              if (!managing) onPick(asset); else if (asset.managed) toggle(asset.path);
+            }}>
             <span className="reference-picker-thumb"><MediaThumb media={asset} /></span>
             {renaming?.path !== asset.path && <span className="reference-picker-name">{asset.name}</span>}
           </button>
@@ -270,5 +331,33 @@ export function ReferencePicker({
         <Trash2 size={12} />{confirm === "batch" ? `确认删除 ${pickedPaths.length} 个` : "删除"}
       </button>
     </div>}
+    {drag && typeof document !== "undefined" && createPortal(<DragCard drag={drag} />, document.body)}
+  </div>;
+}
+
+/**
+ * 拖动中的卡片。外层管位置(跟手;到了分组上方被吸向分组中心,带一点弹性),
+ * 内层管姿态(拿起时微微倾斜放大;吸附时缩小摆正;放进分组时缩没;取消时飞回原处)。
+ */
+function DragCard({ drag }: { drag: CardDrag }) {
+  const { origin, phase } = drag;
+  const free = { x: drag.x - drag.grabX, y: drag.y - drag.grabY };
+  const half = origin.width / 2;
+  // 吸附:卡片中心落在分组中心附近,只保留一点点跟手的偏移
+  const snapped = drag.anchor && {
+    x: drag.anchor.x + (drag.x - drag.anchor.x) * .18 - half,
+    y: drag.anchor.y + (drag.y - drag.anchor.y) * .18 - half,
+  };
+  const position = phase === "cancel" ? { x: origin.left, y: origin.top }
+    : phase === "drop" && drag.anchor ? { x: drag.anchor.x - half, y: drag.anchor.y - half }
+      : snapped || free;
+  const state = phase === "drag" ? (snapped ? "is-snapped" : "is-free") : `is-${phase}`;
+  return <div className={`reference-drag-card ${state}`} aria-hidden="true"
+    style={{ width: origin.width, transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}>
+    <div className={`reference-drag-card-body ${drag.paths.length > 1 ? "is-stack" : ""}`}>
+      <span className="reference-picker-thumb"><MediaThumb media={drag.asset} /></span>
+      <span className="reference-picker-name">{drag.asset.name}</span>
+      {drag.paths.length > 1 && <b className="reference-drag-count">{drag.paths.length}</b>}
+    </div>
   </div>;
 }
