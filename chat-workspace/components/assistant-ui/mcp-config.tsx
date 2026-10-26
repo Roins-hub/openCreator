@@ -74,6 +74,9 @@ const STATUS: Record<MCPConnectionState, { label: string; className: string; ico
 
 type AuthType = MCPAuthConfig["type"];
 
+/** 认证方式只有三种:用一排按钮切换,不用系统原生下拉框(样式和网站不搭) */
+const AUTH_TYPES: [AuthType, string][] = [["none", "无需认证"], ["bearer", "Bearer Token"], ["oauth", "OAuth"]];
+
 const inputClass =
   "h-10 rounded-xl bg-background px-3 shadow-none focus-visible:ring-2 focus-visible:ring-ring/20";
 
@@ -259,18 +262,28 @@ function AddServerForm({ onDone }: { onDone: () => void }) {
             inputMode="url"
           />
         </label>
-        <label className="block space-y-1.5 text-xs font-medium">
+        <div className="block space-y-1.5 text-xs font-medium">
           <span>认证方式</span>
-          <select
-            value={authType}
-            onChange={(event) => setAuthType(event.target.value as AuthType)}
-            className={cn(inputClass, "w-full border px-3 outline-none")}
-          >
-            <option value="none">无需认证</option>
-            <option value="bearer">Bearer Token</option>
-            <option value="oauth">OAuth</option>
-          </select>
-        </label>
+          <div role="radiogroup" aria-label="认证方式" className="grid grid-cols-3 gap-1 rounded-xl border bg-muted/40 p-1">
+            {AUTH_TYPES.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={authType === value}
+                onClick={() => setAuthType(value)}
+                className={cn(
+                  "h-8 rounded-lg text-xs font-medium transition-[background-color,color,box-shadow] duration-150",
+                  authType === value
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         {authType === "bearer" && (
           <label className="block space-y-1.5 text-xs font-medium">
             <span>Bearer Token</span>

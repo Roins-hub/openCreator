@@ -57,9 +57,8 @@ describe("ReferencePicker", () => {
     fireEvent.click(screen.getByText("管理"));
     fireEvent.click(screen.getByText("全选 2"));
     expect(screen.getByText("已选", { exact: false }).textContent).toContain("2");
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText("移到分组"), { target: { value: "f1" } });
-    });
+    fireEvent.click(screen.getByRole("combobox", { name: "移到分组" }));
+    await act(async () => { fireEvent.click(screen.getByRole("option", { name: /人物/ })); });
     expect(handlers.onMove).toHaveBeenCalledWith(["users/x/uploads/a.png", "users/x/uploads/b.png"], "f1");
 
     fireEvent.click(screen.getByTitle("b.png"));

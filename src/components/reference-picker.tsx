@@ -5,6 +5,7 @@ import { Check, FolderPlus, Pencil, Trash2, X } from "lucide-react";
 import type { AssetFolder } from "@/lib/asset-store";
 import type { MediaKind } from "@/lib/tangzhi";
 import { MediaThumb } from "@/components/media-thumb";
+import { Dropdown } from "@/components/dropdown";
 
 export type PickerAsset = {
   id: string; kind: MediaKind; path: string; name: string; mimeType: string;
@@ -248,17 +249,18 @@ export function ReferencePicker({
     {managing && <div className="reference-picker-bar">
       <button type="button" onClick={toggleAll} disabled={!manageable.length}>{allPicked ? "取消全选" : `全选 ${manageable.length}`}</button>
       <span className="reference-picker-bar-count">{pickedPaths.length ? <>已选 <b>{pickedPaths.length}</b></> : "点选或拖到分组"}</span>
-      <select value="" disabled={!pickedPaths.length} aria-label="移到分组"
-        onChange={(event) => {
-          const target = event.target.value;
-          if (!target) return;
-          run(() => onMove(pickedPaths, target === UNGROUPED ? null : target));
+      <Dropdown className="reference-move" value="" placeholder="移到分组" ariaLabel="移到分组" disabled={!pickedPaths.length}
+        options={[
+          ...folders.map((folder) => ({ value: folder.id, label: folder.name })),
+          { value: UNGROUPED, label: "移出分组（未分组）" },
+          { value: NEW_FOLDER, label: "＋ 新建分组并移入" },
+        ]}
+        onChange={(target) => {
+          const paths = pickedPaths;
           setPicked(new Set());
-        }}>
-        <option value="">移到分组…</option>
-        <option value={UNGROUPED}>未分组</option>
-        {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
-      </select>
+          if (target === NEW_FOLDER) createFolder(`新分组 ${folders.length + 1}`, paths);
+          else run(() => onMove(paths, target === UNGROUPED ? null : target));
+        }} />
       <button type="button" className={`danger-soft ${confirm === "batch" ? "danger" : ""}`} disabled={!pickedPaths.length}
         onClick={() => {
           if (confirm !== "batch") { setConfirm("batch"); return; }
