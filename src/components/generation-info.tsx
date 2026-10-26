@@ -5,6 +5,7 @@ import { Check, Copy, X } from "lucide-react";
 import type { MediaRef, Message, VideoOptions } from "@/lib/types";
 import { referenceLabels } from "@/lib/prompt-references";
 import { MediaThumb } from "@/components/media-thumb";
+import { MediaPreview, mediaPreviewItem } from "@/components/media-preview";
 
 const VIDEO_MODES: Record<VideoOptions["referenceMode"], string> = {
   text: "文生视频", first: "首帧生成", first_last: "首尾帧", references: "参考生成",
@@ -45,6 +46,7 @@ export function GenerationInfo({ message, prompt, references, media, size, fallb
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState("");
+  const [refPreview, setRefPreview] = useState<number | null>(null);
   const generation = message.generation;
   const video = generation?.videoOptions && media.kind === "video" ? generation.videoOptions : undefined;
   const image = generation?.imageOptions && media.kind === "image" ? generation.imageOptions : undefined;
@@ -94,10 +96,15 @@ export function GenerationInfo({ message, prompt, references, media, size, fallb
     {references.length > 0 && <section>
       <div className="generation-info-label"><span>参考素材</span></div>
       <div className="generation-info-refs">
-        {references.map((ref, index) => <span key={`${ref.path}-${index}`} title={`${labels[index]} · ${ref.name}`}>
+        {references.map((ref, index) => <button type="button" key={`${ref.path}-${index}`}
+          title={`放大查看 ${labels[index]} · ${ref.name}`} onClick={() => setRefPreview(index)}>
           <MediaThumb media={ref} alt={ref.name} /><i>{labels[index]}</i>
-        </span>)}
+        </button>)}
       </div>
+      {refPreview !== null && (
+        <MediaPreview items={references.map((ref, index) => mediaPreviewItem(ref, `${labels[index]} · ${ref.name}`))}
+          index={refPreview} onIndex={setRefPreview} onClose={() => setRefPreview(null)} />
+      )}
     </section>}
     <dl>
       <div><dt>生成时间</dt><dd>{fullTime(message.createdAt)}</dd></div>

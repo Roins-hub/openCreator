@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Download, Music, X } from "lucide-react";
+import { ImageZoom } from "@/components/image-zoom";
+import { mediaUrl, thumbUrl } from "@/lib/media-url";
 import type { MediaRef } from "@/lib/types";
 
 export interface PreviewItem {
@@ -14,14 +16,17 @@ export interface PreviewItem {
   download?: string;
   /** 左下角的说明,例如「图1 · cat.png」 */
   caption?: string;
+  /** 原图加载出来之前先垫着的缩略图(卡片里已经加载过,有缓存) */
+  preview?: string;
 }
 
 export const mediaPreviewItem = (media: MediaRef, caption?: string): PreviewItem => ({
   kind: media.kind,
   name: media.name,
-  src: `/api/media/${media.path}`,
-  download: `/api/media/${media.path}?download=${encodeURIComponent(media.name)}`,
+  src: mediaUrl(media.path),
+  download: `${mediaUrl(media.path)}?download=${encodeURIComponent(media.name)}`,
   caption,
+  preview: media.kind === "image" ? thumbUrl(media.path, 240) : undefined,
 });
 
 /**
@@ -37,7 +42,9 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
   const current = items[index];
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.stopPropagation(); onClose(); }
+      // 可能叠在生成结果的放大预览上面:这几个键只给最上层,不让下面的跟着关闭、翻页
+      if (["Escape", "ArrowLeft", "ArrowRight"].includes(event.key)) event.stopPropagation();
+      if (event.key === "Escape") onClose();
       if (event.key === "ArrowLeft" && index > 0) onIndex(index - 1);
       if (event.key === "ArrowRight" && index < items.length - 1) onIndex(index + 1);
     };
@@ -51,10 +58,7 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
       onClick={(event) => { event.stopPropagation(); onClose(); }}
       onMouseDown={(event) => event.stopPropagation()}>
       <div className="video-viewer-body" onClick={(event) => event.stopPropagation()}>
-        {current.kind === "image" && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img className="image-viewer-img" key={current.src} src={current.src} alt={current.name} />
-        )}
+        {current.kind === "image" && <ImageZoom key={current.src} src={current.src} alt={current.name} preview={current.preview} />}
         {current.kind === "video" && <video key={current.src} src={current.src} controls autoPlay playsInline />}
         {current.kind === "audio" && (
           <div className="media-preview-audio" key={current.src}>

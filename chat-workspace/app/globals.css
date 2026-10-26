@@ -1245,11 +1245,7 @@ html[data-mote-theme] {
   top: 50%;
   right: 44px;
   width: 330px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 15px;
-  background: var(--background);
-  box-shadow: 0 14px 42px color-mix(in oklab, var(--foreground) 12%, transparent);
+  perspective: 900px;
   /* 收起:淡出并往右缩回;展开:带一点回弹地弹出(从细线那边长出来) */
   transform: translate(12px, -50%) scale(0.94);
   transform-origin: right center;
@@ -1273,6 +1269,20 @@ html[data-mote-theme] {
     visibility 0s;
 }
 
+/* 卡片本体:朝鼠标那侧微微翘起(--rx / --ry 由鼠标位置算出),上下边缘带一点内阴影,像嵌进去的滚轮 */
+.thread-map-panel {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--background);
+  box-shadow:
+    0 14px 42px color-mix(in oklab, var(--foreground) 12%, transparent),
+    inset 0 14px 14px -14px color-mix(in oklab, var(--foreground) 10%, transparent),
+    inset 0 -14px 14px -14px color-mix(in oklab, var(--foreground) 10%, transparent);
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .thread-map-list {
   position: relative;
   display: flex;
@@ -1280,10 +1290,22 @@ html[data-mote-theme] {
   max-height: min(360px, 50vh);
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* 留一点边:凸起的那条放大、带阴影时不被裁掉 */
+  margin: 0 -5px;
+  padding: 4px 5px;
 }
 
 .thread-map-list > button {
+  position: relative;
   flex: 0 0 auto;
+  /* 焦点上下的条目像滚轮一样往后倒、往里凹,越远越淡 */
+  transform: perspective(600px) translateZ(calc(var(--d, 0) * -16px)) rotateX(calc(var(--o, 0) * -7deg));
+  opacity: calc(1 - var(--d, 0) * 0.13);
+  transition:
+    transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.24s ease,
+    background 0.16s,
+    box-shadow 0.2s;
 }
 
 .thread-map-list button {
@@ -1304,6 +1326,30 @@ html[data-mote-theme] {
 .thread-map-list button:hover,
 .thread-map-list button.active {
   background: var(--muted);
+}
+
+/* 焦点那条凸出来:往前顶、带阴影 */
+.thread-map-list > button.focus {
+  z-index: 1;
+  transform: perspective(600px) translateZ(18px);
+  opacity: 1;
+  background: var(--background);
+  box-shadow:
+    0 6px 18px color-mix(in oklab, var(--foreground) 14%, transparent),
+    0 0 0 1px var(--border);
+}
+
+.thread-map-list > button.focus.active {
+  background: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-map-panel,
+  .thread-map-list > button,
+  .thread-map-list > button.focus {
+    transform: none;
+    transition: opacity 0.1s;
+  }
 }
 
 .thread-map-list em {

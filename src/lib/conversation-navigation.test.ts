@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { navigationNodes, searchNavigation, tickWidth } from "./conversation-navigation";
+import { depthOffset, navigationNodes, searchNavigation, tickWidth } from "./conversation-navigation";
 import type { Message } from "./types";
 
 const message = (id: string, role: Message["role"], content: string): Message => ({
@@ -36,6 +36,10 @@ describe("conversation navigation", () => {
   it("draws longer ticks near the focus, like a magnifier", () => {
     expect([0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => tickWidth(index, 4))).toEqual([9, 13, 17, 22, 30, 22, 17, 13, 9]);
     expect(tickWidth(20, 4)).toBe(9);
+  });
+
+  it("gives card items a signed depth around the focus, capped at four steps", () => {
+    expect([0, 2, 5, 6, 7, 12].map((position) => depthOffset(position, 6))).toEqual([-4, -4, -1, 0, 1, 4]);
   });
 
   it("searches the full prompt with every keyword", () => {

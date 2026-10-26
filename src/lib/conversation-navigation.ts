@@ -27,6 +27,11 @@ export function navigationNodes(messages: Message[]): NavigationNode[] {
 export const TICK_WIDTHS = [30, 22, 17, 13];
 export const tickWidth = (index: number, focus: number) => TICK_WIDTHS[Math.abs(index - focus)] ?? 9;
 
+/** 卡片列表的层次:离焦点几条(带方向,最多算到 ±4),焦点那条凸起,越远越往里凹 */
+export const DEPTH_STEPS = 4;
+export const depthOffset = (position: number, focus: number) =>
+  Math.max(-DEPTH_STEPS, Math.min(DEPTH_STEPS, position - focus));
+
 /** 目录搜索:提示词里包含所有关键词(空格分隔,不分大小写)的项 */
 export function searchNavigation(nodes: NavigationNode[], query: string) {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);

@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const key = "users/0123456789abcdef0123456789abcdef/videos/1-abc-clip.mp4";
 const ENV_KEYS = ["S3_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY",
-  "S3_PUBLIC_BASE", "S3_PATH_STYLE", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"];
+  "S3_PUBLIC_BASE", "S3_PATH_STYLE", "S3_IMAGE_PROCESS", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"];
 
 beforeEach(() => {
   vi.resetModules();
   for (const name of ENV_KEYS) delete process.env[name];
   process.env.MOTE_SESSION_SECRET = "test-secret-test-secret-test-secret";
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 function useTos(publicBase = "https://media.tangzhi.org") {
   Object.assign(process.env, {
@@ -59,5 +59,46 @@ describe("object store on Volcengine TOS (S3 compatible)", () => {
     const url = new URL(await signedUrl(key, 60) as string);
     expect(url.host).toBe("acc.r2.cloudflarestorage.com");
     expect(url.pathname).toBe(`/tangzhi-media/${key}`);
+  });
+});
+
+describe("browser media links", () => {
+  const image = "users/0123456789abcdef0123456789abcdef/images/1-abc-cat.png";
+
+  it("asks TOS for small thumbnails and video first frames", async () => {
+    useTos();
+    const { thumbProcess } = await import("./object-store");
+    expect(thumbProcess(image, 480)).toBe("image/resize,w_480/format,webp");
+    expect(thumbProcess(key, 480)).toBe("video/snapshot,t_0,f_jpg,w_480,m_fast");
+    expect(thumbProcess("users/0123456789abcdef0123456789abcdef/uploads/1-a-song.mp3", 480)).toBeUndefined();
+  });
+
+  it("falls back to originals (or no video thumbnail) when the store cannot process", async () => {
+    Object.assign(process.env, {
+      R2_ENDPOINT: "https://acc.r2.cloudflarestorage.com", R2_BUCKET: "tangzhi-media",
+      R2_ACCESS_KEY_ID: "id", R2_SECRET_ACCESS_KEY: "secret",
+    });
+    const { thumbProcess } = await import("./object-store");
+    expect(thumbProcess(image, 480)).toBeUndefined();
+    expect(thumbProcess(key, 480)).toBeNull();
+  });
+
+  it("signs the same URL within a time window so the browser can cache it", async () => {
+    useTos();
+    vi.useFakeTimers();
+    const { browserMediaUrl } = await import("./object-store");
+    vi.setSystemTime(new Date("2026-10-26T03:00:00Z"));
+    const first = await browserMediaUrl(image, { process: "image/resize,w_480/format,webp" });
+    vi.setSystemTime(new Date("2026-10-26T20:00:00Z"));
+    const second = await browserMediaUrl(image, { process: "image/resize,w_480/format,webp" });
+    expect(second?.url).toBe(first?.url);
+    expect(second?.maxAge).toBe(4 * 3600);
+    const url = new URL(first!.url);
+    expect(url.searchParams.get("x-tos-process")).toBe("image/resize,w_480/format,webp");
+    expect(url.searchParams.get("response-cache-control")).toContain("max-age=");
+    expect(url.searchParams.get("X-Amz-Date")).toBe("20261026T000000Z");
+    vi.setSystemTime(new Date("2026-10-27T01:00:00Z"));
+    const nextDay = await browserMediaUrl(image, { process: "image/resize,w_480/format,webp" });
+    expect(new URL(nextDay!.url).searchParams.get("X-Amz-Date")).toBe("20261027T000000Z");
   });
 });

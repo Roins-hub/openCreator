@@ -15,6 +15,7 @@ import { downloadFiles, mediaDownloadUrl } from "@/lib/download-files";
 import { acceptAttribute, MEDIA_KIND_LABEL, pickMediaFiles } from "@/lib/media-files";
 import { readableError } from "@/lib/network-error";
 import type { MediaRef } from "@/lib/types";
+import { PosterVideo, ThumbImage } from "@/components/media-thumb";
 
 type Filter = "all" | Asset["kind"] | "favorite" | "trash";
 type Source = "all" | "generated" | "upload";
@@ -443,11 +444,10 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
                   <span>{asset.name}</span>
                 </a>
                 : asset.kind === "video"
-                ? <video controls={!selecting} preload="metadata" src={`/api/media/${asset.path}`} />
+                ? <PosterVideo controls={!selecting} path={asset.path} />
                 : asset.kind === "audio"
                   ? <><Music size={30} /><audio controls={!selecting} preload="none" src={`/api/media/${asset.path}`} /></>
-                  // eslint-disable-next-line @next/next/no-img-element
-                  : <img loading="lazy" src={`/api/media/${asset.path}`} alt={asset.name} />}
+                  : <ThumbImage path={asset.path} width={480} alt={asset.name} />}
               {selecting && <button type="button" className="asset-select-overlay" tabIndex={-1} aria-hidden="true"
                 onClick={(event) => toggleSelect(asset, event)} />}
             </div>

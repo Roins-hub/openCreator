@@ -18,6 +18,10 @@ const MIN_NODES = 3;
 /** 细线刻度长度:离焦点越近越长(像放大镜),远处是短刻度(和视频工作台一致) */
 const TICK_WIDTHS = [30, 22, 17, 13];
 const tickWidth = (index: number, focus: number) => TICK_WIDTHS[Math.abs(index - focus)] ?? 9;
+/** 卡片列表的层次:离焦点几条(带方向,最多算到 ±4),焦点那条凸起,越远越往里凹 */
+const DEPTH_STEPS = 4;
+const depthOffset = (position: number, focus: number) =>
+  Math.max(-DEPTH_STEPS, Math.min(DEPTH_STEPS, position - focus));
 
 export const messageAnchorId = (id: string) => `chat-msg-${id}`;
 
@@ -98,6 +102,18 @@ export function ThreadNavigator() {
   // 鼠标在细线上指着哪一根:放大效果跟着鼠标走;移开后回到当前读到的那根
   const [pointed, setPointed] = useState<number>();
   const focusIndex = pointed ?? activeIndex;
+  // 卡片列表的焦点:鼠标在列表里指着的那条,其次是细线上指着的,都没有就是当前读到的
+  const [listHover, setListHover] = useState<number>();
+  const cardFocus = listHover ?? focusIndex;
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // 鼠标在细线上移动时,列表跟着滚到对应那条(列表里的鼠标不滚,免得条目从鼠标底下跑掉)
+  useEffect(() => {
+    const list = listRef.current;
+    if (pointed === undefined || !expanded || searching || !list) return;
+    const item = list.querySelector<HTMLElement>(`button[data-index="${pointed}"]`);
+    if (item) list.scrollTo({ top: item.offsetTop - list.clientHeight / 2 + item.offsetHeight / 2, behavior: "smooth" });
+  }, [pointed, expanded, searching]);
   useEffect(() => {
     const rail = railRef.current;
     const active = rail?.querySelector<HTMLElement>("button.active");
@@ -112,6 +128,22 @@ export function ThreadNavigator() {
   const indexOf = (id: string) => nodes.findIndex((node) => node.id === id);
   // 卡片里列出全部提示词(可滚动),输入关键词时只列匹配项;右侧细线每条提示词一根,一一对应
   const list = searching ? matches : nodes;
+  const focusPosition = list.findIndex((node) => indexOf(node.id) === cardFocus);
+
+  // 整个卡片朝鼠标那边微微翘起(鼠标所在的一侧凸出来)
+  const tilt = (event: React.MouseEvent<HTMLDivElement>) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width - 0.5;
+    const y = (event.clientY - rect.top) / rect.height - 0.5;
+    panel.style.setProperty("--ry", `${(-x * 7).toFixed(2)}deg`);
+    panel.style.setProperty("--rx", `${(y * 7).toFixed(2)}deg`);
+  };
+  const untilt = () => {
+    panelRef.current?.style.removeProperty("--ry");
+    panelRef.current?.style.removeProperty("--rx");
+  };
 
   return (
     <nav
@@ -130,6 +162,7 @@ export function ThreadNavigator() {
           inert={!expanded}
           aria-hidden={!expanded}
         >
+          <div className="thread-map-panel" ref={panelRef} onMouseMove={tilt} onMouseLeave={untilt}>
           <label className="thread-map-search">
             <SearchIcon className="size-3.5" />
             <input
@@ -164,14 +197,19 @@ export function ThreadNavigator() {
           {searching && (
             <p className="thread-map-count">{matches.length ? `找到 ${matches.length} 条` : "没有匹配的提示词"}</p>
           )}
-          <div className="thread-map-list" ref={listRef}>
-            {list.map((node) => {
+          {/* 像滚轮一样有层次:焦点那条凸起,上下越远越往里凹、越淡(--o 带方向的距离,--d 距离) */}
+          <div className="thread-map-list" ref={listRef} onMouseLeave={() => setListHover(undefined)}>
+            {list.map((node, position) => {
               const index = indexOf(node.id);
+              const offset = focusPosition < 0 ? 0 : depthOffset(position, focusPosition);
               return (
                 <button
                   type="button"
                   key={node.id}
-                  className={index === activeIndex ? "active" : ""}
+                  data-index={index}
+                  className={`${index === activeIndex ? "active" : ""} ${focusPosition >= 0 && offset === 0 ? "focus" : ""}`}
+                  style={{ "--o": offset, "--d": Math.abs(offset) } as React.CSSProperties}
+                  onMouseEnter={() => setListHover(index)}
                   onClick={() => jump(node.id)}
                   title={node.text}
                 >
@@ -180,6 +218,7 @@ export function ThreadNavigator() {
                 </button>
               );
             })}
+          </div>
           </div>
         </div>
       {/* 条数越多细线越密(每根 16px 到 4px),最多占屏幕高度的六成,再多就滚动 */}

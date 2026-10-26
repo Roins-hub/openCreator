@@ -10,7 +10,7 @@ import type { MediaRef, Message } from "@/lib/types";
 import { fitImageOptions, imageOptionsSummary } from "@/lib/image-models";
 import { findReference, referenceLabels, splitPromptReferences } from "@/lib/prompt-references";
 import { unfinishedTaskIds } from "@/lib/generation-stop";
-import { MediaThumb } from "@/components/media-thumb";
+import { MediaThumb, ThumbImage } from "@/components/media-thumb";
 import { MediaPreview, mediaPreviewItem } from "@/components/media-preview";
 import { formatTime, StatusBadge, TaskTimes } from "@/components/video-task-card";
 import { ResultViewer } from "@/components/result-viewer";
@@ -161,8 +161,7 @@ export function ImageTaskCard({
             {images.map((image, index) => (
               <figure className="image-result" key={image.path}>
                 <button type="button" className="image-result-open" onClick={() => setViewer(index)} aria-label={`查看第 ${index + 1} 张`}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`/api/media/${image.path}`} alt={image.name} loading="lazy" />
+                  <ThumbImage path={image.path} width={720} alt={image.name} />
                 </button>
                 <figcaption className="image-result-actions">
                   <button type="button" onClick={() => onMakeVideo(image)} title="用这张图生成视频"><Clapperboard size={13} /><span>做成视频</span></button>

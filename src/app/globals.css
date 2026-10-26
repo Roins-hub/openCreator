@@ -631,9 +631,7 @@ a { color: inherit; text-decoration: none; }
   .conversation-map-card, .conversation-map-card.is-open { transition: opacity .1s; }
 }
 .conversation-map-card {
-  position: absolute; right: 44px; top: 50%; width: 330px; padding: 8px;
-  border: 1px solid var(--line); border-radius: 15px; background: var(--paper);
-  box-shadow: 0 14px 42px oklch(20% .02 80 / .12);
+  position: absolute; right: 44px; top: 50%; width: 330px; perspective: 900px;
   /* 收起:淡出并往右缩回;展开:带一点回弹地弹出(从细线那边长出来) */
   transform: translate(12px, -50%) scale(.94); transform-origin: right center;
   opacity: 0; visibility: hidden; pointer-events: none;
@@ -642,6 +640,13 @@ a { color: inherit; text-decoration: none; }
 .conversation-map-card.is-open {
   transform: translateY(-50%); opacity: 1; visibility: visible; pointer-events: auto;
   transition: opacity .2s ease, transform .38s cubic-bezier(.34, 1.56, .64, 1), visibility 0s;
+}
+/* 卡片本体:朝鼠标那侧微微翘起(--rx / --ry 由鼠标位置算出),上下边缘带一点内阴影,像嵌进去的滚轮 */
+.conversation-map-panel {
+  padding: 8px; border: 1px solid var(--line); border-radius: 15px; background: var(--paper);
+  box-shadow: 0 14px 42px oklch(20% .02 80 / .12), inset 0 14px 14px -14px oklch(20% .02 80 / .1), inset 0 -14px 14px -14px oklch(20% .02 80 / .1);
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform .35s cubic-bezier(.16, 1, .3, 1);
 }
 .conversation-map-card button {
   width: 100%; height: 43px; display: block; overflow: hidden; padding: 0 12px;
@@ -665,8 +670,25 @@ a { color: inherit; text-decoration: none; }
 .conversation-map-list {
   position: relative; display: flex; flex-direction: column; max-height: min(360px, 50vh); overflow-y: auto;
   overscroll-behavior: contain;
+  /* 留一点边:凸起的那条放大、带阴影时不被裁掉 */
+  padding: 4px 5px; margin: 0 -5px;
 }
-.conversation-map-list > button { flex: 0 0 auto; }
+.conversation-map-list > button {
+  flex: 0 0 auto; position: relative;
+  /* 焦点上下的条目像滚轮一样往后倒、往里凹,越远越淡 */
+  transform: perspective(600px) translateZ(calc(var(--d, 0) * -16px)) rotateX(calc(var(--o, 0) * -7deg));
+  opacity: calc(1 - var(--d, 0) * .13);
+  transition: transform .32s cubic-bezier(.16, 1, .3, 1), opacity .24s ease, background .16s, box-shadow .2s;
+}
+/* 焦点那条凸出来:往前顶、带阴影 */
+.conversation-map-list > button.focus {
+  z-index: 1; transform: perspective(600px) translateZ(18px); opacity: 1; background: var(--paper);
+  box-shadow: 0 6px 18px oklch(20% .02 80 / .14), 0 0 0 1px var(--line);
+}
+.conversation-map-list > button.focus.active { background: var(--warm); }
+@media (prefers-reduced-motion: reduce) {
+  .conversation-map-panel, .conversation-map-list > button, .conversation-map-list > button.focus { transform: none; transition: opacity .1s; }
+}
 .conversation-map-list em {
   margin-right: 8px; color: var(--faint); font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums;
 }
@@ -2694,7 +2716,11 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
   background: oklch(100% 0 0 / .06); font-size: 12.5px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .generation-info-refs { display: flex; flex-wrap: wrap; gap: 6px; }
-.generation-info-refs > span { position: relative; width: 52px; height: 52px; overflow: hidden; border-radius: 8px; background: oklch(100% 0 0 / .08); }
+.generation-info-refs > button {
+  position: relative; width: 52px; height: 52px; padding: 0; overflow: hidden; border: 0; border-radius: 8px;
+  background: oklch(100% 0 0 / .08); cursor: zoom-in; transition: transform .18s ease, box-shadow .18s ease;
+}
+.generation-info-refs > button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px oklch(20% 0.01 80 / .18); }
 .generation-info-refs img, .generation-info-refs video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .generation-info-refs i {
   position: absolute; left: 3px; bottom: 3px; padding: 0 4px; border-radius: 4px; color: white; background: oklch(0% 0 0 / .6);
@@ -2800,7 +2826,7 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
 .generation-info dt, .generation-info-label { color: var(--faint); }
 .generation-info dd { color: var(--ink); }
 .generation-info-prompt p { color: var(--ink); background: var(--warm); border: 1px solid var(--line); }
-.generation-info-refs > span { background: var(--warm); border: 1px solid var(--line); }
+.generation-info-refs > button { background: var(--warm); border: 1px solid var(--line); }
 
 /* 分组展开后不再裁切(为了「…」菜单),但宽度要锁在侧栏内:否则长标题按全文撑宽,伸出侧栏、也不显示省略号 */
 .group-body { grid-template-columns: minmax(0, 1fr); }

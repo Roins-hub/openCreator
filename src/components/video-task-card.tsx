@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { MediaRef, Message, VideoOptions } from "@/lib/types";
 import { findReference, referenceLabels, splitPromptReferences } from "@/lib/prompt-references";
-import { MediaThumb } from "@/components/media-thumb";
+import { MediaThumb, PosterVideo } from "@/components/media-thumb";
 import { MediaPreview, mediaPreviewItem } from "@/components/media-preview";
 import { ResultViewer } from "@/components/result-viewer";
 import { formatBytes } from "@/components/generation-info";
@@ -262,7 +262,7 @@ export function VideoTaskCard({
         {videos.length ? (
           <>
             <button type="button" className="task-preview-video" onClick={() => setViewer(0)} aria-label="播放视频">
-              <video src={`/api/media/${videos[0].path}`} muted loop playsInline preload="metadata"
+              <PosterVideo path={videos[0].path} muted loop playsInline
                 onMouseEnter={(event) => { void event.currentTarget.play().catch(() => undefined); }}
                 onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} />
               <span className="task-play"><Play size={18} fill="currentColor" /></span>

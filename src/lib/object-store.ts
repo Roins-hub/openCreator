@@ -19,6 +19,8 @@ interface StoreConfig {
   /** 签发给浏览器/中转站的 GET 链接地址(可用绑定在桶上的自定义域名) */
   publicUrl: (key: string) => URL;
   client: AwsClient;
+  /** 支持 x-tos-process 现场出缩略图 / 视频截帧(火山 TOS) */
+  processing: boolean;
 }
 
 const encodeKey = (key: string) => key.split("/").map(encodeURIComponent).join("/");
@@ -44,6 +46,7 @@ function store(): StoreConfig | null {
         accessKeyId: env.S3_ACCESS_KEY_ID, secretAccessKey: env.S3_SECRET_ACCESS_KEY,
         service: "s3", region: env.S3_REGION || "us-east-1",
       }),
+      processing: env.S3_IMAGE_PROCESS ? env.S3_IMAGE_PROCESS === "tos" : /(^|\.)volces\.com$|(^|\.)bytepluses\.com$/.test(endpoint.hostname),
     };
   } else if (env.R2_ENDPOINT && env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.R2_BUCKET) {
     const endpoint = trimSlash(env.R2_ENDPOINT);
@@ -55,6 +58,7 @@ function store(): StoreConfig | null {
       client: new AwsClient({
         accessKeyId: env.R2_ACCESS_KEY_ID, secretAccessKey: env.R2_SECRET_ACCESS_KEY, service: "s3", region: "auto",
       }),
+      processing: false,
     };
   } else {
     storeCache = null;
@@ -147,6 +151,46 @@ export async function signedUrl(key: string, expiresIn: number, downloadName?: s
   if (downloadName) url.searchParams.set("response-content-disposition", contentDisposition(downloadName));
   const signed = await config.client.sign(new Request(url, { method: "GET" }), { aws: { signQuery: true } });
   return signed.url;
+}
+
+/**
+ * 缩略图的处理参数:图片缩到 width 宽并转 WebP,视频截第一帧 JPG。
+ * 返回 undefined 表示直接用原文件(本来就不是图/视频,或存储不支持处理的图片),
+ * 返回 null 表示没有缩略图可给(存储不支持处理的视频)。
+ */
+export function thumbProcess(key: string, width: number): string | undefined | null {
+  const ext = key.slice(key.lastIndexOf(".") + 1).toLowerCase();
+  const processing = Boolean(store()?.processing);
+  if (["png", "jpg", "jpeg", "webp", "bmp"].includes(ext)) {
+    return processing ? `image/resize,w_${width}/format,webp` : undefined;
+  }
+  if (["mp4", "mov", "webm", "m4v"].includes(ext)) {
+    return processing ? `video/snapshot,t_0,f_jpg,w_${width},m_fast` : null;
+  }
+  return undefined;
+}
+
+// 浏览器用的链接按固定时间段签名:同一段时间里同一个文件的链接一模一样,浏览器能直接用缓存;
+// 链接有效期是时间段的 3 倍,段末签出的链接也还能用很久
+const CACHE_WINDOW = 24 * 3600;
+
+/**
+ * 给浏览器显示 / 下载用的云存储直链(本地存储时返回 undefined)。
+ * maxAge:这个链接还会被继续签发多久(秒),/api/media 的跳转按它缓存。
+ */
+export async function browserMediaUrl(key: string, options: { download?: string; process?: string } = {}) {
+  const config = store();
+  if (!config) return undefined;
+  const now = Math.floor(Date.now() / 1000);
+  const start = now - (now % CACHE_WINDOW);
+  const url = config.publicUrl(key);
+  url.searchParams.set("X-Amz-Expires", String(CACHE_WINDOW * 3));
+  url.searchParams.set("response-cache-control", `private, max-age=${CACHE_WINDOW}`);
+  if (options.download) url.searchParams.set("response-content-disposition", contentDisposition(options.download));
+  if (options.process) url.searchParams.set("x-tos-process", options.process);
+  const datetime = new Date(start * 1000).toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const signed = await config.client.sign(new Request(url, { method: "GET" }), { aws: { signQuery: true, datetime } });
+  return { url: signed.url, maxAge: Math.max(60, start + CACHE_WINDOW - now) };
 }
 
 // ---- 本地存储时给外部(中转站)用的签名链接:/api/media/<key>?exp=&sig=

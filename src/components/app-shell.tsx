@@ -46,8 +46,9 @@ import { useSlidingIndicator } from "@/components/sliding-indicator";
 import { PromptLibrary, type CustomPromptInput, type PromptUseMode } from "@/components/prompt-library";
 import { fitDuration, type PromptTemplate } from "@/lib/prompt-library";
 import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-layout";
-import { MediaThumb } from "@/components/media-thumb";
+import { MediaThumb, PosterVideo, ThumbImage } from "@/components/media-thumb";
 import { MediaPreview } from "@/components/media-preview";
+import { thumbUrl } from "@/lib/media-url";
 import { ModelPicker } from "@/components/model-picker";
 import { PANEL_EDGES, useExpandablePanel } from "@/lib/expandable-panel";
 import { uploadMedia } from "@/lib/direct-upload";
@@ -1455,7 +1456,7 @@ export function AppShell() {
                       onClick={(event) => { if (!(event.target as HTMLElement).closest(".stack-card-remove")) setAttachmentPreview(index); }}
                       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setAttachmentPreview(index); } }}
                       style={{ "--i": index, "--r": `${stackTilt(index)}deg` } as React.CSSProperties}>
-                      <MediaThumb media={item} src={attachmentSrc(item)} alt={item.name} />
+                      <MediaThumb media={item} src={item.previewUrl} alt={item.name} />
                       {item.uploading && <span className="stack-card-spinner" aria-label="上传中" />}
                       {item.uploading && item.progress !== undefined && (
                         <span className="stack-card-progress" aria-label={`已上传 ${Math.round(item.progress * 100)}%`}>
@@ -1483,6 +1484,7 @@ export function AppShell() {
                 <MediaPreview
                   items={attachments.map((item, index) => ({
                     kind: item.kind, name: item.name, src: attachmentSrc(item), caption: `${labels[index]} · ${item.name}`,
+                    preview: item.kind === "image" && !item.previewUrl ? thumbUrl(item.path, 240) : undefined,
                   }))}
                   index={attachmentPreview} onIndex={setAttachmentPreview} onClose={() => setAttachmentPreview(null)} />
               )}
@@ -1711,7 +1713,7 @@ function MessageView({
             <Trash2 size={13} />{confirmDelete ? "再点一次删除" : "删除"}</button>}
         </div>}
         {message.attachments?.length ? <div className="media-grid">
-          {message.attachments.map((media) => <MediaThumb key={media.path} media={media} alt={media.name} />)}
+          {message.attachments.map((media) => <MediaThumb key={media.path} media={media} alt={media.name} width={480} />)}
         </div> : null}
         {message.content && <p>{message.content}</p>}
         {message.status === "processing" && (
@@ -1722,10 +1724,9 @@ function MessageView({
         {message.status === "failed" && <div className="message-error">{message.error || "生成失败"}</div>}
         {message.status === "stopped" && <div className="message-stopped">{message.error || "已停止生成"}</div>}
         {message.media?.map((media) => media.kind === "video" ? (
-          <video key={media.path} controls src={`/api/media/${media.path}`} />
+          <PosterVideo key={media.path} controls path={media.path} />
         ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img className="generated-image" key={media.path} src={`/api/media/${media.path}`} alt={media.name} />
+          <ThumbImage className="generated-image" key={media.path} path={media.path} width={1080} alt={media.name} />
         ))}
       </div>
     </article>

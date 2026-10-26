@@ -86,17 +86,22 @@ export function createReferenceCard(path: string, name: string, label: string, k
   card.title = name;
   const thumb = document.createElement("span");
   thumb.className = "reference-inline-thumb";
-  if (kind === "image") {
+  if (kind === "image" || kind === "video") {
+    // 缩略图(图片缩小、视频截首帧);拿不到时图片退回原图,视频退回预读首帧
     const image = document.createElement("img");
-    image.src = `/api/media/${path}`;
+    image.src = `/api/media/${path}?thumb=240`;
     image.alt = name;
+    image.decoding = "async";
+    image.onerror = () => {
+      image.onerror = null;
+      if (kind === "image") { image.src = `/api/media/${path}`; return; }
+      const video = document.createElement("video");
+      video.src = `/api/media/${path}#t=0.1`;
+      video.muted = true;
+      video.preload = "metadata";
+      image.replaceWith(video);
+    };
     thumb.appendChild(image);
-  } else if (kind === "video") {
-    const video = document.createElement("video");
-    video.src = `/api/media/${path}#t=0.1`;
-    video.muted = true;
-    video.preload = "metadata";
-    thumb.appendChild(video);
   } else {
     thumb.textContent = "♪";
   }

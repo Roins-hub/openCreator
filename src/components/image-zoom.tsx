@@ -15,9 +15,10 @@ const FIT: View = { scale: 1, x: 0, y: 0 };
  * 双击在「适应窗口 / 2 倍」之间切换;右下角有 − / 百分比 / + / 适应窗口,键盘 + − 0 也可以。
  * 换图时由外层用 key 重新挂载,回到适应窗口。
  */
-export function ImageZoom({ src, alt }: { src: string; alt: string }) {
+export function ImageZoom({ src, alt, preview }: { src: string; alt: string; preview?: string }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>(FIT);
+  const [loaded, setLoaded] = useState(false);
   const [dragging, setDragging] = useState(false);
   // 原生监听(滚轮、键盘)里读最新的缩放
   const viewRef = useRef(view);
@@ -66,6 +67,10 @@ export function ImageZoom({ src, alt }: { src: string; alt: string }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      // 结果预览上又打开了参考素材预览:只有最上面那个弹框里的图响应
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      const own = stageRef.current?.closest('[role="dialog"]');
+      if (own && dialogs.length && dialogs[dialogs.length - 1] !== own) return;
       if (event.key === "+" || event.key === "=") zoomBy(STEP);
       else if (event.key === "-" || event.key === "_") zoomBy(1 / STEP);
       else if (event.key === "0") setView(FIT);
@@ -104,8 +109,12 @@ export function ImageZoom({ src, alt }: { src: string; alt: string }) {
     <div className="image-zoom-stage" ref={stageRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
       onPointerUp={endDrag} onPointerCancel={endDrag} onDoubleClick={onDoubleClick}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img className="image-viewer-img" src={src} alt={alt} draggable={false}
-        style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }} />
+      <img className="image-viewer-img" src={src} alt={alt} draggable={false} onLoad={() => setLoaded(true)}
+        style={{
+          transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+          // 原图(可能好几 MB)下载完之前,先把卡片里已经有缓存的缩略图垫在下面
+          ...(preview && !loaded ? { backgroundImage: `url("${preview}")`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" } : {}),
+        }} />
     </div>
     <div className="image-zoom-bar" onDoubleClick={(event) => event.stopPropagation()}>
       <button type="button" onClick={() => zoomBy(1 / STEP)} disabled={!zoomed} aria-label="缩小" title="缩小（-）">
