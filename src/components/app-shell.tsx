@@ -165,6 +165,8 @@ export function AppShell() {
   const [attachmentPreview, setAttachmentPreview] = useState<number | null>(null);
   const [referenceAssets, setReferenceAssets] = useState<(Asset & { kind: MediaKind })[]>([]);
   const [referenceFolders, setReferenceFolders] = useState<AssetFolder[]>([]);
+  // 这次打开页面后在输入框里上传的素材(@ 选择框左边「刚上传」一栏;发送后也还在,刷新页面后清空)
+  const [sessionUploads, setSessionUploads] = useState<MediaRef[]>([]);
   // 素材库列表:打开页面后先在后台读一次,点 @ 时直接用,同时再刷新一次(不用等它才弹出)
   const [referenceLoading, setReferenceLoading] = useState(false);
   // 列表是哪个 Key 读的:换了账号就不再显示上一个账号的素材
@@ -459,7 +461,7 @@ export function AppShell() {
     const markerRect = savedAnchor && (savedAnchor.width || savedAnchor.height || savedAnchor.top || savedAnchor.left)
       ? savedAnchor : editorRect;
     const composerRect = composer.getBoundingClientRect();
-    const pickerWidth = Math.min(430, window.innerWidth - 32);
+    const pickerWidth = Math.min(600, window.innerWidth - 32);
     const left = Math.max(8, Math.min(markerRect.left - 14, window.innerWidth - pickerWidth - 8));
     // 放大编辑时贴着光标下方弹出(放不下就放上方)
     if (composer.classList.contains("is-expanded")) {
@@ -601,12 +603,14 @@ export function AppShell() {
   const renameReference = (path: string, name: string) => patchAssets({ action: "rename", path, name }).then((result) => {
     const next = result.name || name;
     setReferenceAssets((items) => items.map((asset) => asset.path === path ? { ...asset, name: next } : asset));
+    setSessionUploads((items) => items.map((item) => item.path === path ? { ...item, name: next } : item));
     setAttachments((items) => items.some((item) => item.path === path)
       ? items.map((item) => item.path === path ? { ...item, name: next } : item) : items);
   }, reportError);
   const trashReferences = (paths: string[]) => patchAssets({ action: "trash", paths }).then(() => {
     const removed = new Set(paths);
     setReferenceAssets((items) => items.filter((asset) => !removed.has(asset.path)));
+    setSessionUploads((items) => items.filter((item) => !removed.has(item.path)));
   }, reportError);
   const moveReferences = (paths: string[], folder: string | null) => patchAssets({ action: "move", paths, folder }).then(() => {
     const moved = new Set(paths);
@@ -645,6 +649,17 @@ export function AppShell() {
     if (next.length !== attachments.length) setAttachments(next);
     setError(skipped.length ? `${skipped.length} 个素材没有加入：当前模型不支持这种素材，或已达到素材上限` : "");
   };
+
+  // 「刚上传」一栏:素材库里有记录的按记录(改过名、分过文件夹),还没读到的按上传时的信息
+  const recentUploads: PickerAsset[] = sessionUploads
+    .filter((item) => modeKinds.includes(item.kind))
+    .map((item) => {
+      const known = libraryByPath.get(item.path);
+      return {
+        id: `recent:${item.path}`, kind: item.kind, path: item.path, name: known?.name || item.name,
+        mimeType: item.mimeType || "image/jpeg", folder: known?.folder, source: "upload", managed: true,
+      };
+    });
 
   const selectReferenceAsset = (asset: PickerAsset) => {
     if (!modeKinds.includes(asset.kind)) return;
@@ -861,6 +876,7 @@ export function AppShell() {
         const uploaded = await uploadMedia(file, request, progress);
         setAttachments((items) => items.map((item) =>
           item.path === placeholder.path ? { ...uploaded, previewUrl: item.previewUrl } : item));
+        setSessionUploads((items) => [uploaded, ...items.filter((item) => item.path !== uploaded.path)]);
       } catch (cause) {
         setAttachments((items) => items.filter((item) => item.path !== placeholder.path));
         revokePreview(placeholder);
@@ -1720,6 +1736,7 @@ export function AppShell() {
             {referencePresence.mounted && <ReferencePicker style={referencePickerPosition} closing={referencePresence.closing} assets={pickerAssets}
               folders={referenceFolders} loading={referenceLoading && !referenceLoaded}
               isAttached={(path) => attachments.some((item) => item.path === path)}
+              recent={recentUploads} onUpload={() => fileRef.current?.click()}
               onPick={selectReferenceAsset} onAttach={attachReferenceAssets} onClose={closeReferencePicker}
               onRename={renameReference} onTrash={trashReferences} onMove={moveReferences}
               onCreateFolder={createReferenceFolder} onRenameFolder={renameReferenceFolder} onDeleteFolder={deleteReferenceFolder} />}

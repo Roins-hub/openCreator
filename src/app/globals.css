@@ -768,15 +768,6 @@ a { color: inherit; text-decoration: none; }
 .reference-picker-head-actions { display: flex; align-items: center; gap: 4px; }
 .reference-picker-manage { height: 24px; padding: 0 9px; border-radius: 7px; color: var(--muted); background: transparent; font-size: 11px; }
 .reference-picker-manage:hover, .reference-picker-manage.active { color: var(--ink); background: var(--warm); }
-/* @ 选择框按来源分栏:全部 / 我上传的 / AI 生成 */
-.reference-source { display: flex; width: fit-content; gap: 2px; margin: -2px 0 8px; padding: 2px; border-radius: 9px; background: var(--warm); }
-.reference-source button {
-  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: 7px;
-  color: var(--muted); background: transparent; font-size: 11px; transition: background .15s, color .15s, box-shadow .15s;
-}
-.reference-source button:hover { color: var(--ink); }
-.reference-source button.active { color: var(--ink); background: var(--paper); box-shadow: 0 1px 3px oklch(20% .02 80 / .12); }
-.reference-source i { color: var(--faint); font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
 .reference-picker-actions button.danger, .reference-picker-bar button.danger { color: #fff; background: var(--danger); }
 
 /* ---------- 素材文件夹一排(folder-bar.tsx,@ 选择框和资产页共用) ---------- */
@@ -3348,3 +3339,24 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
 }
 .asset-page:has(.asset-selection-bar) .back-to-top.is-floating { bottom: 104px; }
 @media (max-width: 700px) { .back-to-top.is-floating { right: 16px; bottom: 16px; } }
+
+/* ---------- @ 选择框:左边「刚上传」一栏,右边素材库 ---------- */
+.reference-picker { width: min(600px, calc(100vw - 32px)); }
+.reference-picker-body { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 10px; min-height: 0; }
+.reference-main { min-width: 0; }
+.reference-recent { display: flex; flex-direction: column; min-width: 0; padding-right: 10px; border-right: 1px solid var(--line); }
+.reference-recent > small { display: flex; align-items: center; gap: 5px; margin: 2px 2px 8px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.reference-recent > small i { color: var(--faint); font-size: 10px; font-style: normal; font-weight: 400; }
+.reference-recent-list { display: flex; flex-direction: column; gap: 7px; max-height: 330px; overflow-y: auto; }
+.reference-recent-empty {
+  display: grid; justify-items: center; gap: 5px; padding: 18px 6px; border: 1px dashed var(--line-strong); border-radius: 9px;
+  color: var(--muted); background: transparent; font-size: 11px; text-align: center;
+}
+.reference-recent-empty:hover { color: var(--ink); border-color: var(--focus); background: var(--warm); }
+.reference-recent-empty em { color: var(--faint); font-size: 9px; font-style: normal; line-height: 1.4; }
+@media (max-width: 700px) {
+  .reference-picker-body { grid-template-columns: 1fr; }
+  .reference-recent { padding: 0 0 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .reference-recent-list { flex-direction: row; max-height: none; overflow-x: auto; }
+  .reference-recent-list .reference-picker-item { flex: 0 0 84px; }
+}

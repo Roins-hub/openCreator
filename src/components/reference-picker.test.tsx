@@ -11,14 +11,15 @@ const asset = (name: string, folder?: string, managed = true, source?: string): 
 });
 const folders: AssetFolder[] = [{ id: "f1", name: "人物", createdAt: "2026-10-26T00:00:00Z" }];
 
-function setup(assets = [asset("a.png", "f1"), asset("b.png"), asset("c.png", undefined, false)]) {
+function setup(assets = [asset("a.png", "f1"), asset("b.png"), asset("c.png", undefined, false)], recent: PickerAsset[] = []) {
   const handlers = {
+    onUpload: vi.fn(),
     onPick: vi.fn(), onAttach: vi.fn(), onClose: vi.fn(),
     onRename: vi.fn(async () => undefined), onTrash: vi.fn(async () => undefined), onMove: vi.fn(async () => undefined),
     onCreateFolder: vi.fn(async (name: string) => ({ id: "f2", name, createdAt: "2026-10-26T00:00:00Z" })),
     onRenameFolder: vi.fn(async () => undefined), onDeleteFolder: vi.fn(async () => undefined),
   };
-  render(<ReferencePicker style={{}} assets={assets} folders={folders} loading={false} isAttached={() => false} {...handlers} />);
+  render(<ReferencePicker style={{}} assets={assets} recent={recent} folders={folders} loading={false} isAttached={() => false} {...handlers} />);
   return handlers;
 }
 
@@ -112,14 +113,20 @@ describe("ReferencePicker", () => {
     expect(handlers.onRenameFolder).toHaveBeenCalledWith("f1", "主角");
   });
 
-  it("splits uploads from AI-generated assets", () => {
-    setup([asset("mine.png", undefined, true, "upload"), asset("ai.png")]);
-    fireEvent.click(screen.getByRole("tab", { name: /我上传的/ }));
-    expect(screen.getByTitle("mine.png")).toBeTruthy();
-    expect(screen.queryByTitle("ai.png")).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: /AI 生成/ }));
-    expect(screen.getByTitle("ai.png")).toBeTruthy();
-    expect(screen.queryByTitle("mine.png")).toBeNull();
+  it("shows just-uploaded assets in their own column on the left", () => {
+    const handlers = setup([asset("old.png"), asset("ai.png")], [asset("new.png", undefined, true, "upload")]);
+    const column = screen.getByRole("complementary", { name: "刚上传的素材" });
+    expect(within(column).getByTitle("new.png")).toBeTruthy();
+    expect(within(column).queryByTitle("old.png")).toBeNull();
+    fireEvent.click(within(column).getByTitle("new.png"));
+    expect(handlers.onPick).toHaveBeenCalledWith(expect.objectContaining({ name: "new.png" }));
+  });
+
+  it("offers an upload button while nothing was uploaded yet", () => {
+    const handlers = setup();
+    const column = screen.getByRole("complementary", { name: "刚上传的素材" });
+    fireEvent.click(within(column).getByRole("button", { name: /上传素材/ }));
+    expect(handlers.onUpload).toHaveBeenCalled();
   });
 
   it("opens a zoomable preview from the magnifier button", () => {
