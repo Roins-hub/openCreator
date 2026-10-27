@@ -3401,3 +3401,12 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
 /* 提示词里的「图N」小卡片可以按住拖动换位置 */
 .composer-editor .reference-inline-card { cursor: grab; }
 body.is-card-dragging .composer-editor .reference-inline-card { cursor: grabbing; }
+/* 「图N」放到新位置后:从小弹大再落回,外圈亮一下再淡掉 */
+.reference-inline-card.is-landed { animation: inline-card-land .6s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes inline-card-land {
+  0% { transform: scale(.45); opacity: .4; box-shadow: 0 0 0 0 oklch(70% .02 82 / 0); }
+  45% { transform: scale(1.28); opacity: 1; box-shadow: 0 0 0 5px oklch(70% .02 82 / .45); }
+  75% { transform: scale(.94); }
+  100% { transform: scale(1); box-shadow: 0 2px 7px oklch(20% .02 80 / .08); }
+}
+@media (prefers-reduced-motion: reduce) { .reference-inline-card.is-landed { animation: none; } }

@@ -687,6 +687,15 @@ export function AppShell() {
     return range;
   };
 
+  /** 「图N」小卡片放到新位置后弹一下、外圈亮一下,看得出它落在哪 */
+  const flashLanded = (card: HTMLElement) => {
+    card.classList.remove("is-landed");
+    // 重新触发动画:先让浏览器算一次样式
+    void card.offsetWidth;
+    card.classList.add("is-landed");
+    window.setTimeout(() => card.classList.remove("is-landed"), 700);
+  };
+
   /** 在插入点放「图N」素材小卡片(all:插入后的全部素材,用来算编号) */
   const insertReferenceCards = (items: readonly MediaRef[], all: readonly MediaRef[], range: Range | null) => {
     const editor = editorRef.current;
@@ -702,6 +711,7 @@ export function AppShell() {
       card.after(spacer);
       range.setStartAfter(spacer);
       range.collapse(true);
+      flashLanded(card);
     }
     const selection = window.getSelection();
     selection?.removeAllRanges();
@@ -725,6 +735,7 @@ export function AppShell() {
     card.after(after);
     range.setStartAfter(after);
     range.collapse(true);
+    flashLanded(card);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
