@@ -56,5 +56,10 @@ describe("asset names and folders", () => {
     expect(picker.map((asset) => asset.name).sort()).toEqual(["c.mp4", "古风女孩.png"]);
     expect(picker.find((asset) => asset.path === path("a.png"))).toMatchObject({ id: path("a.png"), kind: "image", folder: people.id, source: "upload" });
     expect(Object.keys(picker[0])).not.toContain("prompt");
+
+    // 聊天附件页的文件夹和工作台素材的分开列
+    const chatFolder = await store.createAssetFolder(owner, "合同", [], "chat");
+    expect((await store.listAssetFolders(owner)).map((item) => item.id)).not.toContain(chatFolder.id);
+    expect((await store.listAssetFolders(owner, "chat")).map((item) => item.name)).toEqual(["合同"]);
   });
 });

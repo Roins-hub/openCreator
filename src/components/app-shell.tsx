@@ -49,7 +49,7 @@ import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-
 import { MediaThumb, PosterVideo, ThumbImage } from "@/components/media-thumb";
 import { MediaPreview } from "@/components/media-preview";
 import { thumbUrl } from "@/lib/media-url";
-import { ReferencePicker, type PickerAsset } from "@/components/reference-picker";
+import { COMPOSER_DROP, ReferencePicker, type PickerAsset } from "@/components/reference-picker";
 import { usePresence } from "@/components/use-presence";
 import { readReferenceCache, writeReferenceCache } from "@/lib/reference-cache";
 import { ModelPicker } from "@/components/model-picker";
@@ -546,7 +546,8 @@ export function AppShell() {
     if (!referencePickerOpen) return;
     const pointer = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
-      if (!target || editorRef.current?.contains(target) || target.closest?.(".reference-picker, .reference-trigger")) return;
+      // 选择框里打开的放大预览挂在 body 上,点它不算点外面
+      if (!target || editorRef.current?.contains(target) || target.closest?.(".reference-picker, .reference-trigger, .media-preview")) return;
       closeReferencePicker();
     };
     const key = (event: KeyboardEvent) => {
@@ -584,7 +585,7 @@ export function AppShell() {
       const known = libraryByPath.get(item.path);
       return {
         id: `current:${item.path}`, kind: item.kind, path: item.path, name: known?.name || item.name,
-        mimeType: item.mimeType || "image/jpeg", folder: known?.folder, managed: Boolean(known),
+        mimeType: item.mimeType || "image/jpeg", folder: known?.folder, source: known?.source || "upload", managed: Boolean(known),
       };
     }),
     ...libraryAssets.map((asset) => ({ ...asset, managed: true })),
@@ -630,6 +631,20 @@ export function AppShell() {
       setReferenceFolders((items) => items.filter((folder) => folder.id !== id));
       setReferenceAssets((items) => items.map((asset) => asset.folder === id ? { ...asset, folder: undefined } : asset));
     }, reportError);
+
+  /** 从 @ 选择框拖到输入框上:作为参考素材加进来(超出当前模型上限的跳过并提示),选择框不关,可以接着拖 */
+  const attachReferenceAssets = (assets: PickerAsset[]) => {
+    const next = [...attachments];
+    const skipped: string[] = [];
+    for (const asset of assets) {
+      if (next.some((item) => item.path === asset.path)) continue;
+      if (!modeKinds.includes(asset.kind) || remainingFor(asset.kind, next) <= 0) { skipped.push(asset.name); continue; }
+      if (videoModel && mode !== "first_last" && next.length >= videoModel.limits.total) { skipped.push(asset.name); continue; }
+      next.push({ kind: asset.kind, path: asset.path, name: asset.name, mimeType: asset.mimeType });
+    }
+    if (next.length !== attachments.length) setAttachments(next);
+    setError(skipped.length ? `${skipped.length} 个素材没有加入：当前模型不支持这种素材，或已达到素材上限` : "");
+  };
 
   const selectReferenceAsset = (asset: PickerAsset) => {
     if (!modeKinds.includes(asset.kind)) return;
@@ -1530,6 +1545,8 @@ export function AppShell() {
           <div className="composer-holder" ref={composerHolderRef} style={composerPanel.holderStyle}>
           <div className={`composer ${composerPanel.floating ? "is-floating" : ""} ${composerPanel.expanded ? "is-expanded" : ""}`}
             ref={composerRef} style={composerPanel.panelStyle}
+            // @ 选择框里的素材可以拖到输入框上作为参考素材(见 card-drag.tsx)
+            data-drop-target={COMPOSER_DROP} data-drop-external
             role={composerPanel.expanded ? "dialog" : undefined} aria-label={composerPanel.expanded ? "放大编辑提示词" : undefined}>
             {composerPanel.expanded && <>
               <div className="composer-expand-head" onPointerDown={composerPanel.startMove}>
@@ -1703,7 +1720,7 @@ export function AppShell() {
             {referencePresence.mounted && <ReferencePicker style={referencePickerPosition} closing={referencePresence.closing} assets={pickerAssets}
               folders={referenceFolders} loading={referenceLoading && !referenceLoaded}
               isAttached={(path) => attachments.some((item) => item.path === path)}
-              onPick={selectReferenceAsset} onClose={closeReferencePicker}
+              onPick={selectReferenceAsset} onAttach={attachReferenceAssets} onClose={closeReferencePicker}
               onRename={renameReference} onTrash={trashReferences} onMove={moveReferences}
               onCreateFolder={createReferenceFolder} onRenameFolder={renameReferenceFolder} onDeleteFolder={deleteReferenceFolder} />}
           </div>

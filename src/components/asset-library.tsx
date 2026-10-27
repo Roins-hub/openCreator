@@ -6,7 +6,7 @@ import {
   ArrowDownWideNarrow, ArrowLeft, ArrowUpNarrowWide, Check, CheckSquare, Download, Image as ImageIcon, Images, Music,
   FileText, Paperclip, RotateCcw, Search, Sparkles, Star, Trash2, Upload, Video, X, XCircle,
 } from "lucide-react";
-import type { Asset } from "@/lib/asset-store";
+import type { Asset, AssetFolder } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
 import { useSlidingIndicator } from "@/components/sliding-indicator";
 import { apiKeyHeaders, openSession, readApiKey } from "@/lib/api-key";
@@ -16,6 +16,10 @@ import { acceptAttribute, MEDIA_KIND_LABEL, pickMediaFiles } from "@/lib/media-f
 import { readableError } from "@/lib/network-error";
 import type { MediaRef } from "@/lib/types";
 import { PosterVideo, ThumbImage } from "@/components/media-thumb";
+import { useCardDrag } from "@/components/card-drag";
+import { ALL_FOLDERS, FolderBar, NEW_FOLDER, UNGROUPED } from "@/components/folder-bar";
+import { Dropdown } from "@/components/dropdown";
+import { BackToTop } from "@/components/back-to-top";
 
 type Filter = "all" | Asset["kind"] | "favorite" | "trash";
 type Source = "all" | "generated" | "upload";
@@ -73,6 +77,10 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
   const [busy, setBusy] = useState(false);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [dragging, setDragging] = useState(false);
+  // 文件夹(和输入框 @ 选择素材里的是同一份)
+  const [folders, setFolders] = useState<AssetFolder[]>([]);
+  const [folder, setFolder] = useState(ALL_FOLDERS);
+  const [renaming, setRenaming] = useState<{ path: string; text: string }>();
   const lastClicked = useRef<string | null>(null);
   const dragDepth = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,8 +89,12 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
   const { containerRef: sourceSliderRef, indicator: sourceIndicator } = useSlidingIndicator<HTMLDivElement>(":scope > .active");
 
   const loadAssets = useCallback(async () => {
-    const all = await request<Asset[]>(chat ? "/api/assets?scope=chat" : "/api/assets");
+    const [all, folderList] = await Promise.all([
+      request<Asset[]>(chat ? "/api/assets?scope=chat" : "/api/assets"),
+      request<AssetFolder[]>(chat ? "/api/asset-folders?scope=chat" : "/api/asset-folders").catch(() => undefined),
+    ]);
     setAssets(all.filter((asset) => chat ? asset.source === "chat" : asset.source !== "chat"));
+    if (folderList) setFolders(folderList);
   }, [chat]);
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -95,6 +107,16 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
     return () => clearTimeout(timer);
   }, [loadAssets]);
 
+  const folderIds = useMemo(() => new Set(folders.map((item) => item.id)), [folders]);
+  // 正在看的文件夹被删掉了就回到「全部」;回收站里不按文件夹分
+  const currentFolder = filter === "trash" || !(folder === ALL_FOLDERS || folder === UNGROUPED || folderIds.has(folder))
+    ? ALL_FOLDERS : folder;
+  const inFolder = useCallback((asset: Asset, id: string) => {
+    if (id === ALL_FOLDERS) return true;
+    const own = asset.folder && folderIds.has(asset.folder) ? asset.folder : undefined;
+    return id === UNGROUPED ? !own : own === id;
+  }, [folderIds]);
+
   const visible = useMemo(() => {
     const filtered = filter === "trash"
       ? assets.filter((asset) => asset.trashed)
@@ -104,9 +126,10 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
     const direction = sort === "newest" ? -1 : 1;
     return filtered
       .filter((asset) => source === "all" || (source === "upload") === (asset.source === "upload"))
+      .filter((asset) => inFolder(asset, currentFolder))
       .filter((asset) => matchAsset(asset, query))
       .sort((a, b) => direction * a.createdAt.localeCompare(b.createdAt));
-  }, [assets, filter, source, query, sort]);
+  }, [assets, filter, source, query, sort, inFolder, currentFolder]);
   const activeAssets = assets.filter((asset) => !asset.trashed);
   const hasAudio = activeAssets.some((asset) => asset.kind === "audio");
   // 批量操作只作用于当前筛选下看得到的已选项
@@ -210,6 +233,76 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
     } finally {
       setBusy(false);
     }
+  };
+
+  // ---------- 文件夹 ----------
+  const moveTo = async (paths: string[], target: string | null) => {
+    if (!paths.length) return;
+    setError("");
+    const previous = assets;
+    const moved = new Set(paths);
+    setAssets((items) => items.map((item) => moved.has(item.path) ? { ...item, folder: target || undefined } : item));
+    try {
+      await request("/api/assets", jsonInit("PATCH", { action: "move", paths, folder: target }));
+      const name = target ? folders.find((item) => item.id === target)?.name : "未分组";
+      setNotice(`已把 ${paths.length} 个资产移到「${name || "文件夹"}」`);
+    } catch (cause) {
+      setAssets(previous);
+      setError((cause as Error).message);
+    }
+  };
+  const createFolder = async (name: string, paths: string[] = []) => {
+    setError("");
+    try {
+      const created = await request<AssetFolder>("/api/asset-folders", jsonInit("POST", {
+        name, ...(paths.length ? { paths } : {}), ...(chat ? { scope: "chat" } : {}),
+      }));
+      setFolders((items) => [...items, created]);
+      if (paths.length) {
+        const moved = new Set(paths);
+        setAssets((items) => items.map((item) => moved.has(item.path) ? { ...item, folder: created.id } : item));
+        setNotice(`已新建文件夹「${created.name}」，放进 ${paths.length} 个资产`);
+      }
+      setFolder(created.id);
+    } catch (cause) { setError((cause as Error).message); }
+  };
+  const renameFolder = async (id: string, name: string) => {
+    setError("");
+    try {
+      const result = await request<{ name: string }>("/api/asset-folders", jsonInit("PATCH", { id, name }));
+      setFolders((items) => items.map((item) => item.id === id ? { ...item, name: result.name } : item));
+    } catch (cause) { setError((cause as Error).message); }
+  };
+  const deleteFolders = async (ids: string[]) => {
+    setError("");
+    try {
+      for (const id of ids) await request(`/api/asset-folders?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const gone = new Set(ids);
+      setFolders((items) => items.filter((item) => !gone.has(item.id)));
+      setAssets((items) => items.map((item) => item.folder && gone.has(item.folder) ? { ...item, folder: undefined } : item));
+      if (gone.has(folder)) setFolder(ALL_FOLDERS);
+      setNotice(`已删除 ${ids.length} 个文件夹，里面的资产回到「未分组」`);
+    } catch (cause) { setError((cause as Error).message); }
+  };
+
+  // 卡片式拖动:拖到文件夹上就移进去(选择模式下拖已选中的一张,带着全部选中的一起走)
+  const cardDrag = useCardDrag((target, paths) => {
+    if (target === NEW_FOLDER) void createFolder(`新文件夹 ${folders.length + 1}`, paths);
+    else void moveTo(paths, target === UNGROUPED ? null : target);
+  });
+
+  // ---------- 改名 ----------
+  const saveRename = async () => {
+    const edit = renaming;
+    if (!edit) return;
+    setRenaming(undefined);
+    const asset = assets.find((item) => item.path === edit.path);
+    const text = edit.text.trim();
+    if (!asset || !text || text === asset.name || text === asset.name.replace(/\.[a-z0-9]{1,6}$/i, "")) return;
+    try {
+      const result = await request<{ name: string }>("/api/assets", jsonInit("PATCH", { action: "rename", path: edit.path, name: text }));
+      setAssets((items) => items.map((item) => item.path === edit.path ? { ...item, name: result.name } : item));
+    } catch (cause) { setError((cause as Error).message); }
   };
 
   const downloadChosen = async () => {
@@ -390,6 +483,11 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
             onChange={(event) => { startUploads(Array.from(event.target.files || [])); event.target.value = ""; }} />
         </div>
       </div>
+      {filter !== "trash" && <FolderBar className="asset-folder-bar" folders={folders} active={currentFolder} onSelect={setFolder}
+        countOf={(id) => assets.filter((asset) => !asset.trashed && inFolder(asset, id)).length}
+        dragging={Boolean(cardDrag.drag)} dropTarget={cardDrag.dropTarget} landed={cardDrag.landed}
+        onCreate={(name) => void createFolder(name)} onRename={(id, name) => void renameFolder(id, name)}
+        onDelete={(ids) => void deleteFolders(ids)} />}
       {query && !error && <p className="asset-result-count">找到 {visible.length} 个匹配「{query.trim()}」的{chat ? "附件" : "资产"}</p>}
       {error && <div className="settings-error">{readableError(error)}</div>}
       {notice && <p className="asset-notice">{notice}</p>}
@@ -423,7 +521,13 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
           const isSelected = selected.has(asset.path);
           const uploaded = asset.source === "upload";
           const fromChat = asset.source === "chat";
-          return <article className={`asset-card ${isSelected ? "is-selected" : ""}`} key={asset.id}>
+          const lifted = cardDrag.drag?.phase === "drag" && cardDrag.drag.paths.includes(asset.path);
+          return <article className={`asset-card ${isSelected ? "is-selected" : ""} ${lifted ? "is-lifted" : ""}`} key={asset.id}
+            onPointerDown={(event) => {
+              if (asset.trashed || renaming?.path === asset.path) return;
+              const paths = selecting && selected.has(asset.path) ? chosen.map((item) => item.path) : [asset.path];
+              cardDrag.begin(event, asset, paths);
+            }}>
             <div className={`asset-preview ${asset.kind === "audio" ? "is-audio" : ""} ${asset.kind === "file" ? "is-file" : ""}`}
               title={asset.prompt || asset.name}>
               <button type="button" className={`asset-check ${isSelected ? "is-on" : ""}`} aria-pressed={isSelected}
@@ -449,7 +553,7 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
                   ? <><Music size={30} /><audio controls={!selecting} preload="none" src={`/api/media/${asset.path}`} /></>
                   : <ThumbImage path={asset.path} width={480} alt={asset.name} />}
               {selecting && <button type="button" className="asset-select-overlay" tabIndex={-1} aria-hidden="true"
-                onClick={(event) => toggleSelect(asset, event)} />}
+                onClick={(event) => { if (!cardDrag.justDropped()) toggleSelect(asset, event); }} />}
             </div>
             <div className="asset-details">
               <div>
@@ -462,17 +566,30 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
               <a className="asset-download" href={downloadUrl(asset)} download={asset.name}
                 aria-label={`下载 ${asset.name}`}><Download size={15} /></a>
               <AssetMenu name={asset.name} trashed={Boolean(asset.trashed)}
+                onRename={() => setRenaming({ path: asset.path, text: asset.name.replace(/\.[a-z0-9]{1,6}$/i, "") })}
                 onTrash={() => void mutate([asset], "trash")}
                 onRestore={() => void mutate([asset], "restore")}
                 onPermanentDelete={() => void mutate([asset], "delete")} />
             </div>
-            {uploaded || fromChat
+            {renaming?.path === asset.path
+              ? <input className="asset-rename" autoFocus value={renaming.text} maxLength={300} aria-label="资产名称"
+                onChange={(event) => setRenaming({ path: asset.path, text: event.target.value })}
+                onBlur={() => void saveRename()}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing) return;
+                  if (event.key === "Enter") { event.preventDefault(); void saveRename(); }
+                  if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setRenaming(undefined); }
+                }} />
+              : uploaded || fromChat
               ? <span className="asset-source muted" title={asset.name}>{fromChat ? "聊天上传" : "手动上传"} · {asset.name}</span>
               : asset.conversationId
                 ? <Link className="asset-source" href={`/?conversation=${asset.conversationId}`}>
                   来自对话 · {asset.conversationTitle}
                 </Link>
                 : <span className="asset-source muted">来源对话已删除</span>}
+            {/* 生成结果原来不显示文件名:改过名的显示出来 */}
+            {!uploaded && !fromChat && renaming?.path !== asset.path && !/^tz-\d{4}-/.test(asset.name) &&
+              <span className="asset-source muted asset-name" title={asset.name}>{asset.name}</span>}
           </article>;
         })}
       </div>}
@@ -496,6 +613,18 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
         {!inTrash && <button type="button" disabled={!chosen.length} onClick={() => void downloadChosen()}>
           <Download size={14} /> 下载
         </button>}
+        {!inTrash && <Dropdown className="asset-move" value="" placeholder="移到文件夹" ariaLabel="移到文件夹"
+          disabled={!chosen.length}
+          options={[
+            ...folders.map((item) => ({ value: item.id, label: item.name })),
+            { value: UNGROUPED, label: "移出文件夹（未分组）" },
+            { value: NEW_FOLDER, label: "＋ 新建文件夹并移入" },
+          ]}
+          onChange={(target) => {
+            const paths = chosen.map((item) => item.path);
+            if (target === NEW_FOLDER) void createFolder(`新文件夹 ${folders.length + 1}`, paths);
+            else void moveTo(paths, target === UNGROUPED ? null : target);
+          }} />}
         {inTrash
           ? <button type="button" disabled={!chosen.length || busy} onClick={() => void mutate(chosen, "restore")}>
             <RotateCcw size={14} /> 恢复
@@ -509,6 +638,8 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
       </>}
       <button type="button" className="asset-selection-close" aria-label="退出选择" onClick={exitSelecting}><X size={15} /></button>
     </div>}
+    {cardDrag.overlay}
+    <BackToTop floating />
     {dragging && <div className="asset-drop-hint" aria-hidden="true">
       <Upload size={26} />
       <strong>松开即可上传到资产</strong>

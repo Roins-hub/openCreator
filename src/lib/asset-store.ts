@@ -31,6 +31,8 @@ export interface AssetFolder {
   id: string;
   name: string;
   createdAt: string;
+  /** chat:聊天附件页的文件夹;没有:工作台素材(资产页、@ 选择素材)的文件夹 */
+  scope?: "chat";
 }
 
 export type AssetRecord = Omit<Asset, "id" | "conversationTitle" | "prompt" | "favorite">;
@@ -205,8 +207,8 @@ async function readFolders(userId: string) {
   return Array.isArray(value) ? value.filter((item) => item && typeof item.id === "string" && typeof item.name === "string") : [];
 }
 
-export async function listAssetFolders(userId: string) {
-  return readFolders(userId);
+export async function listAssetFolders(userId: string, scope?: "chat") {
+  return (await readFolders(userId)).filter((folder) => folder.scope === scope);
 }
 
 const folderName = (name: string) => {
@@ -216,8 +218,10 @@ const folderName = (name: string) => {
 };
 
 /** 新建分组;带 paths 时顺便把这些素材移进去(拖到「新建分组」上) */
-export async function createAssetFolder(userId: string, name: string, paths: readonly string[] = []) {
-  const folder: AssetFolder = { id: crypto.randomUUID(), name: folderName(name), createdAt: new Date().toISOString() };
+export async function createAssetFolder(userId: string, name: string, paths: readonly string[] = [], scope?: "chat") {
+  const folder: AssetFolder = {
+    id: crypto.randomUUID(), name: folderName(name), createdAt: new Date().toISOString(), ...(scope ? { scope } : {}),
+  };
   await serial(userId, async () => {
     const folders = await readFolders(userId);
     if (folders.length >= MAX_FOLDERS) throw new Error(`最多 ${MAX_FOLDERS} 个分组`);

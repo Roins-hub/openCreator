@@ -768,32 +768,75 @@ a { color: inherit; text-decoration: none; }
 .reference-picker-head-actions { display: flex; align-items: center; gap: 4px; }
 .reference-picker-manage { height: 24px; padding: 0 9px; border-radius: 7px; color: var(--muted); background: transparent; font-size: 11px; }
 .reference-picker-manage:hover, .reference-picker-manage.active { color: var(--ink); background: var(--warm); }
-/* 分组:一排可横向滚动的标签,素材拖到标签上就移进去 */
-/* 横向滚动的容器上下也会裁切:四周留出空白(用负外边距抵消,位置不变),拖动吸附时放大、发光的标签能完整「跳出来」 */
-.reference-folders {
-  display: flex; gap: 5px; margin: -14px -10px -4px; padding: 12px 10px 12px; overflow-x: auto; scrollbar-width: none;
+/* @ 选择框按来源分栏:全部 / 我上传的 / AI 生成 */
+.reference-source { display: flex; width: fit-content; gap: 2px; margin: -2px 0 8px; padding: 2px; border-radius: 9px; background: var(--warm); }
+.reference-source button {
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: 7px;
+  color: var(--muted); background: transparent; font-size: 11px; transition: background .15s, color .15s, box-shadow .15s;
 }
-.reference-folders::-webkit-scrollbar { display: none; }
-.reference-folder {
-  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 9px;
+.reference-source button:hover { color: var(--ink); }
+.reference-source button.active { color: var(--ink); background: var(--paper); box-shadow: 0 1px 3px oklch(20% .02 80 / .12); }
+.reference-source i { color: var(--faint); font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
+.reference-picker-actions button.danger, .reference-picker-bar button.danger { color: #fff; background: var(--danger); }
+
+/* ---------- 素材文件夹一排(folder-bar.tsx,@ 选择框和资产页共用) ---------- */
+.folder-bar { margin: -2px 0 8px; }
+/* 文件夹多了换行显示,不再挤出去 */
+.folder-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 5px; }
+.folder-chip {
+  position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; max-width: 200px; height: 25px;
   border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: transparent; font-size: 11px; white-space: nowrap;
   transition: background .15s, border-color .15s, color .15s, transform .15s, box-shadow .15s;
 }
-.reference-folder i { color: var(--faint); font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
-.reference-folder:hover { color: var(--ink); background: var(--warm); }
-.reference-folder.active { border-color: var(--dark); color: var(--paper); background: var(--dark); }
-.reference-folder.active i { color: color-mix(in srgb, var(--paper) 65%, transparent); }
-.reference-folder.add { border-style: dashed; }
-/* 拖动素材时:能放的分组轻轻提示;卡片移到上面时分组放大、亮起(带回弹) */
-.reference-folder.can-drop { border-style: dashed; border-color: var(--line-strong); }
-/* 卡片吸到分组上:标签「跳出来」——弹跳放大、变深色、外圈发光,盖在旁边的标签上面 */
-.reference-folder.drop {
-  position: relative; z-index: 3; border-style: solid; border-color: var(--dark); color: var(--paper); background: var(--dark);
+.folder-chip-main {
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0; height: 100%; padding: 0 9px; overflow: hidden;
+  border: 0; color: inherit; background: transparent; font: inherit; text-overflow: ellipsis;
+}
+.folder-chip.is-folder:not(.picked) .folder-chip-main { padding-right: 3px; }
+.folder-chip i { color: var(--faint); font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
+.folder-chip:hover { color: var(--ink); background: var(--warm); }
+.folder-chip.active { border-color: var(--dark); color: var(--paper); background: var(--dark); }
+.folder-chip.active i { color: color-mix(in srgb, var(--paper) 65%, transparent); }
+.folder-chip.add { border-style: dashed; }
+/* 文件夹右边的笔:一直看得到(淡一点),鼠标移上去更清楚 */
+.folder-chip-edit {
+  display: grid; place-items: center; width: 20px; height: 20px; margin-right: 3px; padding: 0; border: 0; border-radius: 50%;
+  color: inherit; background: transparent; opacity: .5; transition: opacity .15s, background .15s;
+}
+.folder-chip:hover .folder-chip-edit, .folder-chip.active .folder-chip-edit, .folder-chip-edit:focus-visible { opacity: 1; }
+.folder-chip-edit:hover { background: color-mix(in srgb, currentColor 16%, transparent); }
+.folder-chip-check { display: grid; place-items: center; width: 13px; height: 13px; border: 1.5px solid var(--line-strong); border-radius: 4px; }
+.folder-chip.picked { border-color: var(--ink); color: var(--ink); background: var(--warm); }
+.folder-chip.picked .folder-chip-check { border-color: var(--dark); color: var(--paper); background: var(--dark); }
+.folder-chip-input {
+  flex: 0 0 128px; height: 25px; padding: 0 10px; border: 1px solid var(--focus); border-radius: 999px; outline: 0;
+  color: var(--ink); background: var(--paper); font-size: 11px;
+}
+.folder-bar-manage {
+  display: inline-flex; align-items: center; gap: 4px; height: 25px; margin-left: auto; padding: 0 8px; border-radius: 7px;
+  color: var(--faint); background: transparent; font-size: 10px;
+}
+.folder-bar-manage:hover, .folder-bar-manage.active { color: var(--ink); background: var(--warm); }
+.folder-bar-tools { display: flex; align-items: center; gap: 6px; margin-top: 7px; color: var(--faint); font-size: 10px; }
+.folder-bar-tools span { flex: 1; min-width: 0; }
+.folder-bar-tools b { color: var(--ink); }
+.folder-bar-tools button {
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 7px;
+  color: var(--ink); background: var(--warm); font-size: 11px;
+}
+.folder-bar-tools button:disabled { opacity: .45; cursor: default; }
+.folder-bar-tools .danger-soft { color: var(--danger); }
+.folder-bar-tools button.danger { color: #fff; background: var(--danger); }
+/* 拖动素材时:能放的文件夹虚线提示 */
+.folder-chip.can-drop { border-style: dashed; border-color: var(--line-strong); }
+/* 卡片吸到文件夹上:标签「跳出来」——弹跳放大、变深色、外圈发光,盖在旁边的标签上面 */
+.folder-chip.drop {
+  z-index: 3; border-style: solid; border-color: var(--dark); color: var(--paper); background: var(--dark);
   transform: translateY(-2px) scale(1.2);
   box-shadow: 0 0 0 5px oklch(70% .02 82 / .28), 0 12px 26px oklch(20% .02 80 / .28);
   animation: folder-pop .42s cubic-bezier(.34, 1.56, .64, 1);
 }
-.reference-folder.drop i { color: color-mix(in srgb, var(--paper) 70%, transparent); }
+.folder-chip.drop i { color: color-mix(in srgb, var(--paper) 70%, transparent); }
 @keyframes folder-pop {
   0% { transform: scale(1); }
   45% { transform: translateY(-4px) scale(1.32); }
@@ -801,25 +844,13 @@ a { color: inherit; text-decoration: none; }
   100% { transform: translateY(-2px) scale(1.2); }
 }
 /* 放进去之后:像把卡片「吞下」一样回弹一下 */
-.reference-folder.landed { animation: folder-land .5s cubic-bezier(.34, 1.56, .64, 1); }
+.folder-chip.landed { animation: folder-land .5s cubic-bezier(.34, 1.56, .64, 1); }
 @keyframes folder-land {
   0% { transform: scale(1.2); }
   35% { transform: scale(.88); }
   70% { transform: scale(1.1); }
   100% { transform: scale(1); }
 }
-.reference-folder-input {
-  flex: 0 0 128px; height: 25px; padding: 0 10px; border: 1px solid var(--focus); border-radius: 999px; outline: 0;
-  color: var(--ink); background: var(--paper); font-size: 11px;
-}
-.reference-folder-tools { display: flex; align-items: center; gap: 4px; margin: -3px 0 8px; color: var(--faint); font-size: 10px; }
-.reference-folder-tools span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.reference-folder-tools button {
-  display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 7px; border-radius: 6px;
-  color: var(--muted); background: transparent; font-size: 10px;
-}
-.reference-folder-tools button:hover { color: var(--ink); background: var(--warm); }
-.reference-folder-tools button.danger, .reference-picker-actions button.danger, .reference-picker-bar button.danger { color: #fff; background: var(--danger); }
 /* 管理模式的底栏:全选、已选数、移到分组、删除 */
 .reference-picker-bar { display: flex; align-items: center; gap: 6px; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); font-size: 11px; }
 .reference-picker-bar > button {
@@ -3216,31 +3247,36 @@ video.media-thumb { background: var(--dark); pointer-events: none; }
   .reference-picker.is-closing, .parameter-popover.is-closing, .mode-popover.is-closing, .prompt-library.is-closing { animation: none; }
 }
 
-/* ---------- @ 选择框里拖动素材:卡片式拖动,到分组上被吸过去 ---------- */
+/* ---------- 卡片式拖动素材(card-drag.tsx):@ 选择框、资产页共用 ---------- */
 body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; user-select: none; }
-.reference-picker-item.is-movable { cursor: grab; }
-.reference-picker-item { transition: opacity .18s ease, transform .22s cubic-bezier(.16, 1, .3, 1), border-color .15s, background .15s; }
+.reference-picker-item { cursor: grab; transition: opacity .18s ease, transform .22s cubic-bezier(.16, 1, .3, 1), border-color .15s, background .15s; }
 /* 被拿起的原卡片留一个淡淡的位置 */
-.reference-picker-item.is-lifted { opacity: .32; transform: scale(.94); }
-.reference-drag-card {
+.reference-picker-item.is-lifted, .asset-card.is-lifted { opacity: .32; transform: scale(.94); }
+.asset-card { transition: opacity .18s ease, transform .22s cubic-bezier(.16, 1, .3, 1); }
+.card-drag {
   position: fixed; z-index: 200; left: 0; top: 0; pointer-events: none; will-change: transform;
   transition: transform .05s linear;
 }
-/* 吸附:位置带弹性地滑向分组中心 */
-.reference-drag-card.is-snapped { transition: transform .26s cubic-bezier(.2, 1.35, .4, 1); }
-.reference-drag-card.is-drop { transition: transform .22s cubic-bezier(.4, 0, .2, 1); }
-.reference-drag-card.is-cancel { transition: transform .26s cubic-bezier(.2, .9, .3, 1.1); }
-.reference-drag-card-body {
+/* 吸附:位置带弹性地滑向目标 */
+.card-drag.is-snapped { transition: transform .26s cubic-bezier(.2, 1.35, .4, 1); }
+.card-drag.is-drop { transition: transform .22s cubic-bezier(.4, 0, .2, 1); }
+.card-drag.is-cancel { transition: transform .26s cubic-bezier(.2, .9, .3, 1.1); }
+.card-drag-body {
   position: relative; padding: 4px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--paper);
   box-shadow: 0 18px 40px oklch(20% .02 80 / .28), 0 3px 10px oklch(20% .02 80 / .14);
   transform: rotate(-4deg) scale(1.06); transform-origin: 50% 50%;
   transition: transform .28s cubic-bezier(.34, 1.56, .64, 1), opacity .2s ease, box-shadow .2s;
   animation: drag-card-lift .22s cubic-bezier(.34, 1.56, .64, 1);
 }
-.reference-drag-card.is-snapped .reference-drag-card-body {
+.card-drag-thumb { display: block; aspect-ratio: 1; overflow: hidden; border-radius: 6px; background: var(--warm); }
+.card-drag-thumb img, .card-drag-thumb video, .card-drag-thumb .media-thumb { display: block; width: 100%; height: 100%; object-fit: cover; }
+.card-drag-name { display: block; overflow: hidden; margin-top: 4px; font-size: 9px; white-space: nowrap; text-overflow: ellipsis; }
+.card-drag.is-snapped .card-drag-body {
   transform: rotate(0) scale(.46); box-shadow: 0 10px 22px oklch(20% .02 80 / .3);
   animation: drag-card-snap .38s cubic-bezier(.34, 1.56, .64, 1);
 }
+/* 拖到输入框这种大区域上:不吸附,摆正缩小跟着鼠标 */
+.card-drag.is-over-area .card-drag-body { transform: rotate(0) scale(.72); }
 /* 被吸住时弹一下:先压扁再弹回 */
 @keyframes drag-card-snap {
   0% { transform: rotate(-4deg) scale(.62); }
@@ -3248,21 +3284,25 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
   70% { transform: rotate(-1deg) scale(.5, .43); }
   100% { transform: rotate(0) scale(.46); }
 }
-.reference-drag-card.is-drop .reference-drag-card-body { transform: scale(.12); opacity: 0; transition-duration: .22s; }
-.reference-drag-card.is-cancel .reference-drag-card-body { transform: none; opacity: 0; transition: transform .26s ease, opacity .26s ease .06s; }
+.card-drag.is-drop .card-drag-body { transform: scale(.12); opacity: 0; transition-duration: .22s; }
+.card-drag.is-cancel .card-drag-body { transform: none; opacity: 0; transition: transform .26s ease, opacity .26s ease .06s; }
 @keyframes drag-card-lift { from { transform: rotate(0) scale(1); } }
 /* 一次拖好几张:后面叠两张卡片的边 */
-.reference-drag-card-body.is-stack {
+.card-drag-body.is-stack {
   box-shadow: 5px 5px 0 -1px var(--paper), 5px 5px 0 0 var(--line), 10px 10px 0 -1px var(--paper), 10px 10px 0 0 var(--line),
     0 18px 40px oklch(20% .02 80 / .28);
 }
-.reference-drag-count {
+.card-drag-count {
   position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; padding: 0 6px; display: grid; place-items: center;
   border: 2px solid var(--paper); border-radius: 999px; color: var(--paper); background: var(--dark); font-size: 11px;
 }
+/* 素材拖到输入框上:输入框亮起;放下后回弹一下 */
+.composer.is-card-drop-hover { border-color: var(--focus); box-shadow: 0 0 0 4px oklch(70% .02 82 / .25), 0 14px 40px oklch(20% .02 80 / .14); }
+.composer.is-card-drop-landed { animation: composer-gulp .45s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes composer-gulp { 40% { transform: scale(1.012); } 70% { transform: scale(.996); } }
 @media (prefers-reduced-motion: reduce) {
-  .reference-drag-card, .reference-drag-card-body, .reference-drag-card.is-snapped .reference-drag-card-body,
-  .reference-folder.drop, .reference-folder.landed { transition: none; animation: none; }
+  .card-drag, .card-drag-body, .card-drag.is-snapped .card-drag-body, .composer.is-card-drop-landed,
+  .folder-chip.drop, .folder-chip.landed { transition: none; animation: none; }
 }
 
 /* ---------- 放大预览的加载进度(原图下载 / 视频缓冲) ---------- */
@@ -3283,3 +3323,28 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
 .progress-video { position: relative; width: 100%; }
 .progress-video video { display: block; }
 @media (prefers-reduced-motion: reduce) { .load-progress, .load-progress-track.is-indeterminate i { animation: none; } }
+
+/* ---------- 资产页:文件夹一排、拖动、改名、批量移到文件夹 ---------- */
+.asset-folder-bar { margin: 4px 0 16px; }
+.asset-folder-bar .folder-chip { height: 30px; font-size: 12px; }
+.asset-folder-bar .folder-chip-input { height: 30px; font-size: 12px; }
+.asset-folder-bar .folder-bar-manage { height: 30px; font-size: 11px; }
+.asset-card { cursor: grab; }
+.asset-card :is(button, a, input, video, audio) { cursor: pointer; }
+.asset-rename {
+  width: 100%; height: 26px; margin-top: 2px; padding: 0 8px; border: 1px solid var(--focus); border-radius: 7px; outline: 0;
+  color: var(--ink); background: var(--paper); font-size: 12px;
+}
+.asset-name { display: block; }
+.asset-move .dropdown-trigger { height: 32px; min-width: 120px; padding: 0 10px; border-radius: 9px; background: transparent; font-size: 12px; }
+.asset-move .dropdown-trigger:disabled { opacity: .45; cursor: default; }
+.asset-move .dropdown-list { top: auto; bottom: calc(100% + 8px); min-width: 180px; max-height: min(320px, 50vh); }
+.card-drag-file { display: grid; place-items: center; align-content: center; gap: 4px; width: 100%; height: 100%; color: var(--muted); }
+.card-drag-file b { font-size: 10px; letter-spacing: .04em; }
+/* 资产、附件页的「回到顶部」:浮在右下角(有批量操作栏时让到它上面) */
+.back-to-top.is-floating {
+  position: fixed; z-index: 30; right: 28px; bottom: 28px; height: 38px; padding: 0 14px; border-radius: 999px;
+  background: var(--paper); box-shadow: 0 10px 28px oklch(20% .02 80 / .16);
+}
+.asset-page:has(.asset-selection-bar) .back-to-top.is-floating { bottom: 104px; }
+@media (max-width: 700px) { .back-to-top.is-floating { right: 16px; bottom: 16px; } }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MoreHorizontal, RotateCcw, Trash2, XCircle } from "lucide-react";
+import { MoreHorizontal, Pencil, RotateCcw, Trash2, XCircle } from "lucide-react";
 
 export function AssetMenu({
   name,
@@ -9,12 +9,15 @@ export function AssetMenu({
   onTrash,
   onRestore,
   onPermanentDelete,
+  onRename,
 }: {
   name: string;
   trashed: boolean;
   onTrash: () => void;
   onRestore: () => void;
   onPermanentDelete: () => void;
+  /** 改名(回收站里的不显示) */
+  onRename?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -60,6 +63,10 @@ export function AssetMenu({
             onClick={() => { close(); onPermanentDelete(); }}>永久删除</button>
         </div>
       </div> : <>
+        {onRename && !trashed && <button type="button" className="asset-action"
+          onClick={() => { close(); onRename(); }}>
+          <Pencil size={14} /> 重命名
+        </button>}
         {trashed ? <button type="button" className="asset-action"
           onClick={() => { close(); onRestore(); }}>
           <RotateCcw size={14} /> 恢复

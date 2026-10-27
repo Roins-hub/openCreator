@@ -9,7 +9,9 @@ import { requireUser } from "@/lib/identity";
 export async function GET(request: Request) {
   try {
     const { userId } = await requireUser(request);
-    return ok(await listAssetFolders(userId));
+    // ?scope=chat:聊天附件页的文件夹
+    const scope = new URL(request.url).searchParams.get("scope") === "chat" ? "chat" : undefined;
+    return ok(await listAssetFolders(userId, scope));
   } catch (error) {
     return failure(error, 401);
   }
@@ -20,13 +22,14 @@ const createSchema = z.object({
   name: nameSchema,
   /** 拖到「新建分组」上时,新分组建好后把这些素材移进去 */
   paths: z.array(z.string().min(1).max(400)).max(500).optional(),
+  scope: z.literal("chat").optional(),
 });
 
 export async function POST(request: Request) {
   try {
     const { userId } = await requireUser(request);
     const input = createSchema.parse(await request.json());
-    return ok(await createAssetFolder(userId, input.name, input.paths));
+    return ok(await createAssetFolder(userId, input.name, input.paths, input.scope));
   } catch (error) {
     return failure(error, 400);
   }
