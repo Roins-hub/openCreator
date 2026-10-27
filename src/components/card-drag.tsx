@@ -45,7 +45,10 @@ function targetAt(x: number, y: number) {
   };
 }
 
-export function useCardDrag(onDrop: (target: string, paths: string[]) => void) {
+/** 松手的位置(拖到输入框文字里时,按这个位置插入引用) */
+export type DropPoint = { x: number; y: number };
+
+export function useCardDrag(onDrop: (target: string, paths: string[], point: DropPoint) => void) {
   const [drag, setDrag] = useState<CardDragState>();
   const [dropTarget, setDropTarget] = useState<string>();
   const [landed, setLanded] = useState<string>();
@@ -53,6 +56,9 @@ export function useCardDrag(onDrop: (target: string, paths: string[]) => void) {
   // 松手时用最新的回调(拖动途中列表、文件夹可能变了)
   const onDropRef = useRef(onDrop);
   useEffect(() => { onDropRef.current = onDrop; });
+  // 松手后用来吞掉那一下 click 的监听:组件卸载时也要撤掉
+  const stopSwallowRef = useRef<() => void>(undefined);
+  useEffect(() => () => stopSwallowRef.current?.(), []);
 
   /** 在素材上按下时调用;移动超过几像素才算拖动(只是点一下不受影响)。手指保留滚动,不触发拖动 */
   const begin = (event: ReactPointerEvent<HTMLElement>, media: DragMedia, paths: string[]) => {
@@ -63,6 +69,7 @@ export function useCardDrag(onDrop: (target: string, paths: string[]) => void) {
     const startY = event.clientY;
     let started = false;
     let target: string | undefined;
+    let last: DropPoint = { x: startX, y: startY };
     let hovered: HTMLElement | undefined;
     const base = {
       paths, media, grabX: startX - rect.left, grabY: startY - rect.top,
@@ -82,13 +89,27 @@ export function useCardDrag(onDrop: (target: string, paths: string[]) => void) {
       document.body.classList.remove("is-card-dragging");
       if (!started) return;
       releasedAt.current = Date.now();
+      // 松手后浏览器会补一个 click(落在松手处的元素上):吞掉,免得误触发「放大查看」「选中」之类。
+      // 只管紧跟着的这一下:用户再按下(新的操作)或过了一会儿就撤掉
+      stopSwallowRef.current?.();
+      const swallow = (click: MouseEvent) => { click.stopPropagation(); click.preventDefault(); stop(); };
+      const stop = () => {
+        window.removeEventListener("click", swallow, true);
+        window.removeEventListener("pointerdown", stop, true);
+        window.clearTimeout(timer);
+        if (stopSwallowRef.current === stop) stopSwallowRef.current = undefined;
+      };
+      const timer = window.setTimeout(stop, 400);
+      window.addEventListener("click", swallow, true);
+      window.addEventListener("pointerdown", stop, true);
+      stopSwallowRef.current = stop;
       const into = dropped ? target : undefined;
       const element = hovered;
       hover(undefined);
       setDropTarget(undefined);
       setDrag((current) => current && { ...current, phase: into ? "drop" : "cancel" });
       if (into) {
-        onDropRef.current(into, paths);
+        onDropRef.current(into, paths, last);
         setLanded(into);
         element?.classList.add(LANDED_CLASS);
         window.setTimeout(() => {
@@ -104,6 +125,7 @@ export function useCardDrag(onDrop: (target: string, paths: string[]) => void) {
         started = true;
         document.body.classList.add("is-card-dragging");
       }
+      last = { x: moved.clientX, y: moved.clientY };
       const hit = targetAt(moved.clientX, moved.clientY);
       target = hit?.id;
       hover(hit?.external ? hit.element : undefined);

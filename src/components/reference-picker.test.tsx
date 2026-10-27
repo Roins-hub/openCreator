@@ -161,7 +161,8 @@ describe("ReferencePicker", () => {
       fireEvent.pointerMove(window, { clientX: 60, clientY: 300 });
       expect(composer.classList.contains("is-card-drop-hover")).toBe(true);
       await act(async () => { fireEvent.pointerUp(window, { clientX: 60, clientY: 300 }); });
-      expect(handlers.onAttach).toHaveBeenCalledWith([expect.objectContaining({ name: "b.png" })]);
+      // 拖到输入框(不是写字的地方):只加素材,不插入引用
+      expect(handlers.onAttach).toHaveBeenCalledWith([expect.objectContaining({ name: "b.png" })], undefined);
       expect(composer.classList.contains("is-card-drop-hover")).toBe(false);
     } finally {
       document.elementFromPoint = original;

@@ -49,7 +49,8 @@ import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-
 import { MediaThumb, PosterVideo, ThumbImage } from "@/components/media-thumb";
 import { MediaPreview } from "@/components/media-preview";
 import { thumbUrl } from "@/lib/media-url";
-import { COMPOSER_DROP, ReferencePicker, type PickerAsset } from "@/components/reference-picker";
+import { COMPOSER_DROP, EDITOR_DROP, ReferencePicker, type PickerAsset } from "@/components/reference-picker";
+import { useCardDrag, type DropPoint } from "@/components/card-drag";
 import { usePresence } from "@/components/use-presence";
 import { readReferenceCache, writeReferenceCache } from "@/lib/reference-cache";
 import { ModelPicker } from "@/components/model-picker";
@@ -461,7 +462,7 @@ export function AppShell() {
     const markerRect = savedAnchor && (savedAnchor.width || savedAnchor.height || savedAnchor.top || savedAnchor.left)
       ? savedAnchor : editorRect;
     const composerRect = composer.getBoundingClientRect();
-    const pickerWidth = Math.min(600, window.innerWidth - 32);
+    const pickerWidth = Math.min(680, window.innerWidth - 32);
     const left = Math.max(8, Math.min(markerRect.left - 14, window.innerWidth - pickerWidth - 8));
     // 放大编辑时贴着光标下方弹出(放不下就放上方)
     if (composer.classList.contains("is-expanded")) {
@@ -636,8 +637,72 @@ export function AppShell() {
       setReferenceAssets((items) => items.map((asset) => asset.folder === id ? { ...asset, folder: undefined } : asset));
     }, reportError);
 
-  /** 从 @ 选择框拖到输入框上:作为参考素材加进来(超出当前模型上限的跳过并提示),选择框不关,可以接着拖 */
-  const attachReferenceAssets = (assets: PickerAsset[]) => {
+  /** 输入框里松手位置对应的插入点(不在输入框里、或落在素材小卡片上时,放到最后 / 卡片后面) */
+  const rangeAtPoint = (point: DropPoint) => {
+    const editor = editorRef.current;
+    if (!editor) return null;
+    const doc = document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    };
+    let range: Range | null = null;
+    if (doc.caretRangeFromPoint) range = doc.caretRangeFromPoint(point.x, point.y);
+    else if (doc.caretPositionFromPoint) {
+      const position = doc.caretPositionFromPoint(point.x, point.y);
+      if (position) {
+        range = document.createRange();
+        range.setStart(position.offsetNode, position.offset);
+        range.collapse(true);
+      }
+    }
+    if (!range || !editor.contains(range.startContainer)) {
+      range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      return range;
+    }
+    const node = range.startContainer;
+    const card = (node instanceof HTMLElement ? node : node.parentElement)?.closest(`.${REFERENCE_CARD_CLASS}`);
+    if (card) {
+      range.setStartAfter(card);
+      range.collapse(true);
+    }
+    return range;
+  };
+
+  /** 在插入点放「图N」素材小卡片(all:插入后的全部素材,用来算编号) */
+  const insertReferenceCards = (items: readonly MediaRef[], all: readonly MediaRef[], range: Range | null) => {
+    const editor = editorRef.current;
+    if (!editor || !range || !items.length) return;
+    editor.focus({ preventScroll: true });
+    const labels = referenceLabels(all);
+    for (const item of items) {
+      const position = all.findIndex((entry) => entry.path === item.path);
+      if (position < 0) continue;
+      const card = createReferenceCard(item.path, item.name, labels[position], item.kind);
+      range.insertNode(card);
+      const spacer = document.createTextNode(" ");
+      card.after(spacer);
+      range.setStartAfter(spacer);
+      range.collapse(true);
+    }
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    setDraft(editor.innerText);
+  };
+
+  // 输入框里已有的素材(上面那一叠)拖到写提示词的地方:在松手处插入「图N」引用
+  const attachmentDrag = useCardDrag((target, paths, point) => {
+    if (target !== EDITOR_DROP) return;
+    insertReferenceCards(attachments.filter((item) => paths.includes(item.path)), attachments, rangeAtPoint(point));
+  });
+
+  /**
+   * 从 @ 选择框拖到输入框上:作为参考素材加进来(超出当前模型上限的跳过并提示),选择框不关,可以接着拖;
+   * 拖到写提示词的地方(带 point)还会在松手处插入「图N」引用
+   */
+  const attachReferenceAssets = (assets: PickerAsset[], point?: DropPoint) => {
     const next = [...attachments];
     const skipped: string[] = [];
     for (const asset of assets) {
@@ -648,6 +713,7 @@ export function AppShell() {
     }
     if (next.length !== attachments.length) setAttachments(next);
     setError(skipped.length ? `${skipped.length} 个素材没有加入：当前模型不支持这种素材，或已达到素材上限` : "");
+    if (point) insertReferenceCards(next.filter((item) => assets.some((asset) => asset.path === item.path)), next, rangeAtPoint(point));
   };
 
   // 「刚上传」一栏:素材库里有记录的按记录(改过名、分过文件夹),还没读到的按上传时的信息
@@ -1591,6 +1657,8 @@ export function AppShell() {
                       // 点卡片放大查看;右上角的 × 是删除,不触发放大
                       onClick={(event) => { if (!(event.target as HTMLElement).closest(".stack-card-remove")) setAttachmentPreview(index); }}
                       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setAttachmentPreview(index); } }}
+                      // 按住拖到写提示词的地方,插入「图N」引用
+                      onPointerDown={(event) => { if (!item.uploading) attachmentDrag.begin(event, item, [item.path]); }}
                       style={{ "--i": index, "--r": `${stackTilt(index)}deg` } as React.CSSProperties}>
                       <MediaThumb media={item} src={item.previewUrl} alt={item.name} />
                       {item.uploading && <span className="stack-card-spinner" aria-label="上传中" />}
@@ -1600,7 +1668,7 @@ export function AppShell() {
                         </span>
                       )}
                       <span className="stack-card-index">{labels[index]}</span>
-                      <button type="button" className="stack-card-remove" onClick={() => {
+                      <button type="button" className="stack-card-remove" data-no-drag onClick={() => {
                         revokePreview(item);
                         setAttachments((items) => items.filter((_, i) => i !== index));
                       }} aria-label={`移除 ${item.name}`}><X size={11} strokeWidth={2.6} /></button>
@@ -1616,6 +1684,7 @@ export function AppShell() {
                   {attachments.length > 1 && <span className="stack-count">{attachments.length}</span>}
                 </div>
               )}
+              {attachmentDrag.overlay}
               {attachmentPreview !== null && attachments[attachmentPreview] && (
                 <MediaPreview
                   items={attachments.map((item, index) => ({
@@ -1634,6 +1703,7 @@ export function AppShell() {
                 </button>
               )}
               <div ref={editorRef} className="composer-editor" contentEditable suppressContentEditableWarning role="textbox" aria-label="提示词"
+                data-drop-target={EDITOR_DROP} data-drop-external
                 data-placeholder={imageModel
                   ? attachments.length ? "描述想怎样修改或组合这些图片，输入 @ 引用参考图…" : "描述你想要的画面、风格和构图；添加参考图可按图修改"
                   : attachments.length ? "描述画面、运动和镜头，输入 @ 引用素材…" :

@@ -3289,8 +3289,12 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
 }
 /* 素材拖到输入框上:输入框亮起;放下后回弹一下 */
 .composer.is-card-drop-hover { border-color: var(--focus); box-shadow: 0 0 0 4px oklch(70% .02 82 / .25), 0 14px 40px oklch(20% .02 80 / .14); }
-.composer.is-card-drop-landed { animation: composer-gulp .45s cubic-bezier(.34, 1.56, .64, 1); }
-@keyframes composer-gulp { 40% { transform: scale(1.012); } 70% { transform: scale(.996); } }
+/* 放下后外圈闪一下(不能用 transform:@ 选择框是输入框里 position: fixed 的元素,外层一有 transform 就会跳走) */
+.composer.is-card-drop-landed, .composer-editor.is-card-drop-landed { animation: composer-gulp .5s ease-out; }
+@keyframes composer-gulp { 30% { box-shadow: 0 0 0 7px oklch(70% .02 82 / .32), 0 14px 40px oklch(20% .02 80 / .14); } }
+/* 拖到写提示词的地方:这块亮起,松手就在这里插入「图N」 */
+.composer-editor.is-card-drop-hover { border-radius: 10px; background: color-mix(in srgb, var(--warm) 70%, transparent); box-shadow: inset 0 0 0 1.5px var(--focus); }
+.stack-card { touch-action: none; }
 @media (prefers-reduced-motion: reduce) {
   .card-drag, .card-drag-body, .card-drag.is-snapped .card-drag-body, .composer.is-card-drop-landed,
   .folder-chip.drop, .folder-chip.landed { transition: none; animation: none; }
@@ -3341,13 +3345,14 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
 @media (max-width: 700px) { .back-to-top.is-floating { right: 16px; bottom: 16px; } }
 
 /* ---------- @ 选择框:左边「刚上传」一栏,右边素材库 ---------- */
-.reference-picker { width: min(600px, calc(100vw - 32px)); }
-.reference-picker-body { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 10px; min-height: 0; }
+.reference-picker { width: min(680px, calc(100vw - 32px)); }
+.reference-picker-body { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 10px; min-height: 0; }
 .reference-main { min-width: 0; }
 .reference-recent { display: flex; flex-direction: column; min-width: 0; padding-right: 10px; border-right: 1px solid var(--line); }
 .reference-recent > small { display: flex; align-items: center; gap: 5px; margin: 2px 2px 8px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .reference-recent > small i { color: var(--faint); font-size: 10px; font-style: normal; font-weight: 400; }
-.reference-recent-list { display: flex; flex-direction: column; gap: 7px; max-height: 330px; overflow-y: auto; }
+/* 两个一排并排显示 */
+.reference-recent-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 6px; max-height: 330px; overflow-y: auto; }
 .reference-recent-empty {
   display: grid; justify-items: center; gap: 5px; padding: 18px 6px; border: 1px dashed var(--line-strong); border-radius: 9px;
   color: var(--muted); background: transparent; font-size: 11px; text-align: center;
@@ -3357,6 +3362,6 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
 @media (max-width: 700px) {
   .reference-picker-body { grid-template-columns: 1fr; }
   .reference-recent { padding: 0 0 8px; border-right: 0; border-bottom: 1px solid var(--line); }
-  .reference-recent-list { flex-direction: row; max-height: none; overflow-x: auto; }
+  .reference-recent-list { display: flex; flex-direction: row; max-height: none; overflow-x: auto; }
   .reference-recent-list .reference-picker-item { flex: 0 0 84px; }
 }

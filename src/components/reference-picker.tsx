@@ -7,7 +7,7 @@ import type { MediaKind } from "@/lib/tangzhi";
 import { MediaThumb } from "@/components/media-thumb";
 import { Dropdown } from "@/components/dropdown";
 import { MediaPreview, mediaPreviewItem } from "@/components/media-preview";
-import { useCardDrag } from "@/components/card-drag";
+import { useCardDrag, type DropPoint } from "@/components/card-drag";
 import { ALL_FOLDERS, FolderBar, NEW_FOLDER, UNGROUPED } from "@/components/folder-bar";
 
 export type PickerAsset = {
@@ -21,6 +21,8 @@ export type PickerAsset = {
 
 /** 输入框作为拖放目标的 ID(app-shell 里输入框上的 data-drop-target) */
 export const COMPOSER_DROP = "__composer__";
+/** 输入框里写提示词的地方:拖到这里会在松手的位置插入「图N」引用 */
+export const EDITOR_DROP = "__editor__";
 
 const baseName = (name: string) => name.replace(/\.[a-z0-9]{1,6}$/i, "");
 
@@ -44,8 +46,8 @@ export function ReferencePicker({
   loading: boolean;
   isAttached: (path: string) => boolean;
   onPick: (asset: PickerAsset) => void;
-  /** 拖到输入框上:作为参考素材加进去 */
-  onAttach: (assets: PickerAsset[]) => void;
+  /** 拖到输入框上:作为参考素材加进去;拖到文字里(带 point)还在松手处插入引用 */
+  onAttach: (assets: PickerAsset[], point?: DropPoint) => void;
   /** 「刚上传」一栏还是空的时候,点这里上传 */
   onUpload: () => void;
   onClose: () => void;
@@ -107,10 +109,11 @@ export function ReferencePicker({
   });
 
   // ---- 拖动:管理模式下拖已选中的一张,带着全部选中的一起走;拖到输入框就作为参考素材加进去 ----
-  const cardDrag = useCardDrag((target, paths) => {
-    if (target === COMPOSER_DROP) {
+  const cardDrag = useCardDrag((target, paths, point) => {
+    if (target === COMPOSER_DROP || target === EDITOR_DROP) {
       const known = [...recent, ...assets];
-      onAttach(paths.map((path) => known.find((asset) => asset.path === path)).filter((asset): asset is PickerAsset => Boolean(asset)));
+      onAttach(paths.map((path) => known.find((asset) => asset.path === path)).filter((asset): asset is PickerAsset => Boolean(asset)),
+        target === EDITOR_DROP ? point : undefined);
     } else if (target === NEW_FOLDER) createFolder(`新文件夹 ${folders.length + 1}`, paths);
     else run(() => onMove(paths, target === UNGROUPED ? null : target));
   });
