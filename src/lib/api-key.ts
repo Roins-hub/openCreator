@@ -151,9 +151,25 @@ export async function openSession(key = readApiKey(), base = readRelayBase(), ac
     return;
   }
   const response = await fetch("/api/session", { method: "POST", headers: apiKeyHeaders(key, base, readImageKey(), false, accountKey) });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || "API Key 验证失败");
+  const data = await response.json().catch(() => ({})) as { error?: string; mediaOrigin?: string };
+  if (!response.ok) throw new Error(data.error || "API Key 验证失败");
+  if (data.mediaOrigin) preconnectMedia(data.mediaOrigin);
+}
+
+/**
+ * 提前和媒体文件的域名建好连接(DNS + TLS 握手约 0.5 秒),第一张图就不用等。
+ * 两条:<img> / <video> 用的普通连接,放大查看下载大图用的跨域连接(浏览器把它们分开)。
+ */
+export function preconnectMedia(origin: string) {
+  if (typeof document === "undefined" || !/^https?:\/\//.test(origin)) return;
+  for (const crossOrigin of [null, "anonymous"]) {
+    const selector = `link[rel="preconnect"][href="${origin}"]${crossOrigin ? "[crossorigin]" : ":not([crossorigin])"}`;
+    if (document.head.querySelector(selector)) continue;
+    const link = document.createElement("link");
+    link.rel = "preconnect";
+    link.href = origin;
+    if (crossOrigin) link.crossOrigin = crossOrigin;
+    document.head.append(link);
   }
 }
 

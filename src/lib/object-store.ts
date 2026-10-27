@@ -67,6 +67,12 @@ function store(): StoreConfig | null {
   return storeCache;
 }
 
+/** 浏览器取媒体文件的域名(例如 https://media.tangzhi.org);本地存储时没有 */
+export function mediaOrigin() {
+  const config = store();
+  return config ? config.publicUrl("probe").origin : undefined;
+}
+
 /** 当前使用的存储:S3(TOS 等)/ R2 / local */
 export const storageName = () => store()?.name || "local";
 
