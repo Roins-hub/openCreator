@@ -19,6 +19,8 @@ export interface PreviewItem {
   caption?: string;
   /** 原图加载出来之前先垫着的缩略图(卡片里已经加载过,有缓存) */
   preview?: string;
+  /** 原文件(放大查看默认看大图,点「原图」再加载它) */
+  original?: string;
 }
 
 export const mediaPreviewItem = (media: MediaRef, caption?: string): PreviewItem => ({
@@ -28,6 +30,7 @@ export const mediaPreviewItem = (media: MediaRef, caption?: string): PreviewItem
   download: `${mediaUrl(media.path)}?download=${encodeURIComponent(media.name)}`,
   caption,
   preview: media.kind === "image" ? thumbUrl(media.path, 480) : undefined,
+  original: media.kind === "image" ? mediaUrl(media.path) : undefined,
 });
 
 /**
@@ -59,7 +62,8 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
       onClick={(event) => { event.stopPropagation(); onClose(); }}
       onMouseDown={(event) => event.stopPropagation()}>
       <div className="video-viewer-body" onClick={(event) => event.stopPropagation()}>
-        {current.kind === "image" && <ImageZoom key={current.src} src={current.src} alt={current.name} preview={current.preview} />}
+        {current.kind === "image" && <ImageZoom key={current.src} src={current.src} alt={current.name} preview={current.preview}
+          original={current.original} />}
         {current.kind === "video" && <ProgressVideo key={current.src} src={current.src} controls autoPlay playsInline />}
         {current.kind === "audio" && (
           <div className="media-preview-audio" key={current.src}>

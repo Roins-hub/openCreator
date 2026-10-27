@@ -3383,3 +3383,18 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
   z-index: 6; cursor: grabbing; border-color: var(--line-strong); background: var(--paper);
   box-shadow: 0 10px 24px oklch(20% .02 80 / .22); scale: 1.06;
 }
+
+/* 放大查看右下角的「原图」:默认看大图(快),点了加载原文件(无损) */
+.image-zoom-bar .image-zoom-original { min-width: 44px; padding: 0 10px; font-size: 11px; font-weight: 700; }
+.image-zoom-bar .image-zoom-original.active { color: var(--muted); opacity: 1; }
+/* 资产卡片:点图片放大查看;右上角放大镜(视频点画面是播放,用它放大) */
+/* 和右上角的收藏星标同一个样子,挨在它左边 */
+.asset-preview .asset-zoom {
+  position: absolute; z-index: 2; top: 8px; right: 44px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0;
+  border-radius: 50%; color: oklch(98% 0 0); background: oklch(15% 0.01 80 / .45); backdrop-filter: blur(4px);
+  opacity: 0; transition: opacity .15s, background .15s, transform .15s;
+}
+.asset-card:hover .asset-zoom, .asset-zoom:focus-visible { opacity: 1; }
+.asset-zoom:hover { background: oklch(15% 0.01 80 / .65); transform: scale(1.06); }
+@media (hover: none) { .asset-preview .asset-zoom { opacity: 1; } }
+.asset-preview img.is-zoomable { cursor: zoom-in; }

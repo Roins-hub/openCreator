@@ -58,7 +58,8 @@ export function ResultViewer({
         <div className="viewer-media">
           {isVideo
             ? <ProgressVideo key={current.path} src={mediaUrl(current.path)} poster={thumbUrl(current.path, 480)} controls autoPlay playsInline />
-            : <ImageZoom key={current.path} src={viewUrl(current.path)} alt={current.name} preview={thumbUrl(current.path, 1080)} />}
+            : <ImageZoom key={current.path} src={viewUrl(current.path)} alt={current.name} preview={thumbUrl(current.path, 1080)}
+              original={mediaUrl(current.path)} />}
           <div className="video-viewer-bar">
             <p title={prompt}>{prompt || current.name}</p>
             {items.length > 1 && <span>{index + 1} / {items.length}</span>}

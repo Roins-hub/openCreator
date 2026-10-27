@@ -20,22 +20,39 @@ const FIT: View = { scale: 1, x: 0, y: 0 };
 /**
  * 放大预览里的图片缩放:滚轮(触控板双指)以鼠标位置为中心缩放,放大后按住拖动平移,
  * 双击在「适应窗口 / 2 倍」之间切换;右下角有 − / 百分比 / + / 适应窗口,键盘 + − 0 也可以。
- * 换图时由外层用 key 重新挂载,回到适应窗口。
+ * 默认显示的是大图(原尺寸 WebP,打开快);传了 original 时右下角有「原图」,点了加载原文件(无损),
+ * 加载期间先接着显示大图,缩放位置不变。换图时由外层用 key 重新挂载,回到适应窗口。
  */
-export function ImageZoom({ src, alt, preview }: { src: string; alt: string; preview?: string }) {
+export function ImageZoom({ src, alt, preview, original }: {
+  src: string;
+  alt: string;
+  /** 加载出来之前先垫着的缩略图 */
+  preview?: string;
+  /** 原文件地址(和 src 不一样时显示「原图」按钮) */
+  original?: string;
+}) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>(FIT);
-  const [loaded, setLoaded] = useState(false);
-  // 原图由页面自己下载(能算出进度),下载完换成本地地址;下载不了(跨域、本地存储)时直接让 <img> 加载
-  const direct = src.startsWith("blob:") || src.startsWith("data:");
-  const [full, setFull] = useState<string>();
-  const [progress, setProgress] = useState<{ loaded: number; total?: number }>({ loaded: 0 });
+  const [useOriginal, setUseOriginal] = useState(false);
+  const current = useOriginal && original ? original : src;
+  // 下面几个状态都记着是哪个地址的,切换后旧的自然不算数
+  const [loadedFor, setLoadedFor] = useState<string>();
+  const loaded = loadedFor === current;
+  const [full, setFull] = useState<{ for: string; url: string }>();
+  const [progress, setProgress] = useState<{ for: string; loaded: number; total?: number }>();
+  // 切到原图时,原图出来之前接着显示已经加载好的大图
+  const [before, setBefore] = useState<string>();
+  // 页面自己下载出来的本地地址:关掉预览时再统一释放(切换时旧图还要接着显示)
+  const objectUrls = useRef<string[]>([]);
+  useEffect(() => () => objectUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);
+
+  // 由页面自己下载(能算出进度),下载完换成本地地址;下载不了(跨域、本地存储)时直接让 <img> 加载
+  const direct = current.startsWith("blob:") || current.startsWith("data:");
   useEffect(() => {
     if (direct) return;
     const controller = new AbortController();
-    let objectUrl: string | undefined;
     const download = async () => {
-      const response = await fetch(src, { signal: controller.signal }).catch((error) => {
+      const response = await fetch(current, { signal: controller.signal }).catch((error) => {
         throw controller.signal.aborted ? error : new DownloadError("network");
       });
       if (!response.ok) throw new DownloadError(`http-${response.status}`);
@@ -55,38 +72,45 @@ export function ImageZoom({ src, alt, preview }: { src: string; alt: string; pre
         // 进度最多每 80ms 刷新一次
         if (performance.now() - lastPaint > 80) {
           lastPaint = performance.now();
-          setProgress({ loaded: received, total });
+          setProgress({ for: current, loaded: received, total });
         }
       }
-      setProgress({ loaded: received, total: total || received });
-      return URL.createObjectURL(new Blob(chunks as BlobPart[], { type: response.headers.get("content-type") || "" }));
+      setProgress({ for: current, loaded: received, total: total || received });
+      const url = URL.createObjectURL(new Blob(chunks as BlobPart[], { type: response.headers.get("content-type") || "" }));
+      objectUrls.current.push(url);
+      return url;
     };
     void (async () => {
       let reason = "unknown";
       // 下载失败(断网、下到一半断了)先等一下重试一次,还不行才改成直接加载
       for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
         try {
-          objectUrl = await download();
-          setFull(objectUrl);
+          const url = await download();
+          setFull({ for: current, url });
           return;
         } catch (error) {
           if (controller.signal.aborted) return;
           reason = error instanceof DownloadError ? error.message : "unknown";
-          setProgress({ loaded: 0 });
+          setProgress({ for: current, loaded: 0 });
           if (attempt < ATTEMPTS) await new Promise((resolve) => window.setTimeout(resolve, RETRY_DELAY_MS));
           if (controller.signal.aborted) return;
         }
       }
-      setFull(src);
+      setFull({ for: current, url: current });
       // 记一笔:这种情况多了说明存储的跨域规则、访问域名或网络有问题
       reportClientIssue("image-progress-fallback", reason, { attempts: ATTEMPTS });
     })();
-    return () => {
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [src, direct]);
-  const shown = direct ? src : full;
+    return () => controller.abort();
+  }, [current, direct]);
+  const shown = direct ? current : full?.for === current ? full.url : undefined;
+  const currentProgress = progress?.for === current ? progress : undefined;
+  // 还没出来时垫着的:切原图前已经显示的大图 > 缩略图
+  const placeholder = !loaded ? before || preview : undefined;
+  const switchToOriginal = () => {
+    if (!original || useOriginal) return;
+    if (loaded && shown) setBefore(shown);
+    setUseOriginal(true);
+  };
   const [dragging, setDragging] = useState(false);
   // 原生监听(滚轮、键盘)里读最新的缩放
   const viewRef = useRef(view);
@@ -176,18 +200,18 @@ export function ImageZoom({ src, alt, preview }: { src: string; alt: string; pre
   return <div className={`image-zoom ${zoomed ? "is-zoomed" : ""} ${dragging ? "is-dragging" : ""}`}>
     <div className="image-zoom-stage" ref={stageRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
       onPointerUp={endDrag} onPointerCancel={endDrag} onDoubleClick={onDoubleClick}>
-      {/* 原图下载完之前:先显示卡片里已经有缓存的缩略图(稍微模糊),没有缩略图时占个位置,不会一片空白 */}
-      {!loaded && (preview
+      {/* 下载完之前:先垫着已有的(切原图时是刚才的大图,否则是卡片里有缓存的缩略图,稍微模糊);都没有时占个位置,不会一片空白 */}
+      {!loaded && (placeholder
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img className="image-viewer-img image-zoom-preview" src={preview} alt="" draggable={false}
+        ? <img className={`image-viewer-img ${placeholder === before ? "" : "image-zoom-preview"}`} src={placeholder} alt="" draggable={false}
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }} />
         : <div className="image-zoom-placeholder" />)}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {shown && <img className="image-viewer-img" src={shown} alt={alt} draggable={false} onLoad={() => setLoaded(true)}
+      {shown && <img key={shown} className="image-viewer-img" src={shown} alt={alt} draggable={false} onLoad={() => setLoadedFor(current)}
         style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, ...(loaded ? {} : { display: "none" }) }} />}
-      {!loaded && <LoadProgress label="加载大图"
-        percent={progress.total ? (progress.loaded / progress.total) * 100 : undefined}
-        loaded={progress.total ? progress.loaded : undefined} total={progress.total} />}
+      {!loaded && <LoadProgress label={useOriginal ? "加载原图" : "加载大图"}
+        percent={currentProgress?.total ? (currentProgress.loaded / currentProgress.total) * 100 : undefined}
+        loaded={currentProgress?.total ? currentProgress.loaded : undefined} total={currentProgress?.total} />}
     </div>
     <div className="image-zoom-bar" onDoubleClick={(event) => event.stopPropagation()}>
       <button type="button" onClick={() => zoomBy(1 / STEP)} disabled={!zoomed} aria-label="缩小" title="缩小（-）">
@@ -202,6 +226,11 @@ export function ImageZoom({ src, alt, preview }: { src: string; alt: string; pre
       <button type="button" onClick={() => setView(FIT)} disabled={!zoomed} aria-label="适应窗口" title="适应窗口（0）">
         <Maximize size={13} />
       </button>
+      {original && original !== src && <button type="button" className={`image-zoom-original ${useOriginal ? "active" : ""}`}
+        onClick={switchToOriginal} disabled={useOriginal}
+        title={useOriginal ? "正在看原图（无损）" : "加载原文件，无损画质（文件较大）"}>
+        {useOriginal ? "原图 ✓" : "原图"}
+      </button>}
     </div>
   </div>;
 }

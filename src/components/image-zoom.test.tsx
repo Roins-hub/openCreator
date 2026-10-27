@@ -91,4 +91,29 @@ describe("ImageZoom loading", () => {
     await wait(700);
     expect(reportClientIssue).toHaveBeenCalledWith("image-progress-fallback", "http-403", { attempts: 2 });
   });
+
+  it("loads the original on demand and keeps showing the view image meanwhile", async () => {
+    let n = 0;
+    URL.createObjectURL = vi.fn(() => `blob:image-${++n}`);
+    const fetchMock = vi.fn(async (url: string) => new Response(new Uint8Array(url.includes("view") ? [1] : [1, 2, 3]),
+      { headers: { "content-type": "image/png" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(<ImageZoom src="/api/media/e.png?view=1" alt="egg" original="/api/media/e.png" />);
+    await wait(0);
+    const first = container.querySelector<HTMLImageElement>("img[alt=egg]");
+    expect(first?.getAttribute("src")).toBe("blob:image-1");
+    act(() => { first?.dispatchEvent(new Event("load")); });
+
+    fireEvent.click(screen.getByRole("button", { name: "原图" }));
+    // 原图出来之前接着显示刚才的大图,进度条写「加载原图」
+    expect(container.querySelector("img.image-viewer-img:not([alt=egg])")?.getAttribute("src")).toBe("blob:image-1");
+    expect(screen.getByRole("progressbar").textContent).toContain("加载原图");
+    await wait(0);
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/media/e.png", expect.anything());
+    const original = container.querySelector<HTMLImageElement>("img[alt=egg]");
+    expect(original?.getAttribute("src")).toBe("blob:image-2");
+    act(() => { original?.dispatchEvent(new Event("load")); });
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.getByRole("button", { name: "原图 ✓" })).toHaveProperty("disabled", true);
+  });
 });

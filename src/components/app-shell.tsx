@@ -1708,6 +1708,7 @@ export function AppShell() {
                   items={attachments.map((item, index) => ({
                     kind: item.kind, name: item.name, src: attachmentSrc(item), caption: `${labels[index]} · ${item.name}`,
                     preview: item.kind === "image" && !item.previewUrl ? thumbUrl(item.path, 480) : undefined,
+                    original: item.kind === "image" && !item.previewUrl ? `/api/media/${item.path}` : undefined,
                   }))}
                   index={attachmentPreview} onIndex={setAttachmentPreview} onClose={() => setAttachmentPreview(null)} />
               )}

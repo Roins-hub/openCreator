@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import Link from "next/link";
 import {
   ArrowDownWideNarrow, ArrowLeft, ArrowUpNarrowWide, Check, CheckSquare, Download, Image as ImageIcon, Images, Music,
-  FileText, Paperclip, RotateCcw, Search, Sparkles, Star, Trash2, Upload, Video, X, XCircle,
+  FileText, Paperclip, RotateCcw, Search, Sparkles, Star, Trash2, Upload, Video, X, XCircle, ZoomIn,
 } from "lucide-react";
 import type { Asset, AssetFolder } from "@/lib/asset-store";
 import { AssetMenu } from "@/components/asset-menu";
@@ -20,6 +20,7 @@ import { useCardDrag } from "@/components/card-drag";
 import { ALL_FOLDERS, FolderBar, NEW_FOLDER, UNGROUPED } from "@/components/folder-bar";
 import { Dropdown } from "@/components/dropdown";
 import { BackToTop } from "@/components/back-to-top";
+import { MediaPreview, mediaPreviewItem } from "@/components/media-preview";
 
 type Filter = "all" | Asset["kind"] | "favorite" | "trash";
 type Source = "all" | "generated" | "upload";
@@ -81,6 +82,8 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
   const [folders, setFolders] = useState<AssetFolder[]>([]);
   const [folder, setFolder] = useState(ALL_FOLDERS);
   const [renaming, setRenaming] = useState<{ path: string; text: string }>();
+  // 放大查看:当前筛选下能看的(图片、视频、音频)里的第几个,左右键翻看
+  const [preview, setPreview] = useState<number | null>(null);
   const lastClicked = useRef<string | null>(null);
   const dragDepth = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -131,6 +134,11 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
       .sort((a, b) => direction * a.createdAt.localeCompare(b.createdAt));
   }, [assets, filter, source, query, sort, inFolder, currentFolder]);
   const activeAssets = assets.filter((asset) => !asset.trashed);
+  const viewable = visible.filter((asset): asset is Asset & { kind: MediaRef["kind"] } => asset.kind !== "file");
+  const openPreview = (asset: Asset) => {
+    const index = viewable.findIndex((item) => item.path === asset.path);
+    if (index >= 0) setPreview(index);
+  };
   const hasAudio = activeAssets.some((asset) => asset.kind === "audio");
   // 批量操作只作用于当前筛选下看得到的已选项
   const chosen = visible.filter((asset) => selected.has(asset.path));
@@ -548,6 +556,8 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
                 onClick={(event) => toggleSelect(asset, event)}>
                 <Check size={13} strokeWidth={3} />
               </button>
+              {!selecting && asset.kind !== "file" && <button type="button" className="asset-zoom" data-no-drag
+                onClick={() => openPreview(asset)} aria-label={`放大查看 ${asset.name}`} title="放大查看"><ZoomIn size={15} /></button>}
               {!asset.trashed && !selecting && <button type="button" className={`asset-star ${asset.favorite ? "is-on" : ""}`}
                 onClick={() => void toggleFavorite(asset)} aria-pressed={Boolean(asset.favorite)}
                 aria-label={asset.favorite ? "取消收藏" : "收藏"} title={asset.favorite ? "取消收藏" : "收藏"}>
@@ -564,7 +574,8 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
                 ? <PosterVideo controls={!selecting} path={asset.path} />
                 : asset.kind === "audio"
                   ? <><Music size={30} /><audio controls={!selecting} preload="none" src={`/api/media/${asset.path}`} /></>
-                  : <ThumbImage path={asset.path} width={480} alt={asset.name} />}
+                  : <ThumbImage path={asset.path} width={480} alt={asset.name} className={selecting ? undefined : "is-zoomable"}
+                    onClick={() => { if (!selecting) openPreview(asset); }} />}
               {selecting && <button type="button" className="asset-select-overlay" tabIndex={-1} aria-hidden="true"
                 onClick={(event) => { if (!cardDrag.justDropped()) toggleSelect(asset, event); }} />}
             </div>
@@ -652,6 +663,9 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
       <button type="button" className="asset-selection-close" aria-label="退出选择" onClick={exitSelecting}><X size={15} /></button>
     </div>}
     {cardDrag.overlay}
+    {preview !== null && viewable[preview] && <MediaPreview
+      items={viewable.map((asset) => mediaPreviewItem({ kind: asset.kind, path: asset.path, name: asset.name, mimeType: asset.mimeType }))}
+      index={preview} onIndex={setPreview} onClose={() => setPreview(null)} />}
     <BackToTop floating />
     {dragging && <div className="asset-drop-hint" aria-hidden="true">
       <Upload size={26} />

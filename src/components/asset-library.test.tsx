@@ -91,4 +91,13 @@ describe("AssetLibrary folders", () => {
     await act(async () => { fireEvent.keyDown(input, { key: "Enter" }); });
     expect(calls.find((call) => call.method === "POST" && call.url === "/api/asset-folders")?.body).toEqual({ name: "合同", scope: "chat" });
   });
+
+  it("opens a zoomable preview with an original-image button from a card", async () => {
+    render(<AssetLibrary />);
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "放大查看 b.png" }));
+    const dialog = screen.getByRole("dialog", { name: "素材预览" });
+    expect(dialog.querySelector(".image-zoom")).toBeTruthy();
+    expect(dialog.textContent).toContain("原图");
+  });
 });
