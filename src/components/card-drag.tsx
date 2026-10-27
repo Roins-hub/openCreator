@@ -160,8 +160,9 @@ export function useCardDrag(onDrop: (target: string, paths: string[], point: Dro
  */
 function DragCard({ drag }: { drag: CardDragState }) {
   const { origin, phase } = drag;
-  // 卡片最宽 150px(资产页的卡片很宽,原样大小拖着太笨重);按住的位置按比例换算
-  const width = Math.min(origin.width, 150);
+  // 卡片 72–150px:资产页的卡片很宽,原样大小拖着太笨重;提示词里的「图N」只有 30 多像素,原样大小几乎看不见。
+  // 按住的位置按比例换算,鼠标还在卡片上同一处
+  const width = Math.max(72, Math.min(origin.width, 150));
   const ratio = width / origin.width;
   const free = { x: drag.x - drag.grabX * ratio, y: drag.y - drag.grabY * ratio };
   const half = width / 2;
