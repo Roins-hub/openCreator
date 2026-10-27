@@ -51,7 +51,7 @@ describe("ImageZoom loading", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { headers: { "content-length": "4", "content-type": "image/png" } })));
     const { container } = render(<ImageZoom src="/api/media/a.png" alt="cat" preview="/api/media/a.png?thumb=240" />);
     expect(container.querySelector(".image-zoom-preview")?.getAttribute("src")).toBe("/api/media/a.png?thumb=240");
-    expect(screen.getByRole("progressbar").textContent).toContain("加载原图");
+    expect(screen.getByRole("progressbar").textContent).toContain("加载大图");
 
     await act(async () => { push(new Uint8Array([1, 2, 3, 4])); finish(); await new Promise((resolve) => setTimeout(resolve, 0)); });
     const full = container.querySelector<HTMLImageElement>("img[alt=cat]");

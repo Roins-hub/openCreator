@@ -72,7 +72,9 @@ const toMediaRef = (item: ComposerAttachment): MediaRef => ({
 });
 /** 每一类(图片 / 视频)上次选的模型,切换类型时回到它 */
 const LAST_MODEL_KEY = "mote.lastModel";
-const attachmentSrc = (item: ComposerAttachment) => item.previewUrl || `/api/media/${item.path}`;
+// 放大查看输入框里的素材:刚上传的用本地预览,其余图片用大图(WebP),视频、音频用原文件
+const attachmentSrc = (item: ComposerAttachment) =>
+  item.previewUrl || (item.kind === "image" ? `/api/media/${item.path}?view=1` : `/api/media/${item.path}`);
 
 /** 读一张图片的宽高(「智能」视频比例用);读不到或超过 5 秒就不用它 */
 function imageDimensions(src: string) {
@@ -635,6 +637,17 @@ export function AppShell() {
   }).then((result) => {
     setReferenceFolders((items) => items.map((folder) => folder.id === id ? { ...folder, name: result.name } : folder));
   }, reportError);
+  /** 拖动调整文件夹顺序:先在界面上换好,再告诉服务端 */
+  const reorderReferenceFolders = (order: string[]) => {
+    setReferenceFolders((items) => {
+      const byId = new Map(items.map((folder) => [folder.id, folder]));
+      const sorted = order.map((id) => byId.get(id)).filter((folder): folder is AssetFolder => Boolean(folder));
+      return [...sorted, ...items.filter((folder) => !order.includes(folder.id))];
+    });
+    return request("/api/asset-folders", {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order }),
+    }).catch(reportError);
+  };
   const deleteReferenceFolder = (id: string) => request(`/api/asset-folders?id=${encodeURIComponent(id)}`, { method: "DELETE" })
     .then(() => {
       setReferenceFolders((items) => items.filter((folder) => folder.id !== id));
@@ -1694,7 +1707,7 @@ export function AppShell() {
                 <MediaPreview
                   items={attachments.map((item, index) => ({
                     kind: item.kind, name: item.name, src: attachmentSrc(item), caption: `${labels[index]} · ${item.name}`,
-                    preview: item.kind === "image" && !item.previewUrl ? thumbUrl(item.path, 240) : undefined,
+                    preview: item.kind === "image" && !item.previewUrl ? thumbUrl(item.path, 480) : undefined,
                   }))}
                   index={attachmentPreview} onIndex={setAttachmentPreview} onClose={() => setAttachmentPreview(null)} />
               )}
@@ -1814,7 +1827,8 @@ export function AppShell() {
               recent={recentUploads} onUpload={() => fileRef.current?.click()}
               onPick={selectReferenceAsset} onAttach={attachReferenceAssets} onClose={closeReferencePicker}
               onRename={renameReference} onTrash={trashReferences} onMove={moveReferences}
-              onCreateFolder={createReferenceFolder} onRenameFolder={renameReferenceFolder} onDeleteFolder={deleteReferenceFolder} />}
+              onCreateFolder={createReferenceFolder} onRenameFolder={renameReferenceFolder} onDeleteFolder={deleteReferenceFolder}
+              onReorderFolders={reorderReferenceFolders} />}
           </div>
           </div>
           <p className="composer-note">由 {relayHost || `${TANGZHI_PROVIDER_NAME} `}中转站生成 · Enter 发送，Shift + Enter 换行</p>

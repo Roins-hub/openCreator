@@ -161,7 +161,7 @@ export function ImageTaskCard({
             {images.map((image, index) => (
               <figure className="image-result" key={image.path}>
                 <button type="button" className="image-result-open" onClick={() => setViewer(index)} aria-label={`查看第 ${index + 1} 张`}>
-                  <ThumbImage path={image.path} width={720} alt={image.name} />
+                  <ThumbImage path={image.path} width={1080} alt={image.name} />
                 </button>
                 <figcaption className="image-result-actions">
                   <button type="button" onClick={() => onMakeVideo(image)} title="用这张图生成视频"><Clapperboard size={13} /><span>做成视频</span></button>

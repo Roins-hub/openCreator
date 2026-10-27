@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Download, Music, X } from "lucide-react";
 import { ImageZoom } from "@/components/image-zoom";
 import { ProgressVideo } from "@/components/load-progress";
-import { mediaUrl, thumbUrl } from "@/lib/media-url";
+import { mediaUrl, thumbUrl, viewUrl } from "@/lib/media-url";
 import type { MediaRef } from "@/lib/types";
 
 export interface PreviewItem {
@@ -24,10 +24,10 @@ export interface PreviewItem {
 export const mediaPreviewItem = (media: MediaRef, caption?: string): PreviewItem => ({
   kind: media.kind,
   name: media.name,
-  src: mediaUrl(media.path),
+  src: media.kind === "image" ? viewUrl(media.path) : mediaUrl(media.path),
   download: `${mediaUrl(media.path)}?download=${encodeURIComponent(media.name)}`,
   caption,
-  preview: media.kind === "image" ? thumbUrl(media.path, 240) : undefined,
+  preview: media.kind === "image" ? thumbUrl(media.path, 480) : undefined,
 });
 
 /**

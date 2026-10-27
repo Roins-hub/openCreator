@@ -780,7 +780,8 @@ a { color: inherit; text-decoration: none; }
 .folder-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 5px; }
 .folder-chip {
   position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; max-width: 200px; height: 25px;
-  border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: transparent; font-size: 11px; white-space: nowrap;
+  /* 和网站其他按钮一样跟着主题的圆角走 */
+  border: 1px solid var(--line); border-radius: var(--r-control); color: var(--muted); background: transparent; font-size: 11px; white-space: nowrap;
   transition: background .15s, border-color .15s, color .15s, transform .15s, box-shadow .15s;
 }
 .folder-chip-main {
@@ -804,11 +805,11 @@ a { color: inherit; text-decoration: none; }
 .folder-chip.picked { border-color: var(--ink); color: var(--ink); background: var(--warm); }
 .folder-chip.picked .folder-chip-check { border-color: var(--dark); color: var(--paper); background: var(--dark); }
 .folder-chip-input {
-  flex: 0 0 128px; height: 25px; padding: 0 10px; border: 1px solid var(--focus); border-radius: 999px; outline: 0;
+  flex: 0 0 128px; height: 25px; padding: 0 10px; border: 1px solid var(--focus); border-radius: var(--r-control); outline: 0;
   color: var(--ink); background: var(--paper); font-size: 11px;
 }
 .folder-bar-manage {
-  display: inline-flex; align-items: center; gap: 4px; height: 25px; margin-left: auto; padding: 0 8px; border-radius: 7px;
+  display: inline-flex; align-items: center; gap: 4px; height: 25px; margin-left: auto; padding: 0 8px; border-radius: var(--r-control);
   color: var(--faint); background: transparent; font-size: 10px;
 }
 .folder-bar-manage:hover, .folder-bar-manage.active { color: var(--ink); background: var(--warm); }
@@ -816,7 +817,7 @@ a { color: inherit; text-decoration: none; }
 .folder-bar-tools span { flex: 1; min-width: 0; }
 .folder-bar-tools b { color: var(--ink); }
 .folder-bar-tools button {
-  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 7px;
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: var(--r-control);
   color: var(--ink); background: var(--warm); font-size: 11px;
 }
 .folder-bar-tools button:disabled { opacity: .45; cursor: default; }
@@ -3374,3 +3375,11 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
 }
 /* 高度实在不够时(很矮的窗口)整个选择框也能滚动 */
 .reference-picker { overflow-y: auto; overscroll-behavior: contain; }
+
+/* 文件夹拖动排序:能拖的显示可抓手势;拖着的那个浮起来 */
+.folder-chip.is-sortable { cursor: grab; touch-action: none; }
+.folder-chip.is-sortable .folder-chip-main { cursor: inherit; }
+.folder-chip.is-sorting {
+  z-index: 6; cursor: grabbing; border-color: var(--line-strong); background: var(--paper);
+  box-shadow: 0 10px 24px oklch(20% .02 80 / .22); scale: 1.06;
+}

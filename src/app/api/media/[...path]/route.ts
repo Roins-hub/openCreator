@@ -4,7 +4,8 @@ import { extname } from "node:path";
 import { Readable } from "node:stream";
 import { failure } from "@/lib/http";
 import { ownsMedia, sessionUserId } from "@/lib/identity";
-import { assertKey, browserMediaUrl, thumbProcess, verifyMediaSignature } from "@/lib/object-store";
+import { assertKey, browserMediaUrl, derivedKey, verifyMediaSignature } from "@/lib/object-store";
+import { ensureDerived, hasDerived, variantForWidth, variantProcess, type DerivedVariant } from "@/lib/media-derived";
 import { inside, outDir } from "@/lib/paths";
 import { parseByteRange } from "@/lib/byte-range";
 
@@ -18,13 +19,13 @@ const contentTypes: Record<string, string> = {
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 };
-// 缩略图宽度只给这几档(请求的宽度向上取),同一张图的缩略图不会因为宽度零碎而重复生成、各缓存一份
-const THUMB_WIDTHS = [240, 480, 720, 1080];
-const thumbWidth = (value: string | null) => {
-  if (!value) return 0;
-  const width = Number(value) || 480;
-  return THUMB_WIDTHS.find((item) => item >= width) ?? THUMB_WIDTHS[THUMB_WIDTHS.length - 1];
-};
+/** 要哪种规格:?thumb=<宽度>(≤480 给 480 档,更大给 1080 档) / ?view=1(放大查看的大图);不要就是原文件 */
+function variantOf(query: URLSearchParams): DerivedVariant | undefined {
+  if (query.get("download")) return undefined;
+  if (query.get("view") === "1") return "view";
+  const thumb = query.get("thumb");
+  return thumb ? variantForWidth(Number(thumb) || 480) : undefined;
+}
 
 function streamFile(path: string, start?: number, end?: number) {
   return Readable.toWeb(createReadStream(path, start === undefined ? undefined : { start, end })) as ReadableStream;
@@ -34,7 +35,9 @@ function streamFile(path: string, start?: number, end?: number) {
  * 媒体访问:只有文件所属用户(签名 Cookie)或带有效签名的链接(给中转站拉素材)可以读取。
  * 云存储时跳转到临时直链,浏览器直接从云存储取文件,不经过本站服务器。
  * ?thumb=<宽度>:要缩略图(图片缩小转 WebP、视频取首帧),列表和卡片里用,省流量、出图快;
- * 存储不支持处理时,图片给原图,视频返回 404(页面退回用视频首帧)。
+ * ?view=1:放大查看的大图(原尺寸 WebP,比 PNG 原图小得多);下载(?download=)永远是原文件。
+ * 已经生成保存过的直接给保存好的文件;还没有的先现场处理,同时在后台生成保存(见 media-derived.ts)。
+ * 存储不支持处理时,图片给原图,视频缩略图返回 404(页面退回用视频首帧)。
  */
 export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
   try {
@@ -46,10 +49,16 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
     if (!allowed) return failure(new Error("无权访问该文件"), 404);
 
     const download = query.get("download") || undefined;
-    const width = download ? 0 : thumbWidth(query.get("thumb"));
-    const process = width ? thumbProcess(key, width) : undefined;
+    const variant = variantOf(query);
+    const process = variant ? variantProcess(key, variant) : undefined;
     if (process === null) return failure(new Error("没有缩略图"), 404);
-    const direct = await browserMediaUrl(key, { download, process });
+    let direct: Awaited<ReturnType<typeof browserMediaUrl>>;
+    if (variant && process && await hasDerived(key, variant).catch(() => false)) {
+      direct = await browserMediaUrl(derivedKey(key, variant));
+    } else {
+      direct = await browserMediaUrl(key, { download, process });
+      if (variant && process) ensureDerived(key, variant);
+    }
     if (direct) {
       return new Response(null, {
         status: 302,

@@ -61,5 +61,11 @@ describe("asset names and folders", () => {
     const chatFolder = await store.createAssetFolder(owner, "合同", [], "chat");
     expect((await store.listAssetFolders(owner)).map((item) => item.id)).not.toContain(chatFolder.id);
     expect((await store.listAssetFolders(owner, "chat")).map((item) => item.name)).toEqual(["合同"]);
+
+    // 调整顺序:只动列出来的那些,另一边(聊天附件)的文件夹位置不变
+    const extra = await store.createAssetFolder(owner, "场景二");
+    await store.reorderAssetFolders(owner, [extra.id, people.id]);
+    expect((await store.listAssetFolders(owner)).map((item) => item.name)).toEqual(["场景二", "人物"]);
+    expect((await store.listAssetFolders(owner, "chat")).map((item) => item.name)).toEqual(["合同"]);
   });
 });

@@ -2,6 +2,7 @@ import { inside } from "./paths";
 import { userDir } from "./identity";
 import { readJson, writeJsonAtomic } from "./json-store";
 import { assertKey, deleteObject } from "./object-store";
+import { dropDerived, prepareDerived } from "./media-derived";
 import { buildTurns } from "./turns";
 import type { AssetKind, Conversation } from "./types";
 
@@ -71,6 +72,8 @@ export async function recordAsset(userId: string, record: AssetRecord) {
     const current = (await readIndex(userId)).filter((item) => item.path !== record.path && !isExpired(item));
     await writeJsonAtomic(indexFile(userId), [record, ...current]);
   });
+  // 后台先把缩略图、放大查看的大图生成好(存储不支持处理时什么都不做)
+  prepareDerived(record.path, record.kind);
 }
 
 /** 批量补记(已经有记录的跳过),返回新补上的条数 */
@@ -178,7 +181,10 @@ export async function permanentlyDeleteAssets(userId: string, paths: readonly st
         }
       }));
     }
-    if (deleted.size) await writeJsonAtomic(indexFile(userId), records.filter((item) => !deleted.has(item.path)));
+    if (deleted.size) {
+      await writeJsonAtomic(indexFile(userId), records.filter((item) => !deleted.has(item.path)));
+      await dropDerived([...deleted]).catch(() => undefined);
+    }
     return { deleted: [...deleted], failed };
   });
 }
@@ -238,6 +244,23 @@ export async function renameAssetFolder(userId: string, id: string, name: string
     if (!folders.some((item) => item.id === id)) throw new Error("分组不存在");
     await writeJsonAtomic(foldersFile(userId), folders.map((item) => item.id === id ? { ...item, name: next } : item));
     return next;
+  });
+}
+
+/**
+ * 调整文件夹顺序:order 里的文件夹按这个顺序排,占用它们原来的位置
+ * (另一边的文件夹——聊天附件 / 工作台素材——和没列出来的位置不动)
+ */
+export async function reorderAssetFolders(userId: string, order: readonly string[]) {
+  const wanted = new Set(order);
+  return serial(userId, async () => {
+    const folders = await readFolders(userId);
+    const byId = new Map(folders.map((folder) => [folder.id, folder]));
+    const sorted = order.map((id) => byId.get(id)).filter((folder): folder is AssetFolder => Boolean(folder));
+    let next = 0;
+    const result = folders.map((folder) => wanted.has(folder.id) && next < sorted.length ? sorted[next++] : folder);
+    await writeJsonAtomic(foldersFile(userId), result);
+    return result.map((folder) => folder.id);
   });
 }
 

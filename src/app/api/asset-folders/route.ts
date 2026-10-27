@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  createAssetFolder, deleteAssetFolder, listAssetFolders, renameAssetFolder,
+  createAssetFolder, deleteAssetFolder, listAssetFolders, renameAssetFolder, reorderAssetFolders,
 } from "@/lib/asset-store";
 import { failure, ok } from "@/lib/http";
 import { requireUser } from "@/lib/identity";
@@ -36,11 +36,16 @@ export async function POST(request: Request) {
 }
 
 const renameSchema = z.object({ id: z.string().min(1).max(100), name: nameSchema });
+const orderSchema = z.object({ order: z.array(z.string().min(1).max(100)).max(500) });
 
+/** 改名 { id, name };调整顺序 { order: [文件夹 ID…] } */
 export async function PATCH(request: Request) {
   try {
     const { userId } = await requireUser(request);
-    const input = renameSchema.parse(await request.json());
+    const body = await request.json() as unknown;
+    const ordering = orderSchema.safeParse(body);
+    if (ordering.success) return ok({ order: await reorderAssetFolders(userId, ordering.data.order) });
+    const input = renameSchema.parse(body);
     return ok({ id: input.id, name: await renameAssetFolder(userId, input.id, input.name) });
   } catch (error) {
     return failure(error, 400);

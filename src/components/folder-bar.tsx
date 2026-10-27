@@ -1,8 +1,24 @@
 "use client";
 
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Check, FolderPlus, ListChecks, Pencil, Trash2 } from "lucide-react";
+import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, rectSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { AssetFolder } from "@/lib/asset-store";
+
+/** 拖动排序时给文件夹标签的东西:节点、位移样式、按下的监听、是否正被拖着 */
+type SortBind = { ref: (node: HTMLElement | null) => void; style: CSSProperties; listeners: Record<string, unknown>; sorting: boolean };
+
+function SortableFolder({ id, disabled, children }: { id: string; disabled: boolean; children: (bind: SortBind) => ReactNode }) {
+  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id, disabled });
+  return children({
+    ref: setNodeRef,
+    style: { transform: CSS.Translate.toString(transform), transition },
+    listeners: (listeners || {}) as Record<string, unknown>,
+    sorting: isDragging,
+  });
+}
 
 /** 「全部」「未分组」「新建文件夹」的 ID(和文件夹 ID 共用一个取值空间) */
 export const ALL_FOLDERS = "all";
@@ -13,10 +29,10 @@ export const NEW_FOLDER = "__new__";
  * 素材文件夹一排(@ 选择素材、资产页共用,数据是同一份):
  * 点文件夹筛选;素材拖到文件夹上就移进去(拖到「新建文件夹」直接建一个);
  * 文件夹右边的笔改名(双击也行);「管理文件夹」里多选、全选、删除(里面的素材不删,回到未分组)。
- * 文件夹多了自动换行,不会挤出去。
+ * 按住文件夹拖动可以调整顺序(「全部」「未分组」固定在前面)。文件夹多了自动换行,不会挤出去。
  */
 export function FolderBar({
-  folders, active, onSelect, countOf, dragging = false, dropTarget, landed, onCreate, onRename, onDelete, className = "",
+  folders, active, onSelect, countOf, dragging = false, dropTarget, landed, onCreate, onRename, onDelete, onReorder, className = "",
 }: {
   folders: AssetFolder[];
   active: string;
@@ -29,6 +45,8 @@ export function FolderBar({
   onCreate: (name: string) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (ids: string[]) => void;
+  /** 拖动调整了文件夹顺序(全部文件夹的 ID,按新顺序) */
+  onReorder?: (ids: string[]) => void;
   className?: string;
 }) {
   const [edit, setEdit] = useState<{ id: string; text: string }>();
@@ -42,6 +60,15 @@ export function FolderBar({
   }, [confirming]);
 
   const ids = new Set(folders.map((folder) => folder.id));
+  // 按住移动 6px 以上才算拖动排序:单击筛选、双击改名不受影响
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sortEnd = ({ active: dragged, over }: DragEndEvent) => {
+    if (!over || dragged.id === over.id || !onReorder) return;
+    const order = folders.map((folder) => folder.id);
+    const from = order.indexOf(String(dragged.id));
+    const to = order.indexOf(String(over.id));
+    if (from >= 0 && to >= 0) onReorder(arrayMove(order, from, to));
+  };
   const chosen = [...picked].filter((id) => ids.has(id));
   const allChosen = folders.length > 0 && chosen.length === folders.length;
 
@@ -72,11 +99,11 @@ export function FolderBar({
   });
   const stopManaging = () => { setManaging(false); setPicked(new Set()); setConfirming(false); };
 
-  const chip = (id: string, label: string, droppable: boolean) => {
+  const chip = (id: string, label: string, droppable: boolean, sort?: SortBind) => {
     const folder = ids.has(id);
     const isPicked = managing && folder && picked.has(id);
-    return <div key={id} data-drop-target={droppable ? id : undefined}
-      className={`folder-chip ${active === id ? "active" : ""} ${dropTarget === id ? "drop" : ""} ${dragging && droppable ? "can-drop" : ""} ${landed === id ? "landed" : ""} ${isPicked ? "picked" : ""} ${folder ? "is-folder" : ""}`}>
+    return <div key={id} data-drop-target={droppable ? id : undefined} ref={sort?.ref} style={sort?.style} {...sort?.listeners}
+      className={`folder-chip ${active === id ? "active" : ""} ${dropTarget === id ? "drop" : ""} ${dragging && droppable ? "can-drop" : ""} ${landed === id ? "landed" : ""} ${isPicked ? "picked" : ""} ${folder ? "is-folder" : ""} ${sort?.sorting ? "is-sorting" : ""} ${sort && onReorder && !managing ? "is-sortable" : ""}`}>
       <button type="button" role="tab" aria-selected={active === id} className="folder-chip-main"
         title={folder ? (managing ? "点击选择" : "双击或点右边的笔改名，可把素材拖到这里") : droppable ? "可把素材拖到这里" : undefined}
         onClick={() => { if (managing && folder) toggle(id); else onSelect(id); }}
@@ -93,7 +120,14 @@ export function FolderBar({
     <div className="folder-bar-row" role="tablist" aria-label="素材文件夹">
       {chip(ALL_FOLDERS, "全部", false)}
       {chip(UNGROUPED, "未分组", true)}
-      {folders.map((folder) => editor(folder.id) || chip(folder.id, folder.name, true))}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={sortEnd}>
+        <SortableContext items={folders.map((folder) => folder.id)} strategy={rectSortingStrategy}>
+          {folders.map((folder) => editor(folder.id) ||
+            <SortableFolder key={folder.id} id={folder.id} disabled={!onReorder || managing || Boolean(edit)}>
+              {(sort) => chip(folder.id, folder.name, true, sort)}
+            </SortableFolder>)}
+        </SortableContext>
+      </DndContext>
       {editor(NEW_FOLDER) || (!managing && <div data-drop-target={NEW_FOLDER}
         className={`folder-chip add ${dropTarget === NEW_FOLDER ? "drop" : ""} ${dragging ? "can-drop" : ""} ${landed === NEW_FOLDER ? "landed" : ""}`}>
         <button type="button" className="folder-chip-main" title="新建文件夹（也可以把素材拖到这里）"

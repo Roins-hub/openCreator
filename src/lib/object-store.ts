@@ -129,6 +129,51 @@ export async function deleteObject(key: string) {
   if (!response.ok && response.status !== 404) throw new Error(`云存储删除失败（${response.status}）`);
 }
 
+// ---- 预先生成并保存的缩略图 / 大图(见 media-derived.ts):放在 users/<用户ID>/derived/<规格>/ 下 ----
+export type DerivedVariant = "w480" | "w1080" | "view";
+const DERIVED_KEY = /^users\/[0-9a-f]{32}\/derived\/(w480|w1080|view)\/(videos|images|uploads)\/[^/]+$/;
+
+/** 原文件对应的生成件路径 */
+export function derivedKey(key: string, variant: DerivedVariant) {
+  assertKey(key);
+  const [, userId, ...rest] = key.split("/");
+  return `users/${userId}/derived/${variant}/${rest.join("/")}`;
+}
+
+/** 当前存储能不能现场处理图片 / 视频截帧(火山 TOS) */
+export const mediaProcessing = () => Boolean(store()?.processing);
+
+/** 让云存储按 process 处理原文件,取回处理结果(服务端生成缩略图用) */
+export async function fetchProcessed(key: string, process: string) {
+  assertKey(key);
+  const config = store();
+  if (!config?.processing) throw new Error("当前存储不支持图片处理");
+  const url = config.objectUrl(key);
+  url.searchParams.set("x-tos-process", process);
+  const response = await config.client.fetch(url, { method: "GET" });
+  if (!response.ok) throw new Error(`云存储处理失败（${response.status}）`);
+  return { body: new Uint8Array(await response.arrayBuffer()), contentType: response.headers.get("content-type") || "application/octet-stream" };
+}
+
+export async function putDerived(key: string, body: Uint8Array, contentType: string) {
+  if (!DERIVED_KEY.test(key)) throw new Error("非法媒体路径");
+  const config = store();
+  if (!config) return;
+  const response = await config.client.fetch(config.objectUrl(key), {
+    method: "PUT", body: body as BodyInit,
+    headers: { "Content-Type": contentType, "Content-Length": String(body.byteLength) },
+  });
+  if (!response.ok) throw new Error(`云存储写入失败（${response.status}）`);
+}
+
+export async function deleteDerived(key: string) {
+  if (!DERIVED_KEY.test(key)) throw new Error("非法媒体路径");
+  const config = store();
+  if (!config) return;
+  const response = await config.client.fetch(config.objectUrl(key), { method: "DELETE" });
+  if (!response.ok && response.status !== 404) throw new Error(`云存储删除失败（${response.status}）`);
+}
+
 /** 读取对象内容(生图时把参考图转交给中转站) */
 export async function getObject(key: string) {
   assertKey(key);

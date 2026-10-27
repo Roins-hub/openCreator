@@ -8,7 +8,7 @@ import { mediaDownloadUrl } from "@/lib/download-files";
 import { GenerationInfo } from "@/components/generation-info";
 import { ImageZoom } from "@/components/image-zoom";
 import { ProgressVideo } from "@/components/load-progress";
-import { mediaUrl, thumbUrl } from "@/lib/media-url";
+import { mediaUrl, thumbUrl, viewUrl } from "@/lib/media-url";
 
 const INFO_KEY = "mote.viewerInfo";
 
@@ -58,7 +58,7 @@ export function ResultViewer({
         <div className="viewer-media">
           {isVideo
             ? <ProgressVideo key={current.path} src={mediaUrl(current.path)} poster={thumbUrl(current.path, 480)} controls autoPlay playsInline />
-            : <ImageZoom key={current.path} src={mediaUrl(current.path)} alt={current.name} preview={thumbUrl(current.path, 720)} />}
+            : <ImageZoom key={current.path} src={viewUrl(current.path)} alt={current.name} preview={thumbUrl(current.path, 1080)} />}
           <div className="video-viewer-bar">
             <p title={prompt}>{prompt || current.name}</p>
             {items.length > 1 && <span>{index + 1} / {items.length}</span>}

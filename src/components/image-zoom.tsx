@@ -185,7 +185,7 @@ export function ImageZoom({ src, alt, preview }: { src: string; alt: string; pre
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {shown && <img className="image-viewer-img" src={shown} alt={alt} draggable={false} onLoad={() => setLoaded(true)}
         style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, ...(loaded ? {} : { display: "none" }) }} />}
-      {!loaded && <LoadProgress label="加载原图"
+      {!loaded && <LoadProgress label="加载大图"
         percent={progress.total ? (progress.loaded / progress.total) * 100 : undefined}
         loaded={progress.total ? progress.loaded : undefined} total={progress.total} />}
     </div>

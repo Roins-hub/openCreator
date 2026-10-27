@@ -273,6 +273,19 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
       setFolders((items) => items.map((item) => item.id === id ? { ...item, name: result.name } : item));
     } catch (cause) { setError((cause as Error).message); }
   };
+  /** 拖动调整文件夹顺序:先在界面上换好,再告诉服务端(失败就换回去) */
+  const reorderFolders = async (order: string[]) => {
+    const previous = folders;
+    const byId = new Map(folders.map((item) => [item.id, item]));
+    setFolders([...order.map((id) => byId.get(id)).filter((item): item is AssetFolder => Boolean(item)),
+      ...folders.filter((item) => !order.includes(item.id))]);
+    try {
+      await request("/api/asset-folders", jsonInit("PATCH", { order }));
+    } catch (cause) {
+      setFolders(previous);
+      setError((cause as Error).message);
+    }
+  };
   const deleteFolders = async (ids: string[]) => {
     setError("");
     try {
@@ -487,7 +500,7 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
         countOf={(id) => assets.filter((asset) => !asset.trashed && inFolder(asset, id)).length}
         dragging={Boolean(cardDrag.drag)} dropTarget={cardDrag.dropTarget} landed={cardDrag.landed}
         onCreate={(name) => void createFolder(name)} onRename={(id, name) => void renameFolder(id, name)}
-        onDelete={(ids) => void deleteFolders(ids)} />}
+        onDelete={(ids) => void deleteFolders(ids)} onReorder={(ids) => void reorderFolders(ids)} />}
       {query && !error && <p className="asset-result-count">找到 {visible.length} 个匹配「{query.trim()}」的{chat ? "附件" : "资产"}</p>}
       {error && <div className="settings-error">{readableError(error)}</div>}
       {notice && <p className="asset-notice">{notice}</p>}

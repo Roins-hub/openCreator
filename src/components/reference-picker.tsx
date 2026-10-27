@@ -34,7 +34,7 @@ const baseName = (name: string) => name.replace(/\.[a-z0-9]{1,6}$/i, "");
  */
 export function ReferencePicker({
   style: position, closing = false, assets, recent, folders, loading, isAttached, onPick, onAttach, onUpload, onClose,
-  onRename, onTrash, onMove, onCreateFolder, onRenameFolder, onDeleteFolder,
+  onRename, onTrash, onMove, onCreateFolder, onRenameFolder, onDeleteFolder, onReorderFolders,
 }: {
   /** 位置(left / top / bottom),maxHeight:能用的最大高度(超出时里面的列表变矮、自己滚动) */
   style: CSSProperties & { maxHeight?: number };
@@ -58,6 +58,8 @@ export function ReferencePicker({
   onCreateFolder: (name: string, paths: string[]) => Promise<AssetFolder>;
   onRenameFolder: (id: string, name: string) => Promise<unknown>;
   onDeleteFolder: (id: string) => Promise<unknown>;
+  /** 拖动调整文件夹顺序 */
+  onReorderFolders?: (ids: string[]) => Promise<unknown>;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState(ALL_FOLDERS);
@@ -214,6 +216,7 @@ export function ReferencePicker({
       dragging={Boolean(cardDrag.drag)} dropTarget={cardDrag.dropTarget} landed={cardDrag.landed}
       onCreate={(name) => createFolder(name, [])}
       onRename={(id, name) => run(() => onRenameFolder(id, name))}
+      onReorder={onReorderFolders ? (ids) => run(() => onReorderFolders(ids)) : undefined}
       onDelete={(ids) => {
         if (ids.includes(current)) setFilter(ALL_FOLDERS);
         run(async () => { for (const id of ids) await onDeleteFolder(id); });
