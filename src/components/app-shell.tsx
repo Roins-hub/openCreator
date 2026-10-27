@@ -166,8 +166,6 @@ export function AppShell() {
   const [attachmentPreview, setAttachmentPreview] = useState<number | null>(null);
   const [referenceAssets, setReferenceAssets] = useState<(Asset & { kind: MediaKind })[]>([]);
   const [referenceFolders, setReferenceFolders] = useState<AssetFolder[]>([]);
-  // 这次打开页面后在输入框里上传的素材(@ 选择框左边「刚上传」一栏;发送后也还在,刷新页面后清空)
-  const [sessionUploads, setSessionUploads] = useState<MediaRef[]>([]);
   // 素材库列表:打开页面后先在后台读一次,点 @ 时直接用,同时再刷新一次(不用等它才弹出)
   const [referenceLoading, setReferenceLoading] = useState(false);
   // 列表是哪个 Key 读的:换了账号就不再显示上一个账号的素材
@@ -188,7 +186,7 @@ export function AppShell() {
   const [beforeOptimize, setBeforeOptimize] = useState<{ html: string; draft: string }>();
   // 从「对话」页带过来的提示词(/?compose=...&kind=image),模型和 Key 就绪后填进输入框
   const composeRef = useRef<{ prompt: string; kind: string } | null>(null);
-  const [referencePickerPosition, setReferencePickerPosition] = useState<{ left: number; top?: number; bottom?: number }>({ left: 10, top: 8 });
+  const [referencePickerPosition, setReferencePickerPosition] = useState<{ left: number; top?: number; bottom?: number; maxHeight?: number }>({ left: 10, top: 8 });
   const referenceRangeRef = useRef<Range | null>(null);
   const referenceAnchorRef = useRef<DOMRect | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -463,18 +461,26 @@ export function AppShell() {
       ? savedAnchor : editorRect;
     const composerRect = composer.getBoundingClientRect();
     const pickerWidth = Math.min(680, window.innerWidth - 32);
-    const left = Math.max(8, Math.min(markerRect.left - 14, window.innerWidth - pickerWidth - 8));
-    // 放大编辑时贴着光标下方弹出(放不下就放上方)
+    const leftOf = (rect: DOMRect) => Math.max(8, Math.min(rect.left - 14, window.innerWidth - pickerWidth - 8));
+    const GAP = 10;
+    const MARGIN = 8;
+    // 放大编辑时编辑区几乎占满屏幕,不能按整个编辑区定位(上方放不下会被顶出屏幕):
+    // 有光标就跟着光标,没有就贴着下面的 @ 按钮;上下哪边空间大放哪边,高度按剩下的空间收
     if (composer.classList.contains("is-expanded")) {
-      const below = markerRect.bottom + 10;
-      setReferencePickerPosition(window.innerHeight - below > 300
-        ? { left, top: below } : { left, bottom: window.innerHeight - markerRect.top + 10 });
+      const caret = savedAnchor && savedAnchor.height > 0 && savedAnchor.height < 80 ? savedAnchor : undefined;
+      const anchor = caret || composer.querySelector(".reference-trigger")?.getBoundingClientRect() || markerRect;
+      const below = window.innerHeight - anchor.bottom - GAP - MARGIN;
+      const above = anchor.top - GAP - MARGIN;
+      setReferencePickerPosition(caret && below >= 380 || below > above
+        ? { left: leftOf(anchor), top: anchor.bottom + GAP, maxHeight: below }
+        : { left: leftOf(anchor), bottom: window.innerHeight - anchor.top + GAP, maxHeight: above });
       return;
     }
     // 贴着输入框上沿弹出(用 bottom 锚定,内容多少都不会悬空);上方空间不够时改到输入框下方。
+    const left = leftOf(markerRect);
     setReferencePickerPosition(composerRect.top > 240
-      ? { left, bottom: window.innerHeight - composerRect.top + 10 }
-      : { left, top: composerRect.bottom + 10 });
+      ? { left, bottom: window.innerHeight - composerRect.top + GAP, maxHeight: composerRect.top - GAP - MARGIN }
+      : { left, top: composerRect.bottom + GAP, maxHeight: window.innerHeight - composerRect.bottom - GAP - MARGIN });
   }, []);
 
   const captureReferenceAnchor = () => {
@@ -604,14 +610,12 @@ export function AppShell() {
   const renameReference = (path: string, name: string) => patchAssets({ action: "rename", path, name }).then((result) => {
     const next = result.name || name;
     setReferenceAssets((items) => items.map((asset) => asset.path === path ? { ...asset, name: next } : asset));
-    setSessionUploads((items) => items.map((item) => item.path === path ? { ...item, name: next } : item));
     setAttachments((items) => items.some((item) => item.path === path)
       ? items.map((item) => item.path === path ? { ...item, name: next } : item) : items);
   }, reportError);
   const trashReferences = (paths: string[]) => patchAssets({ action: "trash", paths }).then(() => {
     const removed = new Set(paths);
     setReferenceAssets((items) => items.filter((asset) => !removed.has(asset.path)));
-    setSessionUploads((items) => items.filter((item) => !removed.has(item.path)));
   }, reportError);
   const moveReferences = (paths: string[], folder: string | null) => patchAssets({ action: "move", paths, folder }).then(() => {
     const moved = new Set(paths);
@@ -716,9 +720,11 @@ export function AppShell() {
     if (point) insertReferenceCards(next.filter((item) => assets.some((asset) => asset.path === item.path)), next, rangeAtPoint(point));
   };
 
-  // 「刚上传」一栏:素材库里有记录的按记录(改过名、分过文件夹),还没读到的按上传时的信息
-  const recentUploads: PickerAsset[] = sessionUploads
-    .filter((item) => modeKinds.includes(item.kind))
+  // 「刚上传」一栏:输入框里现在这些自己上传的素材(带本地预览的就是从这台电脑传上去的;从素材库选的没有),
+  // 最新的在上面;在输入框里删掉、清空就跟着没了(素材库里还在),再上传的直接顶上
+  const recentUploads: PickerAsset[] = attachments
+    .filter((item) => item.previewUrl && !item.uploading && modeKinds.includes(item.kind))
+    .reverse()
     .map((item) => {
       const known = libraryByPath.get(item.path);
       return {
@@ -942,7 +948,6 @@ export function AppShell() {
         const uploaded = await uploadMedia(file, request, progress);
         setAttachments((items) => items.map((item) =>
           item.path === placeholder.path ? { ...uploaded, previewUrl: item.previewUrl } : item));
-        setSessionUploads((items) => [uploaded, ...items.filter((item) => item.path !== uploaded.path)]);
       } catch (cause) {
         setAttachments((items) => items.filter((item) => item.path !== placeholder.path));
         revokePreview(placeholder);

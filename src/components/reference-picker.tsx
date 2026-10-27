@@ -33,10 +33,11 @@ const baseName = (name: string) => name.replace(/\.[a-z0-9]{1,6}$/i, "");
  * 「管理」模式下多选、全选、批量移动和删除。文件夹和资产页是同一份。
  */
 export function ReferencePicker({
-  style, closing = false, assets, recent, folders, loading, isAttached, onPick, onAttach, onUpload, onClose,
+  style: position, closing = false, assets, recent, folders, loading, isAttached, onPick, onAttach, onUpload, onClose,
   onRename, onTrash, onMove, onCreateFolder, onRenameFolder, onDeleteFolder,
 }: {
-  style: CSSProperties;
+  /** 位置(left / top / bottom),maxHeight:能用的最大高度(超出时里面的列表变矮、自己滚动) */
+  style: CSSProperties & { maxHeight?: number };
   /** 正在收起(播放收起动画) */
   closing?: boolean;
   assets: PickerAsset[];
@@ -180,6 +181,8 @@ export function ReferencePicker({
   };
 
   const previewList = preview?.list === "recent" ? recentShown : visible;
+  const { maxHeight, ...placement } = position;
+  const style = { ...placement, ...(maxHeight ? { maxHeight, "--picker-max": `${maxHeight}px` } : {}) } as CSSProperties;
   return <div className={`reference-picker ${managing ? "is-managing" : ""} ${closing ? "is-closing" : ""}`} role="dialog"
     aria-label="选择参考内容" style={style} inert={closing} data-drop-block>
     <div className="reference-picker-head">

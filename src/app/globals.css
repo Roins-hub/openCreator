@@ -740,7 +740,11 @@ a { color: inherit; text-decoration: none; }
 .reference-picker-head strong { font-size: 11px; }
 .reference-picker-head .icon-button { width: 26px; height: 26px; }
 .reference-picker-empty { padding: 26px 12px; color: var(--faint); font-size: 11px; text-align: center; }
-.reference-picker-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; max-height: 260px; overflow-y: auto; }
+/* 列表高度跟着选择框能用的高度收(--picker-max,见 app-shell 的定位),标题、搜索、文件夹大约占 210px */
+.reference-picker-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; overflow-y: auto;
+  max-height: max(120px, min(260px, calc(var(--picker-max, 2000px) - 210px)));
+}
 .reference-picker-item { position: relative; min-width: 0; padding: 4px; border: 1px solid transparent; border-radius: 8px; color: var(--muted); background: transparent; }
 .reference-picker-item:hover, .reference-picker-item.selected { border-color: var(--line); color: var(--ink); background: var(--warm); }
 .reference-picker-item.picked { border-color: var(--ink); color: var(--ink); background: var(--warm); }
@@ -3352,7 +3356,10 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
 .reference-recent > small { display: flex; align-items: center; gap: 5px; margin: 2px 2px 8px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .reference-recent > small i { color: var(--faint); font-size: 10px; font-style: normal; font-weight: 400; }
 /* 两个一排并排显示 */
-.reference-recent-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 6px; max-height: 330px; overflow-y: auto; }
+.reference-recent-list {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 6px; overflow-y: auto;
+  max-height: max(120px, min(330px, calc(var(--picker-max, 2000px) - 150px)));
+}
 .reference-recent-empty {
   display: grid; justify-items: center; gap: 5px; padding: 18px 6px; border: 1px dashed var(--line-strong); border-radius: 9px;
   color: var(--muted); background: transparent; font-size: 11px; text-align: center;
@@ -3365,3 +3372,5 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
   .reference-recent-list { display: flex; flex-direction: row; max-height: none; overflow-x: auto; }
   .reference-recent-list .reference-picker-item { flex: 0 0 84px; }
 }
+/* 高度实在不够时(很矮的窗口)整个选择框也能滚动 */
+.reference-picker { overflow-y: auto; overscroll-behavior: contain; }
