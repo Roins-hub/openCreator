@@ -80,6 +80,8 @@ export function createReferenceCard(path: string, name: string, label: string, k
   const card = document.createElement("span");
   card.className = REFERENCE_CARD_CLASS;
   card.contentEditable = "false";
+  // 不用浏览器自带的拖动(拖出来放不下);输入框里按住可以用卡片式拖动换位置(见 app-shell)
+  card.draggable = false;
   card.dataset.path = path;
   card.dataset.label = label;
   card.dataset.kind = kind;
@@ -89,6 +91,7 @@ export function createReferenceCard(path: string, name: string, label: string, k
   if (kind === "image" || kind === "video") {
     // 缩略图(图片缩小、视频截首帧);拿不到时图片退回原图,视频退回预读首帧
     const image = document.createElement("img");
+    image.draggable = false;
     image.src = `/api/media/${path}?thumb=240`;
     image.alt = name;
     image.decoding = "async";

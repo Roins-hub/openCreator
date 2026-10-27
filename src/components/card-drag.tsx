@@ -61,10 +61,11 @@ export function useCardDrag(onDrop: (target: string, paths: string[], point: Dro
   useEffect(() => () => stopSwallowRef.current?.(), []);
 
   /** 在素材上按下时调用;移动超过几像素才算拖动(只是点一下不受影响)。手指保留滚动,不触发拖动 */
-  const begin = (event: ReactPointerEvent<HTMLElement>, media: DragMedia, paths: string[]) => {
+  /** source:拖的是哪个元素(卡片从它的位置拿起);不传就是绑定事件的那个元素 */
+  const begin = (event: ReactPointerEvent<HTMLElement>, media: DragMedia, paths: string[], source?: HTMLElement) => {
     if (event.button !== 0 || event.pointerType === "touch" || !paths.length) return;
     if ((event.target as HTMLElement).closest("input, textarea, select, video, audio, a, [data-no-drag]")) return;
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = (source ?? event.currentTarget).getBoundingClientRect();
     const startX = event.clientX;
     const startY = event.clientY;
     let started = false;

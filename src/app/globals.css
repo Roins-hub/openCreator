@@ -3398,3 +3398,6 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
 .asset-zoom:hover { background: oklch(15% 0.01 80 / .65); transform: scale(1.06); }
 @media (hover: none) { .asset-preview .asset-zoom { opacity: 1; } }
 .asset-preview img.is-zoomable { cursor: zoom-in; }
+/* 提示词里的「图N」小卡片可以按住拖动换位置 */
+.composer-editor .reference-inline-card { cursor: grab; }
+body.is-card-dragging .composer-editor .reference-inline-card { cursor: grabbing; }

@@ -709,6 +709,28 @@ export function AppShell() {
     setDraft(editor.innerText);
   };
 
+  // 提示词里的「图N」小卡片:按住拖到别处,松手就移到那里(是移动,不是复制)
+  const movingCardRef = useRef<HTMLElement | null>(null);
+  const inlineCardDrag = useCardDrag((target, paths, point) => {
+    const card = movingCardRef.current;
+    movingCardRef.current = null;
+    const editor = editorRef.current;
+    if (target !== EDITOR_DROP || !card || !editor?.contains(card) || !paths.length) return;
+    const range = rangeAtPoint(point);
+    if (!range || card.contains(range.startContainer)) return;
+    // 原位置后面跟着的空格一起带走,免得留下两个空格
+    const spacer = card.nextSibling?.nodeType === Node.TEXT_NODE && card.nextSibling.textContent === " " ? card.nextSibling : null;
+    range.insertNode(card);
+    const after = spacer ?? document.createTextNode(" ");
+    card.after(after);
+    range.setStartAfter(after);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    setDraft(editor.innerText);
+  });
+
   // 输入框里已有的素材(上面那一叠)拖到写提示词的地方:在松手处插入「图N」引用
   const attachmentDrag = useCardDrag((target, paths, point) => {
     if (target !== EDITOR_DROP) return;
@@ -1703,6 +1725,7 @@ export function AppShell() {
                 </div>
               )}
               {attachmentDrag.overlay}
+              {inlineCardDrag.overlay}
               {attachmentPreview !== null && attachments[attachmentPreview] && (
                 <MediaPreview
                   items={attachments.map((item, index) => ({
@@ -1723,6 +1746,19 @@ export function AppShell() {
               )}
               <div ref={editorRef} className="composer-editor" contentEditable suppressContentEditableWarning role="textbox" aria-label="提示词"
                 data-drop-target={EDITOR_DROP} data-drop-external
+                onPointerDown={(event) => {
+                  const card = (event.target as HTMLElement).closest<HTMLElement>(`.${REFERENCE_CARD_CLASS}`);
+                  if (!card || event.button !== 0) return;
+                  // 不让浏览器开始选文字 / 自带的拖动
+                  event.preventDefault();
+                  const kind = (card.dataset.kind as MediaRef["kind"] | undefined) || "image";
+                  const path = card.dataset.path || "";
+                  movingCardRef.current = card;
+                  inlineCardDrag.begin(event, { kind, path, name: card.title || card.dataset.label || "" }, path ? [path] : [], card);
+                }}
+                onDragStart={(event) => {
+                  if ((event.target as HTMLElement).closest?.(`.${REFERENCE_CARD_CLASS}`)) event.preventDefault();
+                }}
                 data-placeholder={imageModel
                   ? attachments.length ? "描述想怎样修改或组合这些图片，输入 @ 引用参考图…" : "描述你想要的画面、风格和构图；添加参考图可按图修改"
                   : attachments.length ? "描述画面、运动和镜头，输入 @ 引用素材…" :
