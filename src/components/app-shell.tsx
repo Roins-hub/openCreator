@@ -70,6 +70,13 @@ type CatalogModel = VideoModel | ImageModel;
 /** 输入框里的素材:上传完成前用本地 blob 预览,上传完成后换成服务器路径(仍保留 blob 预览避免闪烁)。 */
 type ComposerAttachment = MediaRef & { previewUrl?: string; uploading?: boolean; progress?: number };
 const TASK_LAYOUT_KEY = "mote.taskLayout";
+// 左侧对话栏的宽度(拖右边缘调整,记在浏览器里);字号、行高、图标跟着宽度一起放大缩小
+const SIDEBAR_WIDTH_KEY = "mote.sidebarWidth";
+const SIDEBAR_DEFAULT = 264, SIDEBAR_MIN = 220, SIDEBAR_MAX = 460;
+const clampSidebar = (width: number) => Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, width)));
+/** 宽度对应的缩放:默认宽是 1,最窄 0.92,最宽 1.28 */
+const sidebarScale = (width: number) => Math.min(1.28, Math.max(0.92, 1 + (width - SIDEBAR_DEFAULT) / 560));
+const sidebarVars = (width: number) => ({ "--sidebar-user-w": `${width}px`, "--side-scale": sidebarScale(width).toFixed(3) });
 
 /**
  * 列表 / 网格切换的过渡:整个列表先轻轻淡出,换好布局后(原来最上面那条还停在原处),
@@ -225,6 +232,44 @@ export function AppShell() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY));
+        if (saved) setSidebarWidth(clampSidebar(saved));
+      } catch { /* 用默认宽度 */ }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const sidePanelsRef = useRef<HTMLDivElement>(null);
+  /** 拖对话栏右边缘:拖动中直接改 CSS 变量(不重新渲染整页),松手再记下来 */
+  const startSidebarResize = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const panels = sidePanelsRef.current;
+    if (!panels) return;
+    const startX = event.clientX, startWidth = sidebarWidth;
+    let width = startWidth;
+    document.body.classList.add("is-resizing-sidebar");
+    const move = (moveEvent: PointerEvent) => {
+      width = clampSidebar(startWidth + moveEvent.clientX - startX);
+      Object.entries(sidebarVars(width)).forEach(([name, value]) => panels.style.setProperty(name, value));
+    };
+    const up = () => {
+      document.body.classList.remove("is-resizing-sidebar");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setSidebarWidth(width);
+      try { window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width)); } catch { /* 只影响下次打开 */ }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const resetSidebarWidth = () => {
+    setSidebarWidth(SIDEBAR_DEFAULT);
+    try { window.localStorage.removeItem(SIDEBAR_WIDTH_KEY); } catch { /* 只影响下次打开 */ }
+  };
   // 网格里点开详情的那条记录
   const [detailId, setDetailId] = useState<string | null>(null);
   const chooseLayout = (layout: "list" | "grid") => {
@@ -1609,7 +1654,8 @@ export function AppShell() {
   return (
     <ImageEditContext.Provider value={imageEditTargets}>
     <main className="app-frame">
-      <div className={`side-panels ${sidebarOpen ? "is-open" : ""}`}>
+      <div className={`side-panels ${sidebarOpen ? "is-open" : ""}`} ref={sidePanelsRef}
+        style={sidebarVars(sidebarWidth) as React.CSSProperties}>
       <nav className="app-rail" aria-label="主导航">
         <button type="button" className="rail-logo" onClick={() => void create()} aria-label="新建对话" title="新建对话">
           <LogoMark size={30} />
@@ -1626,6 +1672,16 @@ export function AppShell() {
         </div>
       </nav>
       <aside className="sidebar">
+        <div className="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="调整对话栏宽度"
+          aria-valuemin={SIDEBAR_MIN} aria-valuemax={SIDEBAR_MAX} aria-valuenow={sidebarWidth} tabIndex={0}
+          title="拖动调整宽度，双击恢复默认" onPointerDown={startSidebarResize} onDoubleClick={resetSidebarWidth}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            const next = clampSidebar(sidebarWidth + (event.key === "ArrowRight" ? 16 : -16));
+            setSidebarWidth(next);
+            try { window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(next)); } catch { /* 只影响下次打开 */ }
+          }} />
         <div className="sidebar-head">
           <button className="wordmark" onClick={() => void create()} aria-label="新建对话" title="新建对话">TZ生成工作台</button>
           <div className="sidebar-head-actions">

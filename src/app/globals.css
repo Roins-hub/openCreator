@@ -232,7 +232,7 @@ a { color: inherit; text-decoration: none; }
 .app-frame { display: flex; height: 100dvh; overflow: hidden; }
 /* 左侧两栏:导航栏(创作 / 资产 / 聊天 / 文档 / 设置)+ 对话列表,收起时一起滑出去 */
 .side-panels {
-  --rail-w: 72px; --sidebar-w: 264px;
+  --rail-w: 72px; --sidebar-w: var(--sidebar-user-w, 264px);
   position: relative; z-index: 2; display: flex; flex: 0 0 auto; height: 100%;
   transition: transform .28s cubic-bezier(.16, 1, .3, 1), margin .28s cubic-bezier(.16, 1, .3, 1);
 }
@@ -251,7 +251,7 @@ a { color: inherit; text-decoration: none; }
   transition: background .15s, color .15s, box-shadow .2s;
 }
 .sidebar {
-  width: var(--sidebar-w); flex: 0 0 var(--sidebar-w); display: flex; flex-direction: column;
+  position: relative; width: var(--sidebar-w); flex: 0 0 var(--sidebar-w); display: flex; flex-direction: column;
   padding: 18px 14px 14px; background: var(--warm); border-right: 1px solid var(--line);
 }
 .sidebar-head { height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 5px; }
@@ -1239,7 +1239,7 @@ a { color: inherit; text-decoration: none; }
 
 @media (max-width: 700px) {
   .side-panels {
-    --rail-w: 64px; --sidebar-w: min(calc(86vw - 64px), 280px);
+    --rail-w: 64px; --sidebar-w: min(calc(86vw - 64px), 280px); --side-scale: 1 !important;
     position: fixed; z-index: 30; inset: 0 auto 0 0; margin: 0;
     transform: translateX(-102%); box-shadow: 20px 0 60px oklch(20% 0.02 80 / .12);
   }
@@ -3619,8 +3619,13 @@ body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transitio
 @keyframes image-editor-rise { from { opacity: 0; transform: translateY(18px); } }
 @keyframes image-editor-drop-out { to { opacity: 0; transform: translateY(-18px); } }
 @keyframes image-editor-rise-out { to { opacity: 0; transform: translateY(18px); } }
-.image-editor button { font: inherit; transition: transform .14s cubic-bezier(.2, 1.4, .4, 1), background-color .18s, color .18s, border-color .18s, opacity .18s; }
-.image-editor button:not(:disabled):active { transform: scale(.94); }
+/* 编辑器里的按钮:默认透明底(不写的话是浏览器自带的灰底),颜色全用主题变量,换主题跟着变;
+   用 :where 不加权重,各按钮自己的样式照常生效 */
+:where(.image-editor) button {
+  border: 0; color: inherit; background: transparent; font: inherit;
+  transition: transform .14s cubic-bezier(.2, 1.4, .4, 1), background-color .18s, color .18s, border-color .18s, opacity .18s;
+}
+:where(.image-editor) button:not(:disabled):active { transform: scale(.94); }
 .image-editor button:disabled { opacity: .4; cursor: default; }
 .image-editor-bar {
   display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px;
@@ -3632,17 +3637,17 @@ body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transitio
   transition: background .15s, color .15s;
 }
 .image-editor-history > button.text { width: auto; padding: 0 10px; font-size: 13px; }
-.image-editor-history > button:not(:disabled):not(.image-editor-name):hover, .image-editor-options .group > button:hover { color: var(--ink); background: var(--warm); }
+.image-editor-history > button:not(:disabled):not(.image-editor-name):hover, .image-editor-options .group > button:hover { color: var(--ink); background: var(--row-active); }
 .image-editor-name {
-  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 30px; margin-left: 8px; padding: 0 10px;
-  border-radius: max(var(--r-control), 8px); color: var(--muted); font-size: 12px;
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: min(260px, 100%); height: 26px; margin-left: 6px; padding: 0 8px;
+  border-radius: max(var(--r-control), 7px); color: var(--muted); font-size: 12px; line-height: 1;
 }
 .image-editor-name > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.image-editor-name > svg { flex: none; opacity: .55; transition: opacity .18s, transform .25s cubic-bezier(.2, 1.4, .4, 1); }
-.image-editor-name:hover { color: var(--ink); background: var(--warm); }
+.image-editor-name > svg { flex: none; width: 12px; height: 12px; opacity: .55; transition: opacity .18s, transform .25s cubic-bezier(.2, 1.4, .4, 1); }
+.image-editor-name:hover { color: var(--ink); background: var(--row-active); }
 .image-editor-name:hover > svg { opacity: 1; transform: rotate(-12deg) scale(1.1); }
 .image-editor-rename {
-  min-width: 0; width: min(320px, 100%); height: 30px; margin-left: 8px; padding: 0 10px; border: 1px solid var(--focus);
+  min-width: 0; width: min(260px, 100%); height: 26px; margin-left: 6px; padding: 0 8px; border: 1px solid var(--focus);
   border-radius: max(var(--r-control), 8px); color: var(--ink); background: var(--paper); font: inherit; font-size: 12px; outline: 0;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); animation: image-editor-rename-in .26s cubic-bezier(.16, 1, .3, 1);
 }
@@ -3663,15 +3668,16 @@ body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transitio
 .image-editor-actions > button {
   height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: max(var(--r-control), 8px); color: var(--ink); background: var(--paper); font-size: 13px;
 }
-.image-editor-actions > button:hover { background: var(--warm); }
+.image-editor-actions > button:hover { border-color: var(--line-strong); background: var(--card-hover); }
 .image-editor-actions > button.danger { border-color: color-mix(in srgb, var(--danger) 40%, transparent); color: var(--danger); }
 .image-editor-notice { color: var(--muted); font-size: 12px; animation: image-editor-notice-in .4s cubic-bezier(.16, 1, .3, 1); }
 @keyframes image-editor-notice-in { from { opacity: 0; transform: translateX(8px); } }
 .image-editor-save { position: relative; }
 .image-editor-save > .primary {
   display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 16px; border-radius: max(var(--r-control), 8px);
-  color: var(--paper); background: var(--ink); font-size: 13px; font-weight: 600; transition: transform .15s, opacity .15s;
+  color: var(--accent-ink); background: var(--accent-bg); font-size: 13px; font-weight: 600;
 }
+.image-editor-save > .primary:not(:disabled):hover { filter: brightness(1.08); }
 .image-editor-save > .primary:not(:disabled):hover { transform: translateY(-1px); }
 .image-editor-menu {
   position: absolute; z-index: 2; top: calc(100% + 6px); right: 0; width: 248px; padding: 6px;
@@ -3690,7 +3696,8 @@ body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transitio
   color: var(--ink); text-align: left;
 }
 .image-editor-menu > button > svg { flex: none; margin-top: 2px; color: var(--muted); }
-.image-editor-menu > button:hover { background: var(--warm); }
+.image-editor-menu > button:hover { background: var(--row-active); }
+.image-editor-menu > button:hover > svg { color: var(--ink); }
 .image-editor-menu b { display: block; font-size: 13px; font-weight: 600; }
 .image-editor-menu small { display: block; margin-top: 1px; color: var(--muted); font-size: 12px; }
 .image-editor-stage { position: relative; display: grid; place-items: center; min-height: 0; overflow: hidden; }
@@ -3764,7 +3771,7 @@ body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transitio
 .image-editor-options .chips > button {
   width: auto; height: 30px; padding: 0 10px; border: 1px solid transparent; font-size: 12px;
 }
-.image-editor-options .chips > button[aria-pressed="true"] { border-color: var(--line-strong); color: var(--ink); background: var(--warm); font-weight: 600; }
+.image-editor-options .chips > button[aria-pressed="true"] { border-color: var(--line-strong); color: var(--ink); background: var(--row-active); font-weight: 600; }
 .image-editor-options .slider { display: grid; gap: 4px; width: 168px; color: var(--muted); font-size: 12px; }
 .image-editor-options .slider b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .image-editor-options input[type="range"] { width: 100%; accent-color: var(--ink); }
@@ -3773,7 +3780,7 @@ body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transitio
   display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border: 1px solid var(--line-strong);
   border-radius: max(var(--r-control), 8px); color: var(--ink); background: var(--paper); font-size: 13px; font-weight: 600;
 }
-.image-editor-options .apply:not(:disabled):hover { background: var(--warm); }
+.image-editor-options .apply:not(:disabled):hover { border-color: var(--ink); background: var(--card-hover); }
 .image-editor-options .swatches > button {
   width: 26px; height: 26px; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 0 0 1px oklch(0% 0 0 / .15);
   transition: transform .15s cubic-bezier(.2, 1.4, .4, 1);
@@ -3815,3 +3822,55 @@ body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transitio
 @media (prefers-reduced-motion: reduce) {
   .task-detail-body .task-main > *, .task-detail-body .task-preview, .task-detail-body .image-result { animation: none; }
 }
+
+/* ---------- 左侧对话栏:拖右边缘调宽,字号、行高、文件夹、图标跟着按比例变 ---------- */
+.sidebar-resizer {
+  position: absolute; z-index: 5; top: 0; right: -4px; bottom: 0; width: 8px; cursor: col-resize; touch-action: none; outline: 0;
+}
+.sidebar-resizer::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; border-radius: 2px;
+  background: var(--focus); opacity: 0; transition: opacity .18s, background-color .18s;
+}
+.sidebar-resizer:hover::after, .sidebar-resizer:focus-visible::after { opacity: .6; }
+body.is-resizing-sidebar { cursor: col-resize; user-select: none; }
+body.is-resizing-sidebar .sidebar-resizer::after { opacity: 1; background: var(--ink); }
+/* 拖动时宽度跟手,不要收起 / 展开那段过渡 */
+body.is-resizing-sidebar .side-panels { transition: none; }
+@media (max-width: 700px) { .sidebar-resizer { display: none; } }
+
+.sidebar { --s: var(--side-scale, 1); }
+.sidebar .wordmark { font-size: calc(18px * var(--s)); }
+.sidebar .new-chat { height: calc(40px * var(--s)); font-size: calc(13px * var(--s)); }
+.sidebar .history-label { font-size: calc(10px * var(--s)); }
+.sidebar .history-search input { font-size: calc(12px * var(--s)); }
+.sidebar .group-head { height: calc(34px * var(--s)); }
+.sidebar .group-toggle { font-size: calc(12px * var(--s)); }
+.sidebar .group-toggle em { font-size: calc(10px * var(--s)); }
+.sidebar .group-items { padding-left: calc(14px * var(--s)); }
+.sidebar .group-empty { font-size: calc(11px * var(--s)); }
+.sidebar .history-row { height: calc(38px * var(--s)); }
+.sidebar .history-title { font-size: calc(13px * var(--s)); }
+.sidebar .history-sublabel { font-size: calc(10px * var(--s)); }
+.sidebar .history-empty, .sidebar .history-hint { font-size: calc(12px * var(--s)); }
+/* 图标(文件夹、箭头、搜索、新对话的 +)跟着一起放大缩小 */
+.sidebar .new-chat svg, .sidebar .group-toggle svg, .sidebar .history-search svg, .sidebar .sidebar-head svg,
+.sidebar .history-tools svg, .sidebar .history-more svg { zoom: var(--s); }
+
+/* ---------- 生成卡片上的长提示词:默认三行,底部渐隐;展开 / 收起平滑过渡 ---------- */
+.task-prompt.prompt-clamp {
+  max-height: var(--clamp-h); overflow: hidden;
+  transition: max-height .42s cubic-bezier(.16, 1, .3, 1);
+}
+.task-prompt.prompt-clamp.is-long:not(.is-open) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+.task-prompt.prompt-clamp.is-open { max-height: var(--full-h); }
+.prompt-toggle {
+  display: inline-flex; align-items: center; gap: 3px; margin-top: 4px; padding: 2px 8px 2px 0;
+  border-radius: 6px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 600;
+}
+.prompt-toggle:hover { color: var(--ink); }
+.prompt-toggle svg { transition: transform .3s cubic-bezier(.2, 1.3, .4, 1); }
+.prompt-toggle.is-open svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .task-prompt.prompt-clamp { transition: none; } }

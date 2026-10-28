@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePromptClamp } from "@/components/prompt-clamp";
 import Link from "next/link";
 import {
   Clapperboard, Copy, Download, FolderOpen, ImagePlus, Info,
@@ -44,6 +45,9 @@ export function ImageTaskCard({
   onReedit, onRegenerate, onToggleFavorite, onDelete, onMakeVideo, onUseAsReference, sizes, onDragMedia,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // 长提示词默认折叠成三行
+  const promptRef = useRef<HTMLParagraphElement>(null);
+  const promptClamp = usePromptClamp(promptRef, 3);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState("");
   const [viewer, setViewer] = useState<number | null>(null);
@@ -131,7 +135,7 @@ export function ImageTaskCard({
           </div>
         </header>
 
-        <p className="task-prompt">
+        <p className={`task-prompt ${promptClamp.className}`} ref={promptRef} style={promptClamp.style}>
           {prompt ? splitPromptReferences(prompt).map((segment, index) => {
             if (segment.kind === "text") return <span key={index}>{segment.text}</span>;
             const position = findReference(references, segment.mediaKind, segment.index);
@@ -143,6 +147,7 @@ export function ImageTaskCard({
             ) : <span key={index}>[图{segment.index + 1}]</span>;
           }) : <span className="task-prompt-empty">（无提示词）</span>}
         </p>
+        {promptClamp.toggle}
 
         {references.length > 0 && (
           <div className="task-refs" aria-label="参考图">
