@@ -3541,14 +3541,11 @@ body.is-card-dragging .composer-editor .reference-inline-card { cursor: grabbing
 .task-tile-cover:focus-visible, .task-tile-info:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* 详情:浮在页面上的一张纸,里面就是列表里那张生成卡片 */
-.task-detail {
-  position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 32px;
-  background: oklch(20% .01 80 / .34); animation: task-detail-fade .2s ease;
-}
+.task-detail { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 32px; }
+.task-detail-backdrop { position: absolute; inset: 0; background: oklch(20% .01 80 / .34); }
 .task-detail-sheet {
-  display: flex; flex-direction: column; width: min(1000px, 100%); max-height: calc(100vh - 64px); overflow: hidden;
+  position: relative; display: flex; flex-direction: column; width: min(1000px, 100%); max-height: calc(100vh - 64px); overflow: hidden;
   border-radius: var(--r-card); background: var(--paper); box-shadow: 0 24px 64px oklch(20% .02 80 / .24);
-  animation: task-detail-in .3s cubic-bezier(.2, .8, .2, 1);
 }
 .task-detail-sheet > header {
   display: flex; align-items: center; gap: 12px; padding: 14px 16px 14px 24px; border-bottom: 1px solid var(--line);
@@ -3565,18 +3562,179 @@ body.is-card-dragging .composer-editor .reference-inline-card { cursor: grabbing
 .task-detail-body .task-card:hover { background: transparent; }
 /* 从详情里拖素材出去时,详情先让开,露出后面的输入框 */
 body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transition: opacity .16s; }
-@keyframes task-detail-fade { from { opacity: 0; } }
-@keyframes task-detail-in { from { opacity: 0; transform: translateY(12px) scale(.985); } }
 @media (max-width: 640px) {
   .task-detail { padding: 12px; }
   .task-detail-sheet { max-height: calc(100vh - 24px); }
   .task-detail-body { padding: 16px; }
 }
 
-/* 列表 ↔ 网格切换:看得到的记录从原来的位置、大小变过去 */
-::view-transition-group(*) { animation-duration: .42s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
-::view-transition-old(*), ::view-transition-new(*) { height: 100%; object-fit: cover; object-position: top; }
 @media (prefers-reduced-motion: reduce) {
   .task-tile-shot img, .task-detail, .task-detail-sheet { transition: none; animation: none; }
   .task-tile-status.running::before { animation: none; }
+}
+
+/* ---------- 放大预览里的「编辑」按钮、文件大小 ---------- */
+.viewer-edit {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; font-size: 13px; font-weight: 600;
+  border: 1px solid var(--line); border-radius: max(var(--r-control), 8px); color: var(--ink); background: var(--paper);
+  transition: border-color .15s, background .15s, transform .15s;
+}
+.viewer-edit:hover { border-color: var(--line-strong); background: var(--warm); transform: translateY(-1px); }
+.video-viewer-bar .viewer-size { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* ---------- 收起输入框 ---------- */
+.composer-holder.is-hidden { display: none; }
+.composer-peek {
+  display: flex; align-items: center; gap: 10px; width: min(560px, 100%); height: 44px; margin: 0 auto; padding: 0 16px 0 14px;
+  border: 1px solid var(--line-strong); border-radius: 999px; color: var(--muted); background: var(--paper);
+  box-shadow: var(--shadow-composer, 0 10px 36px oklch(20% 0.02 80 / .06)); font-size: 13px; text-align: left;
+  animation: composer-peek-in .46s cubic-bezier(.2, 1.15, .35, 1) both; transition: border-color .16s, color .16s, transform .16s;
+}
+.composer-peek:hover { border-color: var(--focus); color: var(--ink); transform: translateY(-1px); }
+.composer-peek > span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.composer-peek > em { flex: none; color: var(--faint); font-size: 12px; font-style: normal; }
+.composer-peek.is-card-drop-hover { border-color: var(--ink); color: var(--ink); transform: scale(1.02); }
+.composer-region:has(.composer-peek) { padding-bottom: 14px; }
+@keyframes composer-peek-in { from { opacity: 0; transform: translateY(14px) scale(.94); } }
+
+/* ---------- 图片编辑器 ---------- */
+.image-editor {
+  position: fixed; inset: 0; z-index: 130; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  color: var(--ink); background: var(--warm); animation: image-editor-in .32s cubic-bezier(.16, 1, .3, 1);
+}
+.image-editor.is-leaving { animation: image-editor-out .18s ease-in forwards; }
+@keyframes image-editor-in { from { opacity: 0; transform: scale(.985); } }
+@keyframes image-editor-out { to { opacity: 0; transform: scale(.985); } }
+.image-editor button { font: inherit; }
+.image-editor button:disabled { opacity: .4; cursor: default; }
+.image-editor-bar {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px;
+  padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--paper);
+}
+.image-editor-history { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.image-editor-history > button, .image-editor-options .group > button {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: max(var(--r-control), 8px); color: var(--muted);
+  transition: background .15s, color .15s;
+}
+.image-editor-history > button.text { width: auto; padding: 0 10px; font-size: 13px; }
+.image-editor-history > button:not(:disabled):hover, .image-editor-options .group > button:hover { color: var(--ink); background: var(--warm); }
+.image-editor-name { min-width: 0; margin-left: 10px; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.image-editor-tools { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: max(var(--r-control), 10px); background: var(--warm); }
+.image-editor-tools > button {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 58px; padding: 6px 8px 5px;
+  border-radius: max(calc(var(--r-control) - 3px), 7px); color: var(--muted); font-size: 11px; transition: background .18s, color .18s;
+}
+.image-editor-tools > button:not(:disabled):hover { color: var(--ink); }
+.image-editor-tools > button[aria-pressed="true"] { color: var(--ink); background: var(--paper); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(20% .02 80 / .07); font-weight: 600; }
+.image-editor-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.image-editor-actions > button {
+  height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: max(var(--r-control), 8px); color: var(--ink); background: var(--paper); font-size: 13px;
+}
+.image-editor-actions > button:hover { background: var(--warm); }
+.image-editor-actions > button.danger { border-color: color-mix(in srgb, var(--danger) 40%, transparent); color: var(--danger); }
+.image-editor-notice { color: var(--muted); font-size: 12px; animation: image-editor-in .25s ease; }
+.image-editor-save { position: relative; }
+.image-editor-save > .primary {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 16px; border-radius: max(var(--r-control), 8px);
+  color: var(--paper); background: var(--ink); font-size: 13px; font-weight: 600; transition: transform .15s, opacity .15s;
+}
+.image-editor-save > .primary:not(:disabled):hover { transform: translateY(-1px); }
+.image-editor-menu {
+  position: absolute; z-index: 2; top: calc(100% + 6px); right: 0; width: 248px; padding: 6px;
+  border: 1px solid var(--line); border-radius: max(var(--r-control), 10px); background: var(--paper);
+  box-shadow: 0 16px 40px oklch(20% .02 80 / .16); animation: image-editor-menu-in .22s cubic-bezier(.16, 1, .3, 1);
+  transform-origin: top right;
+}
+@keyframes image-editor-menu-in { from { opacity: 0; transform: translateY(-4px) scale(.97); } }
+.image-editor-menu > button {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 9px 10px; border-radius: max(calc(var(--r-control) - 2px), 6px);
+  color: var(--ink); text-align: left;
+}
+.image-editor-menu > button > svg { flex: none; margin-top: 2px; color: var(--muted); }
+.image-editor-menu > button:hover { background: var(--warm); }
+.image-editor-menu b { display: block; font-size: 13px; font-weight: 600; }
+.image-editor-menu small { display: block; margin-top: 1px; color: var(--muted); font-size: 12px; }
+.image-editor-stage { position: relative; display: grid; place-items: center; min-height: 0; overflow: hidden; }
+.image-editor-loading { position: absolute; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.image-editor-frame {
+  position: relative; overflow: hidden; border-radius: 4px; box-shadow: 0 0 0 1px var(--line), 0 18px 48px oklch(20% .02 80 / .14);
+  background: repeating-conic-gradient(var(--hover) 0 25%, var(--paper) 0 50%) 0 0 / 16px 16px;
+}
+.image-editor-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; transition: transform .12s ease-out; }
+.image-editor-preview { pointer-events: none; }
+.image-editor-crop {
+  position: absolute; cursor: move; touch-action: none;
+  box-shadow: 0 0 0 9999px oklch(15% .01 80 / .35); outline: 1.5px solid #fff;
+}
+.image-editor-crop .grid {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(to right, transparent calc(33.33% - .5px), oklch(100% 0 0 / .5) calc(33.33% - .5px) calc(33.33% + .5px), transparent calc(33.33% + .5px) calc(66.66% - .5px), oklch(100% 0 0 / .5) calc(66.66% - .5px) calc(66.66% + .5px), transparent calc(66.66% + .5px)),
+    linear-gradient(to bottom, transparent calc(33.33% - .5px), oklch(100% 0 0 / .5) calc(33.33% - .5px) calc(33.33% + .5px), transparent calc(33.33% + .5px) calc(66.66% - .5px), oklch(100% 0 0 / .5) calc(66.66% - .5px) calc(66.66% + .5px), transparent calc(66.66% + .5px));
+}
+/* 手柄都在框里面:框贴着图片边时,外面的部分会被裁掉,点不到 */
+.image-editor-crop .handle { position: absolute; width: 22px; height: 22px; }
+.image-editor-crop .handle::after { content: ""; position: absolute; background: #fff; box-shadow: 0 1px 3px oklch(0% 0 0 / .35); border-radius: 2px; }
+.image-editor-crop .handle[data-edge="nw"], .image-editor-crop .handle[data-edge="ne"],
+.image-editor-crop .handle[data-edge="sw"], .image-editor-crop .handle[data-edge="se"] { width: 26px; height: 26px; }
+.image-editor-crop .handle[data-edge="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+.image-editor-crop .handle[data-edge="se"] { right: 0; bottom: 0; cursor: nwse-resize; }
+.image-editor-crop .handle[data-edge="ne"] { right: 0; top: 0; cursor: nesw-resize; }
+.image-editor-crop .handle[data-edge="sw"] { left: 0; bottom: 0; cursor: nesw-resize; }
+.image-editor-crop .handle[data-edge="nw"]::after { left: 0; top: 0; width: 18px; height: 4px; }
+.image-editor-crop .handle[data-edge="nw"]::before, .image-editor-crop .handle[data-edge="ne"]::before,
+.image-editor-crop .handle[data-edge="sw"]::before, .image-editor-crop .handle[data-edge="se"]::before {
+  content: ""; position: absolute; width: 4px; height: 18px; background: #fff; border-radius: 2px;
+}
+.image-editor-crop .handle[data-edge="nw"]::before { left: 0; top: 0; }
+.image-editor-crop .handle[data-edge="ne"]::after { right: 0; top: 0; width: 18px; height: 4px; }
+.image-editor-crop .handle[data-edge="ne"]::before { right: 0; top: 0; }
+.image-editor-crop .handle[data-edge="sw"]::after { left: 0; bottom: 0; width: 18px; height: 4px; }
+.image-editor-crop .handle[data-edge="sw"]::before { left: 0; bottom: 0; }
+.image-editor-crop .handle[data-edge="se"]::after { right: 0; bottom: 0; width: 18px; height: 4px; }
+.image-editor-crop .handle[data-edge="se"]::before { right: 0; bottom: 0; }
+.image-editor-crop .handle[data-edge="n"] { left: calc(50% - 15px); top: 0; width: 30px; cursor: ns-resize; }
+.image-editor-crop .handle[data-edge="s"] { left: calc(50% - 15px); bottom: 0; width: 30px; cursor: ns-resize; }
+.image-editor-crop .handle[data-edge="n"]::after { left: 3px; right: 3px; top: 0; height: 4px; }
+.image-editor-crop .handle[data-edge="s"]::after { left: 3px; right: 3px; bottom: 0; height: 4px; }
+.image-editor-crop .handle[data-edge="e"] { top: calc(50% - 15px); right: 0; height: 30px; cursor: ew-resize; }
+.image-editor-crop .handle[data-edge="w"] { top: calc(50% - 15px); left: 0; height: 30px; cursor: ew-resize; }
+.image-editor-crop .handle[data-edge="e"]::after { top: 3px; bottom: 3px; right: 0; width: 4px; }
+.image-editor-crop .handle[data-edge="w"]::after { top: 3px; bottom: 3px; left: 0; width: 4px; }
+.image-editor-options {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 24px; min-height: 68px; padding: 12px 20px 16px;
+  border-top: 1px solid var(--line); background: var(--paper); animation: image-editor-in .28s cubic-bezier(.16, 1, .3, 1);
+}
+.image-editor-options .group { display: flex; align-items: center; gap: 2px; }
+.image-editor-options .chips > button {
+  width: auto; height: 30px; padding: 0 10px; border: 1px solid transparent; font-size: 12px;
+}
+.image-editor-options .chips > button[aria-pressed="true"] { border-color: var(--line-strong); color: var(--ink); background: var(--warm); font-weight: 600; }
+.image-editor-options .slider { display: grid; gap: 4px; width: 168px; color: var(--muted); font-size: 12px; }
+.image-editor-options .slider b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.image-editor-options input[type="range"] { width: 100%; accent-color: var(--ink); }
+.image-editor-options .apply {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border: 1px solid var(--line-strong);
+  border-radius: max(var(--r-control), 8px); color: var(--ink); background: var(--paper); font-size: 13px; font-weight: 600;
+}
+.image-editor-options .apply:not(:disabled):hover { background: var(--warm); }
+.image-editor-options .swatches > button {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 0 0 1px oklch(0% 0 0 / .15);
+  transition: transform .15s cubic-bezier(.2, 1.4, .4, 1);
+}
+.image-editor-options .swatches > button[aria-pressed="true"] { transform: scale(1.12); box-shadow: inset 0 0 0 1px oklch(0% 0 0 / .15), 0 0 0 2px var(--paper), 0 0 0 4px var(--ink); }
+.swatch-custom { position: relative; width: 26px; height: 26px; margin-left: 4px; overflow: hidden; border-radius: 50%; border: 1px dashed var(--line-strong); }
+.swatch-custom input { position: absolute; inset: -8px; width: 44px; height: 44px; border: 0; padding: 0; cursor: pointer; opacity: .9; }
+.brush-preview { flex: none; border-radius: 50%; border: 1.5px solid var(--ink); transition: width .12s, height .12s; }
+.brush-preview[data-tool="mosaic"] { background: repeating-conic-gradient(var(--line-strong) 0 25%, var(--paper) 0 50%) 0 0 / 6px 6px; }
+.brush-preview[data-tool="blur"] { background: var(--line-strong); filter: blur(1.5px); }
+.brush-preview[data-tool="erase"] { border-style: dashed; }
+.image-editor-options .hint { color: var(--muted); font-size: 12px; }
+@media (max-width: 900px) {
+  .image-editor-bar { grid-template-columns: 1fr auto; }
+  .image-editor-tools { grid-column: 1 / -1; grid-row: 2; justify-self: center; overflow-x: auto; max-width: 100%; }
+  .image-editor-name { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .image-editor, .image-editor-menu, .image-editor-options, .composer-peek { animation: none; }
 }

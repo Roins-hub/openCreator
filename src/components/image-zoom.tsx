@@ -209,7 +209,7 @@ export function ImageZoom({ src, alt, preview, original }: {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {shown && <img key={shown} className="image-viewer-img" src={shown} alt={alt} draggable={false} onLoad={() => setLoadedFor(current)}
         style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, ...(loaded ? {} : { display: "none" }) }} />}
-      {!loaded && <LoadProgress label={useOriginal ? "加载原图" : "加载大图"}
+      {!loaded && <LoadProgress label={useOriginal || !original ? "加载原图" : "加载大图"}
         percent={currentProgress?.total ? (currentProgress.loaded / currentProgress.total) * 100 : undefined}
         loaded={currentProgress?.total ? currentProgress.loaded : undefined} total={currentProgress?.total} />}
     </div>

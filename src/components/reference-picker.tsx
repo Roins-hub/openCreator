@@ -11,7 +11,7 @@ import { useCardDrag, type DropPoint } from "@/components/card-drag";
 import { ALL_FOLDERS, FolderBar, NEW_FOLDER, UNGROUPED } from "@/components/folder-bar";
 
 export type PickerAsset = {
-  id: string; kind: MediaKind; path: string; name: string; mimeType: string;
+  id: string; kind: MediaKind; path: string; name: string; mimeType: string; size?: number;
   folder?: string;
   /** upload:自己上传的;没有:AI 生成的 */
   source?: string;
@@ -255,7 +255,7 @@ export function ReferencePicker({
       </button>
     </div>}
     {preview && previewList[preview.index] && <MediaPreview
-      items={previewList.map((asset) => mediaPreviewItem({ kind: asset.kind, path: asset.path, name: asset.name, mimeType: asset.mimeType }))}
+      items={previewList.map((asset) => mediaPreviewItem({ kind: asset.kind, path: asset.path, name: asset.name, mimeType: asset.mimeType }, undefined, asset.size))}
       index={preview.index} onIndex={(index) => setPreview({ list: preview.list, index })} onClose={() => setPreview(null)} />}
     {cardDrag.overlay}
   </div>;

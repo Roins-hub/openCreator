@@ -1,5 +1,6 @@
 "use client";
 
+import { ImageEditContext } from "@/components/image-editor";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import Link from "next/link";
 import {
@@ -428,7 +429,9 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
     <p>完成一次图片或视频生成后结果会自动出现在这里，也可以直接上传素材。</p>
   </>;
 
-  return <main className={`utility-page asset-page ${dragging ? "is-dragging" : ""}`} {...(chat ? {} : dropHandlers)}>
+  // 预览里编辑过、存进素材库的图:存好后刷新列表(资产页没有输入框,不能「添加到输入框」)
+  return <ImageEditContext.Provider value={{ saved: () => void loadAssets() }}>
+  <main className={`utility-page asset-page ${dragging ? "is-dragging" : ""}`} {...(chat ? {} : dropHandlers)}>
     <header className="utility-topbar">
       {/* 聊天是同域名下的另一个程序,整页跳回去 */}
       {chat
@@ -664,7 +667,7 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
     </div>}
     {cardDrag.overlay}
     {preview !== null && viewable[preview] && <MediaPreview
-      items={viewable.map((asset) => mediaPreviewItem({ kind: asset.kind, path: asset.path, name: asset.name, mimeType: asset.mimeType }))}
+      items={viewable.map((asset) => mediaPreviewItem({ kind: asset.kind, path: asset.path, name: asset.name, mimeType: asset.mimeType }, undefined, asset.size))}
       index={preview} onIndex={setPreview} onClose={() => setPreview(null)} />}
     <BackToTop floating />
     {dragging && <div className="asset-drop-hint" aria-hidden="true">
@@ -672,5 +675,6 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
       <strong>松开即可上传到资产</strong>
       <span>支持 JPG / PNG / WebP 图片、MP4 / MOV 视频、MP3 / WAV 音频</span>
     </div>}
-  </main>;
+  </main>
+  </ImageEditContext.Provider>;
 }

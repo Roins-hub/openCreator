@@ -35,13 +35,15 @@ const fullTime = (iso: string) => {
 /**
  * 放大预览右侧的「生成信息」:模型、生成方式、参数、文件大小、提示词(可复制)、参考素材、时间和任务 ID。
  */
-export function GenerationInfo({ message, prompt, references, media, size, fallbackModelName, onClose }: {
+export function GenerationInfo({ message, prompt, references, media, size, sizeOf, fallbackModelName, onClose }: {
   message: Message;
   prompt: string;
   references: MediaRef[];
   /** 当前正在看的那个文件 */
   media: MediaRef;
   size?: number;
+  /** 参考素材的大小(放大查看时显示) */
+  sizeOf?: (media: MediaRef) => number | undefined;
   fallbackModelName?: string;
   onClose: () => void;
 }) {
@@ -102,7 +104,7 @@ export function GenerationInfo({ message, prompt, references, media, size, fallb
         </button>)}
       </div>
       {refPreview !== null && (
-        <MediaPreview items={references.map((ref, index) => mediaPreviewItem(ref, `${labels[index]} · ${ref.name}`))}
+        <MediaPreview items={references.map((ref, index) => mediaPreviewItem(ref, `${labels[index]} · ${ref.name}`, sizeOf?.(ref)))}
           index={refPreview} onIndex={setRefPreview} onClose={() => setRefPreview(null)} />
       )}
     </section>}

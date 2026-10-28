@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, Loader2, PauseCircle, Play, Star, X } from "lucide-react";
 import type { MediaRef, Message } from "@/lib/types";
@@ -36,7 +36,8 @@ export function TaskTile({ message, kind, prompt, modelName, favorite, onOpen, o
   if (shown.length) {
     cover = shown.map((item, index) => (
       <span className="task-tile-shot" key={item.path} onPointerDown={(event) => onDragMedia?.(event, item)}>
-        <ThumbImage path={item.path} width={shown.length === 1 ? 1080 : 480} alt={`${index + 1}`} />
+        {/* 和列表里的卡片用同一档缩略图:切换布局时直接用缓存,不会闪 */}
+        <ThumbImage path={item.path} width={1080} alt={`${index + 1}`} />
         {index === shown.length - 1 && results.length > shown.length && <b className="task-tile-more">+{results.length - shown.length}</b>}
       </span>
     ));
@@ -70,28 +71,84 @@ export function TaskTile({ message, kind, prompt, modelName, favorite, onOpen, o
   );
 }
 
+const OPEN_EASE = "cubic-bezier(.16, 1, .3, 1)";
+const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/** 详情从格子的位置「长」出来:用裁剪区域从格子那块展开到整张,内容稍后淡入(不拉伸文字) */
+function revealFrames(sheet: HTMLElement, from: DOMRect | null, radius: string) {
+  const to = sheet.getBoundingClientRect();
+  if (!from || !from.width) {
+    return [{ opacity: 0, transform: "translateY(16px) scale(.97)" }, { opacity: 1, transform: "none" }];
+  }
+  const inset = (value: number) => `${Math.max(0, Math.round(value))}px`;
+  const top = from.top - to.top, left = from.left - to.left;
+  const right = to.right - from.right, bottom = to.bottom - from.bottom;
+  // 格子不完全在详情范围里时,再加一点位移,让展开的起点对准格子
+  const shiftX = from.left < to.left ? from.left - to.left : from.right > to.right ? from.right - to.right : 0;
+  const shiftY = from.top < to.top ? from.top - to.top : from.bottom > to.bottom ? from.bottom - to.bottom : 0;
+  return [
+    { clipPath: `inset(${inset(top)} ${inset(right)} ${inset(bottom)} ${inset(left)} round ${radius})`, transform: `translate(${shiftX}px, ${shiftY}px)`, opacity: 0.85 },
+    { clipPath: `inset(0px 0px 0px 0px round ${radius})`, transform: "translate(0px, 0px)", opacity: 1 },
+  ];
+}
+
 /** 网格里点开的生成详情:里面放和列表里一样的生成卡片(提示词、参考素材、结果、操作都在) */
-export function TaskDetail({ message, onClose, children }: { message: Message; onClose: () => void; children: ReactNode }) {
+export function TaskDetail({ message, onClose, origin, children }: {
+  message: Message;
+  onClose: () => void;
+  /** 点开它的那个格子现在的位置:从那里展开、收回到那里 */
+  origin?: () => DOMRect | null;
+  children: ReactNode;
+}) {
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const closingRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const sheet = sheetRef.current, backdrop = backdropRef.current, body = bodyRef.current;
+    if (!sheet || !backdrop || !body || typeof sheet.animate !== "function" || reducedMotion()) return;
+    const radius = getComputedStyle(sheet).borderTopLeftRadius || "16px";
+    sheet.animate(revealFrames(sheet, origin?.() ?? null, radius), { duration: 560, easing: OPEN_EASE });
+    backdrop.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: "ease-out" });
+    body.animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }],
+      { duration: 420, delay: 140, easing: OPEN_EASE, fill: "backwards" });
+    // 只在打开时播一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 收回到格子里再关 */
+  const close = () => {
+    const sheet = sheetRef.current, backdrop = backdropRef.current;
+    if (closingRef.current) return;
+    closingRef.current = true;
+    if (!sheet || !backdrop || typeof sheet.animate !== "function" || reducedMotion()) { onClose(); return; }
+    const radius = getComputedStyle(sheet).borderTopLeftRadius || "16px";
+    const frames = revealFrames(sheet, origin?.() ?? null, radius).reverse();
+    backdrop.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: "ease-in", fill: "forwards" });
+    void sheet.animate(frames, { duration: 340, easing: "cubic-bezier(.5, 0, .75, 0)", fill: "forwards" }).finished.then(onClose, onClose);
+  };
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      // 详情里又打开了大图 / 参考图预览时,Esc 先只关那一层
-      if (event.key === "Escape" && !document.querySelector(".video-viewer, .media-preview")) onClose();
+      // 详情里又打开了大图 / 参考图预览 / 编辑器时,Esc 先只关那一层
+      if (event.key === "Escape" && !document.querySelector(".video-viewer, .media-preview, .image-editor")) close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  });
 
   const when = new Date(message.createdAt);
   return createPortal(
-    <div className="task-detail" role="dialog" aria-modal="true" aria-label="生成详情"
-      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="task-detail-sheet">
+    <div className="task-detail" role="dialog" aria-modal="true" aria-label="生成详情">
+      <div className="task-detail-backdrop" ref={backdropRef} onClick={close} aria-hidden="true" />
+      <div className="task-detail-sheet" ref={sheetRef}>
         <header>
           <h2>生成详情</h2>
           {!Number.isNaN(when.getTime()) && <span>{when.toLocaleString("zh-CN", { hour12: false })}</span>}
-          <button type="button" onClick={onClose} aria-label="关闭"><X size={18} /></button>
+          <button type="button" onClick={close} aria-label="关闭"><X size={18} /></button>
         </header>
-        <div className="task-detail-body">{children}</div>
+        <div className="task-detail-body" ref={bodyRef}>{children}</div>
       </div>
     </div>,
     document.body,

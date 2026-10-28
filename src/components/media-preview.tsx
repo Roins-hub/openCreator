@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, Download, Music, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Music, SquarePen, X } from "lucide-react";
+import { formatBytes } from "@/components/generation-info";
+import { ImageEditor } from "@/components/image-editor";
 import { ImageZoom } from "@/components/image-zoom";
 import { ProgressVideo } from "@/components/load-progress";
-import { mediaUrl, thumbUrl, viewUrl } from "@/lib/media-url";
+import { mediaUrl, opensOriginal, thumbUrl, viewUrl } from "@/lib/media-url";
 import type { MediaRef } from "@/lib/types";
 
 export interface PreviewItem {
@@ -21,17 +23,24 @@ export interface PreviewItem {
   preview?: string;
   /** 原文件(放大查看默认看大图,点「原图」再加载它) */
   original?: string;
+  /** 文件大小(字节),知道时显示在说明后面 */
+  size?: number;
 }
 
-export const mediaPreviewItem = (media: MediaRef, caption?: string): PreviewItem => ({
+export const mediaPreviewItem = (media: MediaRef, caption?: string, size?: number): PreviewItem => {
+  const bytes = size ?? media.size;
+  const direct = media.kind !== "image" || opensOriginal(bytes);
+  return {
   kind: media.kind,
   name: media.name,
-  src: media.kind === "image" ? viewUrl(media.path) : mediaUrl(media.path),
+  src: direct ? mediaUrl(media.path) : viewUrl(media.path),
   download: `${mediaUrl(media.path)}?download=${encodeURIComponent(media.name)}`,
   caption,
   preview: media.kind === "image" ? thumbUrl(media.path, 480) : undefined,
-  original: media.kind === "image" ? mediaUrl(media.path) : undefined,
-});
+  original: direct ? undefined : mediaUrl(media.path),
+  size: bytes,
+  };
+};
 
 /**
  * 放大查看参考素材(图片、视频、音频),样式与生成结果的放大预览一致。
@@ -44,7 +53,10 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
   onClose: () => void;
 }) {
   const current = items[index];
+  // 正在编辑的那张(编辑器盖在预览上面;按键都交给编辑器)
+  const [editing, setEditing] = useState<PreviewItem | null>(null);
   useEffect(() => {
+    if (editing) return;
     const onKey = (event: KeyboardEvent) => {
       // 可能叠在生成结果的放大预览上面:这几个键只给最上层,不让下面的跟着关闭、翻页
       if (["Escape", "ArrowLeft", "ArrowRight"].includes(event.key)) event.stopPropagation();
@@ -54,7 +66,7 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [index, items.length, onClose, onIndex]);
+  }, [index, items.length, onClose, onIndex, editing]);
 
   if (!current || typeof document === "undefined") return null;
   return createPortal(
@@ -72,8 +84,11 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
           </div>
         )}
         <div className="video-viewer-bar">
-          <p title={current.caption || current.name}>{current.caption || current.name}</p>
+          <p title={current.caption || current.name}>{current.caption || current.name}
+            {current.size ? <small className="viewer-size"> · {formatBytes(current.size)}</small> : null}</p>
           {items.length > 1 && <span>{index + 1} / {items.length}</span>}
+          {current.kind === "image" && <button type="button" className="viewer-edit" onClick={() => setEditing(current)}
+            title="裁剪、调整、涂鸦、马赛克、涂抹、擦除"><SquarePen size={15} />编辑</button>}
           {current.download && <a href={current.download} download={current.name}><Download size={15} />下载</a>}
         </div>
       </div>
@@ -84,6 +99,8 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
       <button type="button" className="video-viewer-close" onClick={(event) => { event.stopPropagation(); onClose(); }} aria-label="关闭">
         <X size={20} />
       </button>
+      {editing && <ImageEditor src={editing.original || editing.src} name={editing.name}
+        onClose={() => setEditing(null)} onFinished={onClose} />}
     </div>,
     document.body,
   );

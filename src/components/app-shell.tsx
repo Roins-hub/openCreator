@@ -4,8 +4,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import Link from "next/link";
 import {
   ArrowUp, AtSign, Check, Clapperboard, Download, Image as ImageIcon, ImagePlus, KeyRound, ListChecks, Loader2, Maximize2, Menu,
-  Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Sparkles, Undo2, X, BookMarked, Pencil, Trash2, LayoutGrid, Rows3,
+  Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Sparkles, Undo2, X, BookMarked, Pencil, Trash2, LayoutGrid, Rows3, ChevronDown, ChevronUp,
 } from "lucide-react";
+import { ImageEditContext } from "@/components/image-editor";
 import { flushSync } from "react-dom";
 import { turnStatus } from "@/lib/conversation-navigation";
 import { Segmented } from "@/components/segmented";
@@ -52,7 +53,7 @@ import { fitDuration, type PromptTemplate } from "@/lib/prompt-library";
 import { emptyPromptLayout, recordUsage, type PromptLayout } from "@/lib/prompt-layout";
 import { MediaThumb, PosterVideo, ThumbImage } from "@/components/media-thumb";
 import { MediaPreview } from "@/components/media-preview";
-import { thumbUrl } from "@/lib/media-url";
+import { thumbUrl, opensOriginal } from "@/lib/media-url";
 import { COMPOSER_DROP, EDITOR_DROP, ReferencePicker, type PickerAsset } from "@/components/reference-picker";
 import { useCardDrag, type DropPoint } from "@/components/card-drag";
 import { usePresence } from "@/components/use-presence";
@@ -71,33 +72,44 @@ type ComposerAttachment = MediaRef & { previewUrl?: string; uploading?: boolean;
 const TASK_LAYOUT_KEY = "mote.taskLayout";
 
 /**
- * 列表 / 网格切换的过渡:屏幕里看得到的那些记录,从卡片的位置、大小平滑变到格子里(反过来也一样),
- * 其余的淡入淡出;切换后让原来最上面那条还停在原处。浏览器不支持或用户关了动画就直接切。
+ * 列表 / 网格切换的过渡:整个列表先轻轻淡出,换好布局后(原来最上面那条还停在原处),
+ * 屏幕里看得到的记录从下往上依次浮现(先等它们的图解码好,避免闪一下)。
+ * 不再让卡片在两种布局之间「飞」:两种卡片长得完全不同,硬变形会到处跑。
  */
 function morphLayout(root: HTMLElement | null, update: () => void, plain: () => void) {
-  const doc = document as Document & { startViewTransition?: (callback: () => void) => { finished: Promise<void> } };
-  if (!root || !doc.startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { plain(); return; }
+  const list = root?.querySelector<HTMLElement>(".message-list");
+  if (!root || !list || typeof list.animate !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    plain();
+    return;
+  }
   const view = root.getBoundingClientRect();
-  const visible = [...root.querySelectorAll<HTMLElement>(".task-pick[data-turn-id]")].filter((element) => {
-    const box = element.getBoundingClientRect();
-    return box.bottom > view.top && box.top < view.bottom;
-  }).slice(0, 30);
-  const anchor = visible[0]?.dataset.turnId;
-  const anchorTop = visible[0] ? visible[0].getBoundingClientRect().top - view.top : 0;
-  const ids = visible.map((element) => element.dataset.turnId || "");
-  const name = (index: number) => `task-turn-${index}`;
-  const find = (id: string) => root.querySelector<HTMLElement>(`.task-pick[data-turn-id="${CSS.escape(id)}"]`);
-  const mark = () => ids.forEach((id, index) => find(id)?.style.setProperty("view-transition-name", name(index)));
-  mark();
-  const transition = doc.startViewTransition(() => {
+  const first = [...root.querySelectorAll<HTMLElement>(".task-pick[data-turn-id]")]
+    .find((element) => element.getBoundingClientRect().bottom > view.top + 12);
+  const anchor = first?.dataset.turnId;
+  const anchorTop = first ? first.getBoundingClientRect().top - view.top : 0;
+  const out = list.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(6px) scale(.992)" }],
+    { duration: 150, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
+  void out.finished.then(async () => {
     update();
+    const find = (id: string) => root.querySelector<HTMLElement>(`.task-pick[data-turn-id="${CSS.escape(id)}"]`);
     const now = anchor ? find(anchor) : null;
-    if (now) root.scrollTop += now.getBoundingClientRect().top - root.getBoundingClientRect().top - anchorTop;
-    mark();
-  });
-  void transition.finished.finally(() => {
-    root.querySelectorAll<HTMLElement>(".task-pick").forEach((element) => element.style.removeProperty("view-transition-name"));
-  });
+    root.scrollTop = now ? root.scrollTop + now.getBoundingClientRect().top - root.getBoundingClientRect().top - anchorTop : root.scrollTop;
+    const box = root.getBoundingClientRect();
+    const visible = [...root.querySelectorAll<HTMLElement>(".task-pick[data-turn-id]")].filter((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.bottom > box.top && rect.top < box.bottom;
+    }).slice(0, 24);
+    const images = visible.flatMap((element) => [...element.querySelectorAll("img")]);
+    await Promise.race([
+      Promise.all(images.map((image) => image.decode().catch(() => undefined))),
+      new Promise((resolve) => window.setTimeout(resolve, 260)),
+    ]);
+    visible.forEach((element, index) => element.animate(
+      [{ opacity: 0, transform: "translateY(18px) scale(.965)" }, { opacity: 1, transform: "none" }],
+      { duration: 520, delay: Math.min(index, 12) * 32, easing: "cubic-bezier(.16, 1, .3, 1)", fill: "backwards" },
+    ));
+    out.cancel();
+  }, plain);
 }
 
 const toMediaRef = (item: ComposerAttachment): MediaRef => ({
@@ -109,7 +121,7 @@ const toMediaRef = (item: ComposerAttachment): MediaRef => ({
 const LAST_MODEL_KEY = "mote.lastModel";
 // 放大查看输入框里的素材:刚上传的用本地预览,其余图片用大图(WebP),视频、音频用原文件
 const attachmentSrc = (item: ComposerAttachment) =>
-  item.previewUrl || (item.kind === "image" ? `/api/media/${item.path}?view=1` : `/api/media/${item.path}`);
+  item.previewUrl || (item.kind === "image" && !opensOriginal(item.size) ? `/api/media/${item.path}?view=1` : `/api/media/${item.path}`);
 
 /** 读一张图片的宽高(「智能」视频比例用);读不到或超过 5 秒就不用它 */
 function imageDimensions(src: string) {
@@ -253,6 +265,31 @@ export function AppShell() {
     panelRef: composerRef, holderRef: composerHolderRef, storageKey: "mote.composerPanelSize",
     onOpened: () => focusEditorEnd(), onClosed: () => focusEditorEnd(),
   });
+  // 收起输入框:只是藏起来(写了一半的提示词、素材都还在),下面留一条可以点开的小条
+  const [composerHidden, setComposerHidden] = useState(false);
+  const revealComposerRef = useRef(false);
+  const hideComposer = () => {
+    const panel = composerRef.current;
+    const done = () => setComposerHidden(true);
+    if (!panel || typeof panel.animate !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { done(); return; }
+    void panel.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(32px) scale(.97)" }],
+      { duration: 220, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" }).finished.then(done, done);
+  };
+  const showComposer = () => {
+    revealComposerRef.current = true;
+    setComposerHidden(false);
+  };
+  useLayoutEffect(() => {
+    const panel = composerRef.current;
+    if (composerHidden || !revealComposerRef.current || !panel) return;
+    revealComposerRef.current = false;
+    panel.getAnimations().forEach((animation) => animation.cancel());
+    if (typeof panel.animate === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      panel.animate([{ opacity: 0, transform: "translateY(36px) scale(.96)" }, { opacity: 1, transform: "none" }],
+        { duration: 480, easing: "cubic-bezier(.2, 1.15, .35, 1)" });
+    }
+    editorRef.current?.focus();
+  }, [composerHidden]);
   const conversationRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
@@ -806,6 +843,7 @@ export function AppShell() {
    * 拖到写提示词的地方(带 point)还会在松手处插入「图N」引用
    */
   const attachReferenceAssets = (assets: PickerAsset[], point?: DropPoint) => {
+    if (composerHidden) showComposer();
     const next = [...attachments];
     const skipped: string[] = [];
     for (const asset of assets) {
@@ -1036,6 +1074,7 @@ export function AppShell() {
 
   const upload = async (files: readonly File[]) => {
     if (!selected || !files.length) return;
+    if (composerHidden) showComposer();
     const selection = pickMediaFiles(files, remaining, remainingTotal);
     if (selection.error) setError(selection.error);
     else setError("");
@@ -1300,6 +1339,7 @@ export function AppShell() {
   const reedit = (prompt: string, references: MediaRef[], generation?: GenerationMeta) => {
     const editor = editorRef.current;
     if (!editor) return;
+    if (composerHidden) showComposer();
     setAttachments(references);
     editor.innerHTML = "";
     const labels = referenceLabels(references);
@@ -1560,7 +1600,13 @@ export function AppShell() {
     setTurnSelection((current) => ({ ...current, ids: new Set(), confirming: false }));
   };
 
+  const imageEditTargets = {
+    attach: (file: File) => void upload([file]),
+    saved: () => void loadReferenceAssets(),
+  };
+
   return (
+    <ImageEditContext.Provider value={imageEditTargets}>
     <main className="app-frame">
       <div className={`side-panels ${sidebarOpen ? "is-open" : ""}`}>
       <nav className="app-rail" aria-label="主导航">
@@ -1733,7 +1779,9 @@ export function AppShell() {
                             onOpen={() => setDetailId(message.id)} onDragMedia={shared.onDragMedia} />
                           : card()}
                         {taskLayout === "grid" && detailId === message.id && !managing &&
-                          <TaskDetail message={message} onClose={() => setDetailId(null)}>{card(() => setDetailId(null))}</TaskDetail>}
+                          <TaskDetail message={message} onClose={() => setDetailId(null)}
+                            origin={() => conversationRef.current?.querySelector(`.task-pick[data-turn-id="${CSS.escape(message.id)}"] .task-tile-cover`)
+                              ?.getBoundingClientRect() ?? null}>{card(() => setDetailId(null))}</TaskDetail>}
                         {/* 管理时点卡片任意位置都是选择,不会误点到播放、编辑等按钮 */}
                         {managing && <button type="button" className="task-pick-overlay" tabIndex={-1} aria-hidden="true"
                           onClick={(event) => togglePick(message.id, event.shiftKey)} />}
@@ -1789,7 +1837,7 @@ export function AppShell() {
             <div className={`composer-backdrop ${composerPanel.closing ? "is-closing" : ""}`} onClick={composerPanel.close}
               aria-hidden="true" />
           )}
-          <div className="composer-holder" ref={composerHolderRef} style={composerPanel.holderStyle}>
+          <div className={`composer-holder ${composerHidden ? "is-hidden" : ""}`} ref={composerHolderRef} style={composerPanel.holderStyle}>
           <div className={`composer ${composerPanel.floating ? "is-floating" : ""} ${composerPanel.expanded ? "is-expanded" : ""}`}
             ref={composerRef} style={composerPanel.panelStyle}
             // @ 选择框里的素材可以拖到输入框上作为参考素材(见 card-drag.tsx)
@@ -1857,7 +1905,8 @@ export function AppShell() {
                   items={attachments.map((item, index) => ({
                     kind: item.kind, name: item.name, src: attachmentSrc(item), caption: `${labels[index]} · ${item.name}`,
                     preview: item.kind === "image" && !item.previewUrl ? thumbUrl(item.path, 480) : undefined,
-                    original: item.kind === "image" && !item.previewUrl ? `/api/media/${item.path}` : undefined,
+                    original: item.kind === "image" && !item.previewUrl && !opensOriginal(item.size) ? `/api/media/${item.path}` : undefined,
+                    size: item.size,
                   }))}
                   index={attachmentPreview} onIndex={setAttachmentPreview} onClose={() => setAttachmentPreview(null)} />
               )}
@@ -1917,6 +1966,8 @@ export function AppShell() {
                   aria-label="清空提示词" title="清空提示词（Ctrl / ⌘ + Z 可撤销）"><X size={15} /></button>}
                 {!composerPanel.expanded && <button type="button" className="composer-clear composer-expand"
                   onClick={composerPanel.open} aria-label="放大编辑提示词" title="放大编辑"><Maximize2 size={14} /></button>}
+                {!composerPanel.expanded && <button type="button" className="composer-clear composer-collapse"
+                  onClick={hideComposer} aria-label="收起输入框" title="收起输入框（看更多生成记录）"><ChevronDown size={16} /></button>}
               </div>
             </div>
             <div className="composer-tools">
@@ -1994,7 +2045,14 @@ export function AppShell() {
               onReorderFolders={reorderReferenceFolders} />}
           </div>
           </div>
-          <p className="composer-note">由 {relayHost || `${TANGZHI_PROVIDER_NAME} `}中转站生成 · Enter 发送，Shift + Enter 换行</p>
+          {composerHidden && <button type="button" className="composer-peek" onClick={showComposer}
+            // 收起时也能把素材拖到这条上:加进输入框并展开
+            data-drop-target={COMPOSER_DROP} data-drop-external title="展开输入框">
+            <ChevronUp size={16} />
+            <span>{draft.trim() ? draft.trim().replace(/\s+/g, " ") : "展开输入框，写提示词"}</span>
+            {attachments.length > 0 && <em>{attachments.length} 个素材</em>}
+          </button>}
+          {!composerHidden && <p className="composer-note">由 {relayHost || `${TANGZHI_PROVIDER_NAME} `}中转站生成 · Enter 发送，Shift + Enter 换行</p>}
         </div>
         {/* 批量管理时暂时代替输入框(输入框里写了一半的内容保留着) */}
         {managing && <div className={`task-selection-bar ${turnSelection.closing ? "is-closing" : ""}`} role="toolbar" aria-label="批量管理生成记录">
@@ -2030,6 +2088,7 @@ export function AppShell() {
           closeSidebarOnMobile();
         }} />}
     </main>
+    </ImageEditContext.Provider>
   );
 }
 

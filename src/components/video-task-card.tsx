@@ -236,7 +236,7 @@ export function VideoTaskCard({
           </div>
         )}
         {refPreview !== null && (
-          <MediaPreview items={references.map((ref, index) => mediaPreviewItem(ref, `${labels[index]} · ${ref.name}`))}
+          <MediaPreview items={references.map((ref, index) => mediaPreviewItem(ref, `${labels[index]} · ${ref.name}`, ref.size ?? sizes?.[ref.path]))}
             index={refPreview} onIndex={setRefPreview} onClose={() => setRefPreview(null)} />
         )}
 

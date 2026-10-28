@@ -92,12 +92,15 @@ describe("AssetLibrary folders", () => {
     expect(calls.find((call) => call.method === "POST" && call.url === "/api/asset-folders")?.body).toEqual({ name: "合同", scope: "chat" });
   });
 
-  it("opens a zoomable preview with an original-image button from a card", async () => {
+  it("opens a small file's original directly in a zoomable preview, with its size and an edit button", async () => {
     render(<AssetLibrary />);
     await loaded();
     fireEvent.click(screen.getByRole("button", { name: "放大查看 b.png" }));
     const dialog = screen.getByRole("dialog", { name: "素材预览" });
     expect(dialog.querySelector(".image-zoom")).toBeTruthy();
-    expect(dialog.textContent).toContain("原图");
+    // 1 KB 的图转 WebP 省不了什么,直接看原图,不再多一个「原图」按钮
+    expect(screen.queryByRole("button", { name: /原图/ })).toBeNull();
+    expect(dialog.textContent).toContain("1 KB");
+    expect(screen.getByRole("button", { name: "编辑" })).toBeTruthy();
   });
 });
