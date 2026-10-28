@@ -3813,6 +3813,10 @@ body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transitio
 }
 /* 卡片顶部(状态、操作、「更多」菜单)始终在上层 */
 .task-detail-body .task-head { position: relative; z-index: 5; }
+/* 详情至少这么高:底栏推到最下面,「更多」菜单展开时下面有地方,不盖住底栏的文字,
+   也不会因为菜单超出底边冒出滚动条、整块内容跟着跳一下;滚动条的位置也预留好 */
+.task-detail-body { scrollbar-gutter: stable; }
+.task-detail-body .task-main { min-height: 340px; }
 .task-detail-body .task-main > :nth-child(1) { animation-delay: .12s; }
 .task-detail-body .task-main > :nth-child(2) { animation-delay: .17s; }
 .task-detail-body .task-main > :nth-child(3) { animation-delay: .22s; }
