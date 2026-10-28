@@ -3477,14 +3477,14 @@ body.is-card-dragging .composer-editor .reference-inline-card { cursor: grabbing
 
 /* ---------- 网格布局:一行三个,只放生成结果;点开看详情 ---------- */
 .message-list.is-grid {
-  /* 每行最多 --grid-cols 个(3 / 4 / 5,在顶栏网格按钮的小菜单里选),每个格子至少 210px:
-     窗口不够宽时自动少放几个。列表宽度跟着列数放宽:3 个 1080、4 个 1400、5 个 1720 */
+  /* 每行最多 --grid-cols 个(3 ~ 7,在顶栏网格按钮的小菜单里选),每个格子至少 180px:
+     窗口不够宽时自动少放几个。列表宽度跟着列数放宽(每多一个约宽 344px),最宽到窗口两边各留 24px */
   --grid-cols: 3;
   width: min(calc(var(--grid-cols) * 344px + 48px), calc(100% - 48px));
   display: grid; gap: 16px; align-items: start;
-  grid-template-columns: repeat(auto-fill, minmax(max(210px, calc((100% - (var(--grid-cols) - 1) * 16px) / var(--grid-cols))), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(max(180px, calc((100% - (var(--grid-cols) - 1) * 16px) / var(--grid-cols))), 1fr));
 }
-.message-list.is-grid[data-cols="5"] { gap: 14px; }
+.message-list.is-grid[data-cols="5"], .message-list.is-grid[data-cols="6"], .message-list.is-grid[data-cols="7"] { gap: 14px; }
 @media (max-width: 860px) { .message-list.is-grid { gap: 12px; } }
 .message-list.is-grid > .task-turn { display: contents; }
 .message-list.is-grid > :not(.task-turn) { grid-column: 1 / -1; }
@@ -3901,12 +3901,14 @@ body.is-resizing-sidebar .side-panels { transition: none; }
 }
 .layout-columns > button:nth-of-type(2) { animation-delay: .03s; }
 .layout-columns > button:nth-of-type(3) { animation-delay: .06s; }
+.layout-columns > button:nth-of-type(4) { animation-delay: .09s; }
+.layout-columns > button:nth-of-type(5) { animation-delay: .12s; }
 .layout-columns > button:hover { color: var(--ink); background: var(--row-active); }
 .layout-columns > button[aria-checked="true"] { color: var(--ink); font-weight: 600; }
 .layout-columns > button small { color: var(--faint); font-size: 11px; font-weight: 400; }
 .layout-columns-check { margin-left: auto; }
 /* 小图示:几根竖条就是每行几个 */
-.layout-columns-glyph { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 2px; width: 26px; height: 16px; }
+.layout-columns-glyph { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 2px; width: 34px; height: 16px; }
 .layout-columns-glyph i { border-radius: 2px; background: currentColor; opacity: .35; transition: opacity .2s; }
 .layout-columns > button[aria-checked="true"] .layout-columns-glyph i, .layout-columns > button:hover .layout-columns-glyph i { opacity: .8; }
 @media (prefers-reduced-motion: reduce) { .layout-columns, .layout-columns > button { animation: none; } }

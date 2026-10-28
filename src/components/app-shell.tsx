@@ -70,9 +70,9 @@ type CatalogModel = VideoModel | ImageModel;
 /** 输入框里的素材:上传完成前用本地 blob 预览,上传完成后换成服务器路径(仍保留 blob 预览避免闪烁)。 */
 type ComposerAttachment = MediaRef & { previewUrl?: string; uploading?: boolean; progress?: number };
 const TASK_LAYOUT_KEY = "mote.taskLayout";
-// 网格每行几个(大屏可以放到 5 个);窗口窄时自动少放几个
+// 网格每行几个(3 ~ 7 个,大屏可以多放);窗口窄时自动少放几个
 const GRID_COLUMNS_KEY = "mote.gridColumns";
-const GRID_COLUMN_CHOICES = [3, 4, 5] as const;
+const GRID_COLUMN_CHOICES = [3, 4, 5, 6, 7] as const;
 type GridColumns = (typeof GRID_COLUMN_CHOICES)[number];
 // 左侧对话栏的宽度(拖右边缘调整,记在浏览器里);字号、行高、图标跟着宽度一起放大缩小
 const SIDEBAR_WIDTH_KEY = "mote.sidebarWidth";
@@ -1774,7 +1774,7 @@ export function AppShell() {
                 { value: "list", label: <Rows3 size={15} />, title: "列表：完整的生成卡片", ariaLabel: "列表" },
                 {
                   value: "grid", ariaLabel: "网格",
-                  title: taskLayout === "grid" ? `网格：每行 ${gridColumns} 个，点击换成 3 / 4 / 5 个` : "网格：只看生成结果，点开看详情",
+                  title: taskLayout === "grid" ? `网格：每行 ${gridColumns} 个，点击换成 3 ~ 7 个` : "网格：只看生成结果，点开看详情",
                   label: <><LayoutGrid size={15} />{taskLayout === "grid" && <ChevronDown size={12} className={`layout-caret ${columnsMenu ? "is-open" : ""}`} />}</>,
                 },
               ]} />
@@ -1786,7 +1786,7 @@ export function AppShell() {
                   <span className="layout-columns-glyph" style={{ "--n": columns } as React.CSSProperties} aria-hidden="true">
                     {Array.from({ length: columns }, (_, index) => <i key={index} />)}
                   </span>
-                  {columns} 个{columns === 5 && <small>大屏</small>}
+                  {columns} 个{columns >= 6 && <small>大屏</small>}
                   {gridColumns === columns && <Check size={14} className="layout-columns-check" />}
                 </button>
               ))}
