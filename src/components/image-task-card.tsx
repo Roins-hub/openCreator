@@ -32,6 +32,8 @@ type Props = {
   onUseAsReference: (image: MediaRef) => void;
   /** 旧记录的文件大小(从资产列表查到的);新记录的大小记在 media.size 上 */
   sizes?: Record<string, number>;
+  /** 按住卡片上的素材(参考图、生成的图)开始拖:拖到输入框里作为参考素材 */
+  onDragMedia?: (event: React.PointerEvent<HTMLElement>, media: MediaRef) => void;
 };
 
 const downloadUrl = (image: MediaRef) => `/api/media/${image.path}?download=${encodeURIComponent(image.name)}`;
@@ -39,7 +41,7 @@ const downloadUrl = (image: MediaRef) => `/api/media/${image.path}?download=${en
 /** 生图记录:提示词、参考图、生成的图片网格;每张图可以下载、做成视频或作为参考图继续改。 */
 export function ImageTaskCard({
   prompt, references, message, fallbackModelName, favorite,
-  onReedit, onRegenerate, onToggleFavorite, onDelete, onMakeVideo, onUseAsReference, sizes,
+  onReedit, onRegenerate, onToggleFavorite, onDelete, onMakeVideo, onUseAsReference, sizes, onDragMedia,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -135,7 +137,8 @@ export function ImageTaskCard({
             const position = findReference(references, segment.mediaKind, segment.index);
             const ref = references[position];
             return ref ? (
-              <button type="button" className="task-ref" key={index} title={`放大查看 ${ref.name}`}
+              <button type="button" className="task-ref" key={index} title={`放大查看 ${ref.name}（可拖到输入框）`}
+                onPointerDown={(event) => onDragMedia?.(event, ref)}
                 onClick={() => setRefPreview(position)}><MediaThumb media={ref} />{labels[position]}</button>
             ) : <span key={index}>[图{segment.index + 1}]</span>;
           }) : <span className="task-prompt-empty">（无提示词）</span>}
@@ -145,7 +148,8 @@ export function ImageTaskCard({
           <div className="task-refs" aria-label="参考图">
             {references.map((ref, index) => (
               <button type="button" className="task-ref-thumb" key={`${ref.path}-${index}`}
-                title={`放大查看 ${labels[index]} · ${ref.name}`} onClick={() => setRefPreview(index)}>
+                title={`放大查看 ${labels[index]} · ${ref.name}（可拖到输入框）`} onClick={() => setRefPreview(index)}
+                onPointerDown={(event) => onDragMedia?.(event, ref)}>
                 <MediaThumb media={ref} alt={ref.name} /><i>{labels[index]}</i>
               </button>
             ))}
@@ -160,7 +164,8 @@ export function ImageTaskCard({
           <div className="image-results" style={{ "--shape": shape } as React.CSSProperties}>
             {images.map((image, index) => (
               <figure className="image-result" key={image.path}>
-                <button type="button" className="image-result-open" onClick={() => setViewer(index)} aria-label={`查看第 ${index + 1} 张`}>
+                <button type="button" className="image-result-open" onClick={() => setViewer(index)} aria-label={`查看第 ${index + 1} 张`}
+                  onPointerDown={(event) => onDragMedia?.(event, image)}>
                   <ThumbImage path={image.path} width={1080} alt={image.name} />
                 </button>
                 <figcaption className="image-result-actions">

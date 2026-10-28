@@ -1,11 +1,22 @@
 import { buildTurns, isGenerationTurn } from "./turns";
 import type { Message } from "./types";
 
+/** 生成记录的结果:成功 / 失败 / 生成中 / 已停止 */
+export type TurnStatus = "success" | "failed" | "running" | "stopped";
+
+export function turnStatus(message: Pick<Message, "status">): TurnStatus {
+  return message.status === "complete" ? "success"
+    : message.status === "processing" ? "running"
+      : message.status === "stopped" ? "stopped" : "failed";
+}
+
 export interface NavigationNode {
   id: string;
   preview: string;
   /** 完整提示词(搜索用) */
   text: string;
+  /** 生成记录的结果(单独的提示词没有) */
+  status?: TurnStatus;
 }
 
 /**
@@ -19,7 +30,10 @@ export function navigationNodes(messages: Message[]): NavigationNode[] {
     const text = (prompt?.content || "").replace(/\s+/g, " ").trim();
     const fallback = prompt?.attachments?.length ? "图片消息" : turn.kind === "generation" ? "生成记录" : "空消息";
     const preview = text || fallback;
-    return [{ id: turn.message.id, preview: preview.length > 72 ? `${preview.slice(0, 72)}…` : preview, text: preview }];
+    return [{
+      id: turn.message.id, preview: preview.length > 72 ? `${preview.slice(0, 72)}…` : preview, text: preview,
+      ...(turn.kind === "generation" ? { status: turnStatus(turn.message) } : {}),
+    }];
   });
 }
 

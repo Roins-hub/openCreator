@@ -8,11 +8,15 @@ import { depthOffset, navigationNodes, searchNavigation, tickWidth } from "@/lib
 export function ConversationNavigator({
   messages,
   scrollRootRef,
+  visibleIds,
 }: {
   messages: Message[];
   scrollRootRef: RefObject<HTMLDivElement | null>;
+  /** 按成功 / 失败筛选时,只列页面上还显示着的那些 */
+  visibleIds?: ReadonlySet<string>;
 }) {
-  const nodes = useMemo(() => navigationNodes(messages), [messages]);
+  const nodes = useMemo(() => navigationNodes(messages).filter((node) => !visibleIds || visibleIds.has(node.id)),
+    [messages, visibleIds]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -133,7 +137,7 @@ export function ConversationNavigator({
         {list.map((node, position) => {
           const index = indexOf(node.id);
           const offset = focusPosition < 0 ? 0 : depthOffset(position, focusPosition);
-          return <button type="button" key={node.id} data-index={index}
+          return <button type="button" key={node.id} data-index={index} data-status={node.status}
             className={`${index === activeIndex ? "active" : ""} ${focusPosition >= 0 && offset === 0 ? "focus" : ""}`}
             style={{ "--o": offset, "--d": Math.abs(offset) } as React.CSSProperties}
             onMouseEnter={() => setListHover(index)}
@@ -148,7 +152,7 @@ export function ConversationNavigator({
     <div className="conversation-map-rail" ref={railRef} onMouseLeave={() => setPointed(undefined)}
       style={{ "--tick": `clamp(4px, calc(60vh / ${nodes.length}), 16px)` } as React.CSSProperties}>
       {nodes.map((node, index) => (
-        <button type="button" key={node.id}
+        <button type="button" key={node.id} data-status={node.status}
           className={`${index === activeIndex ? "active" : ""} ${index === pointed ? "pointed" : ""}`}
           style={{ "--w": `${tickWidth(index, focusIndex)}px` } as React.CSSProperties}
           onMouseEnter={() => setPointed(index)}

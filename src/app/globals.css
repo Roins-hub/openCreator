@@ -617,7 +617,8 @@ a { color: inherit; text-decoration: none; }
 }
 .conversation-map-rail::-webkit-scrollbar { display: none; }
 .conversation-map-rail button {
-  position: relative; flex: 0 0 auto; width: 36px; height: var(--tick, 16px); padding: 0; background: transparent;
+  /* 比最长的刻度(30px)宽出一截:左边要放结果的亮点 */
+  position: relative; flex: 0 0 auto; width: 46px; height: var(--tick, 16px); padding: 0; background: transparent;
 }
 .conversation-map-rail button::before {
   content: ""; position: absolute; right: 0; top: calc(50% - 1px); width: var(--w, 9px); height: 2px;
@@ -3410,3 +3411,79 @@ body.is-card-dragging .composer-editor .reference-inline-card { cursor: grabbing
   100% { transform: scale(1); box-shadow: 0 2px 7px oklch(20% .02 80 / .08); }
 }
 @media (prefers-reduced-motion: reduce) { .reference-inline-card.is-landed { animation: none; } }
+
+/* ---------- 右侧导航:每条生成记录的结果(成功绿、失败红、生成中黄) ---------- */
+.conversation-map-rail button[data-status="success"], .conversation-map-list > button[data-status="success"] { --status: oklch(68% .17 150); }
+.conversation-map-rail button[data-status="failed"], .conversation-map-list > button[data-status="failed"] { --status: oklch(60% .2 27); }
+.conversation-map-rail button[data-status="running"], .conversation-map-list > button[data-status="running"] { --status: oklch(76% .15 75); }
+/* 细线左边的亮点:跟着刻度长短移动 */
+.conversation-map-rail button[data-status]:not([data-status="stopped"])::after {
+  content: ""; position: absolute; top: calc(50% - 3px); right: calc(var(--w, 9px) + 5px); width: 6px; height: 6px;
+  border-radius: 50%; background: var(--status); box-shadow: 0 0 6px 1px var(--status);
+  transition: right .22s cubic-bezier(.16, 1, .3, 1);
+}
+.conversation-map-rail button[data-status="running"]::after { animation: status-pulse 1.4s ease-in-out infinite; }
+@keyframes status-pulse { 50% { opacity: .35; } }
+/* 展开的列表:成功的淡绿底、失败的淡红底,左边一条同色的边 */
+.conversation-map-list > button[data-status]:not([data-status="stopped"]) {
+  background-image: linear-gradient(color-mix(in oklab, var(--status) 14%, transparent), color-mix(in oklab, var(--status) 14%, transparent));
+  box-shadow: inset 3px 0 0 var(--status);
+}
+.conversation-map-list > button.focus[data-status]:not([data-status="stopped"]) {
+  box-shadow: inset 3px 0 0 var(--status), 0 6px 18px oklch(20% .02 80 / .14), 0 0 0 1px var(--line);
+}
+@media (prefers-reduced-motion: reduce) { .conversation-map-rail button[data-status="running"]::after { animation: none; } }
+
+/* ---------- 顶栏:按结果筛选(全部 / 成功 / 失败)、列表 / 网格 ---------- */
+.topbar-segment {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 2px;
+  border: 1px solid var(--line); border-radius: max(var(--r-control), 8px); background: var(--paper);
+}
+.topbar-segment.topbar-filter { margin-left: auto; }
+.topbar-segment ~ .topbar-manage { margin-left: 0; }
+.topbar-segment button {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: max(calc(var(--r-control) - 3px), 6px);
+  color: var(--muted); background: transparent; font-size: 12px; font-weight: 600; white-space: nowrap; transition: color .15s, background .15s;
+}
+.topbar-segment button:hover { color: var(--ink); background: var(--warm); }
+.topbar-segment button.active { color: var(--paper); background: var(--ink); }
+.topbar-segment em { color: var(--faint); font-size: 11px; font-style: normal; font-weight: 500; font-variant-numeric: tabular-nums; }
+.topbar-segment button.active em { color: color-mix(in srgb, var(--paper) 70%, transparent); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; }
+.status-dot.success { background: oklch(68% .17 150); box-shadow: 0 0 6px oklch(68% .17 150); }
+.status-dot.failed { background: oklch(60% .2 27); box-shadow: 0 0 6px oklch(60% .2 27); }
+.task-filter-empty { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px 0; color: var(--muted); font-size: 13px; grid-column: 1 / -1; }
+.task-filter-empty button { padding: 4px 10px; border: 1px solid var(--line); border-radius: max(var(--r-control), 8px); color: var(--ink); background: var(--paper); font-size: 12px; }
+@media (max-width: 900px) { .topbar-segment.topbar-filter em { display: none; } }
+
+/* ---------- 生成记录的网格布局:多列卡片,图片 / 视频在上面,提示词两行 ---------- */
+.message-list.is-grid {
+  width: min(1240px, calc(100% - 40px));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; align-items: start;
+}
+.message-list.is-grid > .task-turn { display: contents; }
+.message-list.is-grid > :not(.task-turn) { grid-column: 1 / -1; }
+.message-list.is-grid .task-date { grid-column: 1 / -1; margin: 10px 0 0; }
+.message-list.is-grid .task-pick { height: 100%; }
+.message-list.is-grid .task-card {
+  height: 100%; margin: 0; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 10px;
+}
+/* 视频卡片:预览挪到上面 */
+.message-list.is-grid .task-preview { order: -1; }
+.message-list.is-grid .task-id, .message-list.is-grid .task-refs { display: none; }
+.message-list.is-grid .task-head { min-height: 26px; gap: 6px; }
+.message-list.is-grid .task-actions button { width: 26px; height: 26px; }
+.message-list.is-grid .task-prompt {
+  margin-top: 6px; font-size: 13px; line-height: 1.6; white-space: normal;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.message-list.is-grid .task-foot { gap: 4px 10px; padding-top: 8px; font-size: 11px; }
+/* 图片卡片:生成的图挪到最上面,两列小图 */
+.message-list.is-grid .image-task .task-main { display: flex; }
+.message-list.is-grid .image-task .image-results { order: -1; margin-top: 0; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
+.message-list.is-grid .image-task .image-results:has(> :only-child) { grid-template-columns: minmax(0, 1fr); }
+/* 网格里没有图的图片卡片(失败、已停止):上面放一块同样高的占位,和别的卡片对齐 */
+.message-list.is-grid .image-task .task-main:not(:has(.image-results))::before {
+  content: "没有生成结果"; order: -1; display: grid; place-items: center; aspect-ratio: 16 / 9; margin-bottom: 2px;
+  border-radius: 11px; color: var(--faint); background: var(--hover); font-size: 12px;
+}

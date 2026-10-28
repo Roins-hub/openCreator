@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { depthOffset, navigationNodes, searchNavigation, tickWidth } from "./conversation-navigation";
+import { depthOffset, navigationNodes, searchNavigation, tickWidth, turnStatus } from "./conversation-navigation";
 import type { Message } from "./types";
 
 const message = (id: string, role: Message["role"], content: string): Message => ({
@@ -28,7 +28,7 @@ describe("conversation navigation", () => {
       message("u2", "user", "提交失败的提示词"),
     ]);
     expect(nodes).toEqual([
-      { id: "v1", preview: "海边的灯塔", text: "海边的灯塔" },
+      { id: "v1", preview: "海边的灯塔", text: "海边的灯塔", status: "running" },
       { id: "u2", preview: "提交失败的提示词", text: "提交失败的提示词" },
     ]);
   });
@@ -50,5 +50,17 @@ describe("conversation navigation", () => {
     expect(searchNavigation(nodes, "海边 lighthouse").map((node) => node.id)).toEqual(["u2"]);
     expect(searchNavigation(nodes, "海边 猫")).toEqual([]);
     expect(searchNavigation(nodes, "  ")).toHaveLength(2);
+  });
+
+  it("maps each generation record to a result status", () => {
+    expect(["complete", "failed", "processing", "stopped"].map((status) => turnStatus({ status } as never)))
+      .toEqual(["success", "failed", "running", "stopped"]);
+    const at = "2026-10-28T00:00:00Z";
+    const nodes = navigationNodes([
+      { id: "u1", role: "user", content: "猫", createdAt: at, status: "complete" },
+      { id: "a1", role: "assistant", content: "", createdAt: at, status: "failed", replyTo: "u1", generation: { type: "image", providerName: "", modelName: "m", modelId: "m" } },
+      { id: "u2", role: "user", content: "只有提示词", createdAt: at, status: "complete" },
+    ] as never);
+    expect(nodes.map((node) => [node.id, node.status])).toEqual([["a1", "failed"], ["u2", undefined]]);
   });
 });

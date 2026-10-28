@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUp, AtSign, Check, Clapperboard, Download, Image as ImageIcon, ImagePlus, KeyRound, ListChecks, Loader2, Maximize2, Menu,
-  Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Sparkles, Undo2, X, BookMarked, Pencil, Trash2,
+  Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Sparkles, Undo2, X, BookMarked, Pencil, Trash2, LayoutGrid, Rows3,
 } from "lucide-react";
+import { turnStatus } from "@/lib/conversation-navigation";
 import type { Conversation, GenerationMeta, ImageOptions, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
 import type { Asset, AssetFolder } from "@/lib/asset-store";
 import { createClientId } from "@/lib/client-id";
@@ -64,6 +65,7 @@ import { PromptPresetBar, usePromptPreset } from "@/components/prompt-preset";
 type CatalogModel = VideoModel | ImageModel;
 /** 输入框里的素材:上传完成前用本地 blob 预览,上传完成后换成服务器路径(仍保留 blob 预览避免闪烁)。 */
 type ComposerAttachment = MediaRef & { previewUrl?: string; uploading?: boolean; progress?: number };
+const TASK_LAYOUT_KEY = "mote.taskLayout";
 
 const toMediaRef = (item: ComposerAttachment): MediaRef => ({
   kind: item.kind, path: item.path, name: item.name,
@@ -168,6 +170,20 @@ export function AppShell() {
   const [attachmentPreview, setAttachmentPreview] = useState<number | null>(null);
   const [referenceAssets, setReferenceAssets] = useState<(Asset & { kind: MediaKind })[]>([]);
   const [referenceFolders, setReferenceFolders] = useState<AssetFolder[]>([]);
+  // 当前对话按结果筛选:全部 / 只看成功 / 只看失败
+  const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
+  // 生成记录的排列:横向卡片(列表)/ 网格;记在浏览器里
+  const [taskLayout, setTaskLayout] = useState<"list" | "grid">("list");
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try { if (window.localStorage.getItem(TASK_LAYOUT_KEY) === "grid") setTaskLayout("grid"); } catch { /* 用默认的列表 */ }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const chooseLayout = (layout: "list" | "grid") => {
+    setTaskLayout(layout);
+    try { window.localStorage.setItem(TASK_LAYOUT_KEY, layout); } catch { /* 只影响下次打开 */ }
+  };
   // 素材库列表:打开页面后先在后台读一次,点 @ 时直接用,同时再刷新一次(不用等它才弹出)
   const [referenceLoading, setReferenceLoading] = useState(false);
   // 列表是哪个 Key 读的:换了账号就不再显示上一个账号的素材
@@ -765,6 +781,18 @@ export function AppShell() {
     setError(skipped.length ? `${skipped.length} 个素材没有加入：当前模型不支持这种素材，或已达到素材上限` : "");
     if (point) insertReferenceCards(next.filter((item) => assets.some((asset) => asset.path === item.path)), next, rangeAtPoint(point));
   };
+
+  // 生成记录卡片上的素材(参考图、生成的图)拖到输入框:作为参考素材加进来;拖到写字的地方还在松手处插入「图N」
+  const cardMediaRef = useRef<MediaRef | null>(null);
+  const cardMediaDrag = useCardDrag((target, paths, point) => {
+    const media = cardMediaRef.current;
+    cardMediaRef.current = null;
+    if (!media || !paths.length || (target !== COMPOSER_DROP && target !== EDITOR_DROP)) return;
+    attachReferenceAssets([{
+      id: media.path, kind: media.kind, path: media.path, name: media.name, mimeType: media.mimeType || "image/png", managed: true,
+    }], target === EDITOR_DROP ? point : undefined);
+  });
+
 
   // 「刚上传」一栏:输入框里现在这些自己上传的素材(带本地预览的就是从这台电脑传上去的;从素材库选的没有),
   // 最新的在上面;在输入框里删掉、清空就跟着没了(素材库里还在),再上传的直接顶上
@@ -1430,7 +1458,18 @@ export function AppShell() {
   }, [pendingKey, pollFailures, conversations]);
 
   const turns = active ? buildTurns(active.messages, isGenerationTurn) : [];
-  const taskTurns = turns.filter((turn) => turn.kind !== "message");
+  const allTaskTurns = turns.filter((turn) => turn.kind !== "message");
+  const statusCount = (status: "success" | "failed") => allTaskTurns.filter((turn) => turnStatus(turn.message) === status).length;
+  // 筛选时只显示对应结果的生成记录(单独的提示词也先不显示);批量管理、全选都按显示着的算
+  const shownTurns = statusFilter === "all" ? turns
+    : turns.filter((turn) => turn.kind !== "message" && turnStatus(turn.message) === statusFilter);
+  const taskTurns = shownTurns.filter((turn) => turn.kind !== "message");
+  const visibleTurnIds = useMemo(() => {
+    if (statusFilter === "all" || !activeMessages) return undefined;
+    return new Set(buildTurns(activeMessages, isGenerationTurn)
+      .filter((turn) => turn.kind !== "message" && turnStatus(turn.message) === statusFilter)
+      .map((turn) => turn.message.id));
+  }, [statusFilter, activeMessages]);
   const managing = Boolean(active) && turnSelection.conversationId === active?.id;
   const pickedTurns = managing ? taskTurns.filter((turn) => turnSelection.ids.has(turn.message.id)) : [];
   const allPicked = taskTurns.length > 0 && pickedTurns.length === taskTurns.length;
@@ -1546,6 +1585,20 @@ export function AppShell() {
           </span>}
           {!apiKey && <Link className="key-missing" href="/settings"><KeyRound size={13} />填写 API Key</Link>}
           {/* 顶栏右侧,和左边的模型规格条同一行 */}
+          {allTaskTurns.length > 0 && <div className="topbar-segment topbar-filter" role="group" aria-label="按结果筛选生成记录">
+            {([["all", "全部", allTaskTurns.length], ["success", "成功", statusCount("success")], ["failed", "失败", statusCount("failed")]] as const)
+              .map(([value, label, count]) => <button type="button" key={value} aria-pressed={statusFilter === value}
+                className={statusFilter === value ? "active" : ""} onClick={() => setStatusFilter(value)}
+                title={value === "all" ? "显示全部生成记录" : `只看${label}的生成记录`}>
+                {value !== "all" && <i className={`status-dot ${value}`} aria-hidden="true" />}{label}<em>{count}</em>
+              </button>)}
+          </div>}
+          {allTaskTurns.length > 0 && <div className="topbar-segment" role="group" aria-label="生成记录的排列">
+            <button type="button" aria-pressed={taskLayout === "list"} className={taskLayout === "list" ? "active" : ""}
+              onClick={() => chooseLayout("list")} title="列表（横向卡片）" aria-label="列表"><Rows3 size={14} /></button>
+            <button type="button" aria-pressed={taskLayout === "grid"} className={taskLayout === "grid" ? "active" : ""}
+              onClick={() => chooseLayout("grid")} title="网格" aria-label="网格"><LayoutGrid size={14} /></button>
+          </div>}
           {(managing || taskTurns.length > 0) && <button type="button" className={`topbar-manage ${managing && !turnSelection.closing ? "active" : ""}`}
             onClick={managing ? stopManaging : startManaging} title={managing ? "退出批量管理（Esc）" : "批量选择、下载、删除生成记录"}>
             <ListChecks size={14} />{managing ? "完成" : "批量管理"}
@@ -1570,10 +1623,14 @@ export function AppShell() {
             </div>
           ) : (
             // 换对话时整列重新挂载,带一次淡入
-            <div className="message-list" key={active.id}>
+            <div className={`message-list ${taskLayout === "grid" ? "is-grid" : ""}`} key={active.id}>
+              {statusFilter !== "all" && !taskTurns.length && <p className="task-filter-empty">
+                这个对话还没有{statusFilter === "success" ? "成功" : "失败"}的生成记录。
+                <button type="button" onClick={() => setStatusFilter("all")}>显示全部</button>
+              </p>}
               {(() => {
                 let lastDate = "";
-                return turns.map((turn) => {
+                return shownTurns.map((turn) => {
                   const { message } = turn;
                   if (turn.kind === "message") {
                     return message.role === "user"
@@ -1604,10 +1661,14 @@ export function AppShell() {
                     onToggleFavorite: () => void toggleFavorite(mediaPaths, !favorite),
                     onDelete: () => deleteTurn(message.id, userMessage?.id),
                     sizes: assetSizes,
+                    onDragMedia: (event: React.PointerEvent<HTMLElement>, media: MediaRef) => {
+                      cardMediaRef.current = media;
+                      cardMediaDrag.begin(event, media, [media.path]);
+                    },
                   };
                   const picked = managing && turnSelection.ids.has(message.id);
                   return (
-                    <div key={message.id}>
+                    <div className="task-turn" key={message.id}>
                       {showDate && <div className="task-date">{date}</div>}
                       <div className={`task-pick ${managing ? "is-managing" : ""} ${picked ? "is-picked" : ""} ${turnSelection.closing ? "is-closing" : ""}`} data-turn-id={message.id}>
                         {managing && <button type="button" className={`task-check ${picked ? "is-on" : ""}`}
@@ -1632,7 +1693,7 @@ export function AppShell() {
             </div>
           )}
         </div>
-        <ConversationNavigator messages={active?.messages || []} scrollRootRef={conversationRef} />
+        <ConversationNavigator messages={active?.messages || []} scrollRootRef={conversationRef} visibleIds={visibleTurnIds} />
 
         <div className={`composer-region ${draggingImages ? "drag-active" : ""} ${managing && !turnSelection.closing ? "is-managing" : ""} ${turnSelection.closing ? "is-returning" : ""}`}
           onDragEnter={(event) => {
@@ -1736,6 +1797,7 @@ export function AppShell() {
                 </div>
               )}
               {attachmentDrag.overlay}
+              {cardMediaDrag.overlay}
               {inlineCardDrag.overlay}
               {attachmentPreview !== null && attachments[attachmentPreview] && (
                 <MediaPreview
