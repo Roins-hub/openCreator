@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Download, Music, SquarePen, X } from "lucide-react";
 import { formatBytes } from "@/components/generation-info";
-import { ImageEditor } from "@/components/image-editor";
+import { ImageEditor, editorOriginFrom, type EditorOrigin } from "@/components/image-editor";
 import { ImageZoom } from "@/components/image-zoom";
 import { ProgressVideo } from "@/components/load-progress";
 import { mediaUrl, opensOriginal, thumbUrl, viewUrl } from "@/lib/media-url";
@@ -42,6 +42,26 @@ export const mediaPreviewItem = (media: MediaRef, caption?: string, size?: numbe
   };
 };
 
+// 问过服务端的文件大小(同一个文件只问一次)
+const fetchedSizes = new Map<string, Promise<number | undefined>>();
+function mediaSize(url: string) {
+  const path = url.split("?")[0];
+  if (!path.startsWith("/api/media/")) return Promise.resolve(undefined);
+  let pending = fetchedSizes.get(path);
+  if (!pending) {
+    pending = fetch(`${path}?size=1`).then((response) => response.ok ? response.json() : {})
+      .then((data: { size?: number | null }) => data.size || undefined, () => undefined);
+    fetchedSizes.set(path, pending);
+  }
+  return pending;
+}
+
+/** 预览里正在显示的那张图(编辑器从它展开) */
+export function viewerImageOrigin(button: HTMLElement) {
+  const images = button.closest(".video-viewer-body")?.querySelectorAll<HTMLImageElement>("img.image-viewer-img:not(.image-zoom-preview)");
+  return editorOriginFrom(images ? [...images].pop() : undefined);
+}
+
 /**
  * 放大查看参考素材(图片、视频、音频),样式与生成结果的放大预览一致。
  * 挂在 body 上,不受卡片动画和输入框布局的影响;Esc 关闭,左右方向键切换。
@@ -54,7 +74,17 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
 }) {
   const current = items[index];
   // 正在编辑的那张(编辑器盖在预览上面;按键都交给编辑器)
-  const [editing, setEditing] = useState<PreviewItem | null>(null);
+  const [editing, setEditing] = useState<{ item: PreviewItem; origin?: EditorOrigin } | null>(null);
+  // 没带大小的(旧记录、没登记进素材库的参考图)向服务端问一下
+  const [asked, setAsked] = useState<Record<string, number>>({});
+  const sizeUrl = current && !current.size ? current.original || current.src : undefined;
+  useEffect(() => {
+    if (!sizeUrl) return;
+    let alive = true;
+    void mediaSize(sizeUrl).then((size) => { if (alive && size) setAsked((known) => ({ ...known, [sizeUrl]: size })); });
+    return () => { alive = false; };
+  }, [sizeUrl]);
+  const currentSize = current?.size || (sizeUrl ? asked[sizeUrl] : undefined);
   useEffect(() => {
     if (editing) return;
     const onKey = (event: KeyboardEvent) => {
@@ -85,9 +115,9 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
         )}
         <div className="video-viewer-bar">
           <p title={current.caption || current.name}>{current.caption || current.name}
-            {current.size ? <small className="viewer-size"> · {formatBytes(current.size)}</small> : null}</p>
+            {currentSize ? <small className="viewer-size"> · {formatBytes(currentSize)}</small> : null}</p>
           {items.length > 1 && <span>{index + 1} / {items.length}</span>}
-          {current.kind === "image" && <button type="button" className="viewer-edit" onClick={() => setEditing(current)}
+          {current.kind === "image" && <button type="button" className="viewer-edit" onClick={(event) => setEditing({ item: current, origin: viewerImageOrigin(event.currentTarget) })}
             title="裁剪、调整、涂鸦、马赛克、涂抹、擦除"><SquarePen size={15} />编辑</button>}
           {current.download && <a href={current.download} download={current.name}><Download size={15} />下载</a>}
         </div>
@@ -99,7 +129,7 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
       <button type="button" className="video-viewer-close" onClick={(event) => { event.stopPropagation(); onClose(); }} aria-label="关闭">
         <X size={20} />
       </button>
-      {editing && <ImageEditor src={editing.original || editing.src} name={editing.name}
+      {editing && <ImageEditor src={editing.item.original || editing.item.src} name={editing.item.name} origin={editing.origin}
         onClose={() => setEditing(null)} onFinished={onClose} />}
     </div>,
     document.body,

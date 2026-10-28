@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Download, Info, SquarePen, X } from "lucide-react";
-import { ImageEditor } from "@/components/image-editor";
+import { ImageEditor, type EditorOrigin } from "@/components/image-editor";
+import { viewerImageOrigin } from "@/components/media-preview";
 import type { MediaRef, Message } from "@/lib/types";
 import { mediaDownloadUrl } from "@/lib/download-files";
 import { GenerationInfo } from "@/components/generation-info";
@@ -36,7 +37,7 @@ export function ResultViewer({
 }) {
   const current = items[index];
   const [infoOpen, setInfoOpen] = useState(readInfoOpen);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<{ origin?: EditorOrigin } | null>(null);
   const toggleInfo = (open: boolean) => {
     setInfoOpen(open);
     try { window.localStorage.setItem(INFO_KEY, open ? "1" : "0"); } catch { /* 只影响下次是否默认展开 */ }
@@ -71,7 +72,7 @@ export function ResultViewer({
             {!infoOpen && <button type="button" className="viewer-info-toggle" onClick={() => toggleInfo(true)}>
               <Info size={15} />生成信息
             </button>}
-            {!isVideo && <button type="button" className="viewer-edit" onClick={() => setEditing(true)}
+            {!isVideo && <button type="button" className="viewer-edit" onClick={(event) => setEditing({ origin: viewerImageOrigin(event.currentTarget) })}
               title="裁剪、调整、涂鸦、马赛克、涂抹、擦除"><SquarePen size={15} />编辑</button>}
             <a href={mediaDownloadUrl(current)} download={current.name}><Download size={15} />下载</a>
           </div>
@@ -84,7 +85,7 @@ export function ResultViewer({
       {index < items.length - 1 && <button type="button" className="video-viewer-nav next" aria-label={isVideo ? "下一个" : "下一张"}
         onClick={(event) => { event.stopPropagation(); onIndex(index + 1); }}><ChevronRight size={22} /></button>}
       <button type="button" className="video-viewer-close" onClick={onClose} aria-label="关闭"><X size={20} /></button>
-      {editing && <ImageEditor src={mediaUrl(current.path)} name={current.name} onClose={() => setEditing(false)} onFinished={onClose} />}
+      {editing && <ImageEditor src={mediaUrl(current.path)} name={current.name} origin={editing.origin} onClose={() => setEditing(null)} onFinished={onClose} />}
     </div>,
     document.body,
   );

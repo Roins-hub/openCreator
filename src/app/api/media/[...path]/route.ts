@@ -4,7 +4,7 @@ import { extname } from "node:path";
 import { Readable } from "node:stream";
 import { failure } from "@/lib/http";
 import { ownsMedia, sessionUserId } from "@/lib/identity";
-import { assertKey, browserMediaUrl, derivedKey, verifyMediaSignature } from "@/lib/object-store";
+import { assertKey, browserMediaUrl, derivedKey, objectSize, verifyMediaSignature } from "@/lib/object-store";
 import { ensureDerived, hasDerived, variantForWidth, variantProcess, type DerivedVariant } from "@/lib/media-derived";
 import { inside, outDir } from "@/lib/paths";
 import { parseByteRange } from "@/lib/byte-range";
@@ -47,6 +47,11 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
     const allowed = (userId && await ownsMedia(userId, key)) ||
       await verifyMediaSignature(key, query.get("exp"), query.get("sig"));
     if (!allowed) return failure(new Error("无权访问该文件"), 404);
+    // ?size=1:只要文件大小(放大预览里显示;旧记录、没登记进素材库的参考图没存大小)
+    if (query.has("size")) {
+      const size = await objectSize(key).catch(() => undefined);
+      return Response.json({ size: size ?? null }, { headers: { "Cache-Control": "private, max-age=86400" } });
+    }
 
     const download = query.get("download") || undefined;
     const variant = variantOf(query);

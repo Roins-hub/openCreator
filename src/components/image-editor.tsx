@@ -1,11 +1,12 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Brush, Check, ChevronDown, Crop, Download, Droplets, Eraser, FlipHorizontal2, FlipVertical2, FolderPlus, Grid3x3,
-  ImagePlus, Loader2, Redo2, RotateCcw, RotateCw, SlidersHorizontal, Undo2,
+  ImagePlus, Loader2, Pencil, Redo2, RotateCcw, RotateCw, SlidersHorizontal, Undo2,
 } from "lucide-react";
+import { useSlidingThumb } from "@/components/segmented";
 import { apiKeyHeaders } from "@/lib/api-key";
 import { uploadMedia } from "@/lib/direct-upload";
 
@@ -127,6 +128,41 @@ function ratioRect(ratio: number, width: number, height: number): Rect {
     : { y: 0, h: 1, w: ratio / imageRatio, x: (1 - ratio / imageRatio) / 2 };
 }
 
+/** 编辑器从哪张图「飞」出来:预览里那张图在屏幕上的位置、已经加载好的地址和原始宽高 */
+export type EditorOrigin = { rect: DOMRect; src: string; width: number; height: number };
+
+/** 从预览里正在显示的 <img> 算出图片真正画在哪(object-fit: contain 时元素比图大) */
+export function editorOriginFrom(image: HTMLImageElement | null | undefined): EditorOrigin | undefined {
+  if (!image || !image.naturalWidth) return undefined;
+  const box = image.getBoundingClientRect();
+  let rect = box;
+  if (getComputedStyle(image).objectFit === "contain") {
+    const scale = Math.min(box.width / image.naturalWidth, box.height / image.naturalHeight);
+    const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+    rect = new DOMRect(box.left + (box.width - width) / 2, box.top + (box.height - height) / 2, width, height);
+  }
+  return { rect, src: image.currentSrc || image.src, width: image.naturalWidth, height: image.naturalHeight };
+}
+
+type Motion = { from: DOMRect; turn?: number; fade?: boolean };
+const EASE = "cubic-bezier(.16, 1, .3, 1)";
+const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/** 把画布从 from 的位置、大小(转过 turn 度)变到现在的位置 */
+function morphFrame(frame: HTMLElement, { from, turn = 0, fade }: Motion, reverse = false) {
+  const to = frame.getBoundingClientRect();
+  if (!to.width || !to.height) return undefined;
+  const dx = from.left + from.width / 2 - (to.left + to.width / 2);
+  const dy = from.top + from.height / 2 - (to.top + to.height / 2);
+  const turned = Math.abs(turn) % 180 === 90;
+  const sx = turned ? from.height / to.width : from.width / to.width;
+  const sy = turned ? from.width / to.height : from.height / to.height;
+  const start = { transform: `translate(${dx}px, ${dy}px) rotate(${-turn}deg) scale(${sx}, ${sy})`, opacity: fade ? 0.5 : 1 };
+  const end = { transform: "none", opacity: 1 };
+  return frame.animate(reverse ? [end, start] : [start, end],
+    { duration: reverse ? 360 : 560, easing: reverse ? "cubic-bezier(.5, 0, .2, 1)" : EASE, fill: reverse ? "forwards" : "none" });
+}
+
 async function editorRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { ...apiKeyHeaders(), ...init?.headers } });
   const data = await response.json().catch(() => ({}));
@@ -138,9 +174,11 @@ async function editorRequest<T>(url: string, init?: RequestInit): Promise<T> {
  * 图片编辑:裁剪(比例、旋转、翻转、拉直)、调整、涂鸦、马赛克、涂抹、擦除,可撤销 / 重做。
  * 编辑用原图(满分辨率);保存时可以下载、存入素材库,或直接加到输入框当参考图。
  */
-export function ImageEditor({ src, name, onClose, onFinished }: {
+export function ImageEditor({ src, name, origin, onClose, onFinished }: {
   src: string;
   name: string;
+  /** 从预览里的那张图展开(关闭时收回去);没有时淡入 */
+  origin?: EditorOrigin;
   onClose: () => void;
   /** 加到输入框之后:顺手把下面的预览也关掉 */
   onFinished?: () => void;
@@ -149,13 +187,21 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
   const workRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const toolsRef = useRef<HTMLElement>(null);
+  // 下一次画布换了位置 / 大小时要播的过渡(进入、裁剪、旋转、撤销)
+  const motionRef = useRef<Motion | null>(origin ? { from: origin.rect } : null);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
   const historyRef = useRef<{ list: Snapshot[]; index: number }>({ list: [], index: 0 });
   const strokeRef = useRef<{ id: number; x: number; y: number; source: HTMLCanvasElement | null } | null>(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState("");
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [fit, setFit] = useState({ width: 0, height: 0 });
+  const [stage, setStage] = useState({ width: 0, height: 0 });
+  const [tick, setTick] = useState(0);
+  const [cropDragging, setCropDragging] = useState(false);
+  const [fileName, setFileName] = useState(() => `${name.replace(/\.[^.]+$/, "") || "图片"}-编辑`);
+  const [renaming, setRenaming] = useState(false);
   const [steps, setSteps] = useState({ index: 0, count: 1 });
   const [tool, setTool] = useState<Tool>("crop");
   const [crop, setCrop] = useState<Rect>(FULL);
@@ -195,18 +241,28 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
 
   // ---------- 图在舞台里按比例放到最大 ----------
   useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage || !size.width) return;
-    const measure = () => {
-      const box = stage.getBoundingClientRect();
-      const scale = Math.min((box.width - 48) / size.width, (box.height - 48) / size.height, 1.5);
-      setFit({ width: Math.max(1, Math.floor(size.width * scale)), height: Math.max(1, Math.floor(size.height * scale)) });
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(stage);
+    const element = stageRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const box = entry.contentRect;
+      setStage({ width: box.width, height: box.height });
+    });
+    observer.observe(element);
     return () => observer.disconnect();
-  }, [size]);
+  }, []);
+  // 原图还没读完时先按预览里那张的宽高排好,进入动画可以马上开始
+  const shown = size.width ? size : origin ? { width: origin.width, height: origin.height } : size;
+  const fitScale = shown.width && stage.width ? Math.min((stage.width - 48) / shown.width, (stage.height - 48) / shown.height, 1.5) : 0;
+  const fit = { width: Math.max(1, Math.floor(shown.width * fitScale)), height: Math.max(1, Math.floor(shown.height * fitScale)) };
+
+  // 画布换了大小、位置后播过渡(进入时从预览的图展开、裁剪从框的位置放大、旋转转过去)
+  useLayoutEffect(() => {
+    const motion = motionRef.current, frame = frameRef.current;
+    if (!motion || !frame || !fitScale) return;
+    motionRef.current = null;
+    if (!reducedMotion()) morphFrame(frame, motion);
+  }, [fit.width, fit.height, fitScale, tick]);
+  const frameRect = () => frameRef.current?.getBoundingClientRect();
 
   // ---------- 历史 ----------
   const limit = size.width ? Math.min(30, Math.max(4, Math.floor(240e6 / (size.width * size.height)))) : 30;
@@ -230,7 +286,10 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
     baseRef.current = entry.base;
     history.index = index;
     setSteps({ index, count: history.list.length });
+    const from = frameRect();
+    if (from) motionRef.current = { from, fade: true };
     setSize({ width: work.width, height: work.height });
+    setTick((value) => value + 1);
     setCrop(FULL); setAngle(0); setAdjust(NO_ADJUST);
   };
   const undo = () => restore(historyRef.current.index - 1);
@@ -250,6 +309,7 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
     context(work).drawImage(next, 0, 0);
     baseRef.current = copyOf(work);
     setSize({ width: work.width, height: work.height });
+    setTick((value) => value + 1);
     record();
   };
 
@@ -268,6 +328,9 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
       sourceContext.scale(1 / scale, 1 / scale);
       sourceContext.drawImage(work, -work.width / 2, -work.height / 2);
     }
+    // 裁好的图从裁剪框的位置放大到舞台中间
+    const box = frameRef.current?.querySelector(".image-editor-crop")?.getBoundingClientRect();
+    motionRef.current = box ? { from: box } : null;
     const x = Math.round(crop.x * work.width), y = Math.round(crop.y * work.height);
     const out = canvasOf(crop.w * work.width, crop.h * work.height);
     context(out).drawImage(source, x, y, out.width, out.height, 0, 0, out.width, out.height);
@@ -307,7 +370,15 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
     if (kind === "flipX") outContext.scale(-1, 1);
     if (kind === "flipY") outContext.scale(1, -1);
     outContext.drawImage(work, -work.width / 2, -work.height / 2);
+    const from = frameRect();
+    if (turn && from) motionRef.current = { from, turn: kind === "right" ? 90 : -90 };
     replaceWith(out);
+    // 翻转:像翻纸一样转过来
+    const frame = frameRef.current;
+    if (!turn && frame && !reducedMotion()) {
+      frame.animate([{ transform: `perspective(1600px) ${kind === "flipX" ? "rotateY" : "rotateX"}(180deg)` }, { transform: "perspective(1600px)" }],
+        { duration: 620, easing: EASE });
+    }
   };
 
   const chooseRatio = (value: number | null) => {
@@ -401,6 +472,7 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
   const dragCrop = (mode: string) => (event: React.PointerEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    setCropDragging(true);
     const frame = (event.currentTarget.closest(".image-editor-frame") as HTMLElement).getBoundingClientRect();
     const start = { x: event.clientX, y: event.clientY, rect: crop };
     const fixed = ratio === null ? null : (ratio === -1 ? size.width / size.height : ratio) * size.height / size.width;
@@ -423,16 +495,20 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
       }
       setCrop(clampRect({ x, y, w, h }));
     };
-    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    const up = () => { setCropDragging(false); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
 
   // ---------- 关闭(有改动时先确认) ----------
-  const close = (force = false) => {
+  const close = (force = false, back = true) => {
     if (!force && edited && !confirmLeave) { setConfirmLeave(true); return; }
     setLeaving(true);
-    window.setTimeout(onClose, 180);
+    const frame = frameRef.current;
+    // 没改过就收回到预览那张图上(改过的图和预览不一样,直接淡出)
+    const animation = back && !edited && origin && frame && !reducedMotion() ? morphFrame(frame, { from: origin.rect }, true) : undefined;
+    if (animation) void animation.finished.then(onClose, onClose);
+    else window.setTimeout(onClose, 220);
   };
 
   // ---------- 保存 ----------
@@ -441,8 +517,8 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
     const work = workRef.current!;
     const blob = await new Promise<Blob | null>((resolve) => work.toBlob(resolve, "image/png"));
     if (!blob) throw new Error("导出图片失败");
-    const stem = name.replace(/\.[^.]+$/, "") || "图片";
-    return new File([blob], `${stem}-编辑.png`, { type: "image/png" });
+    const stem = fileName.trim().replace(/\.png$/i, "") || name.replace(/\.[^.]+$/, "") || "图片";
+    return new File([blob], `${stem}.png`, { type: "image/png" });
   };
   const run = async (label: string, action: (file: File) => Promise<string | void>) => {
     setMenu(false);
@@ -472,12 +548,14 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
   });
   const attach = () => run("正在添加", async (file) => {
     targets.attach?.(file);
-    close(true);
+    close(true, false);
     onFinished?.();
   });
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // 改名输入框里的按键(回车、Esc、撤销)留给输入框自己;下面的预览在编辑时不听按键
+      if ((event.target as HTMLElement | null)?.closest?.("input")) return;
       event.stopPropagation();
       const mod = event.ctrlKey || event.metaKey;
       if (event.key === "Escape") { if (menu) setMenu(false); else close(); }
@@ -492,6 +570,12 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
   });
 
   const scale = angle ? 1 / straightenScale(size.width, size.height, angle) : 1;
+  useSlidingThumb(toolsRef);
+  const commitName = (value: string) => {
+    const next = value.trim().replace(/[\\/:*?"<>|]+/g, "").slice(0, 120);
+    if (next) setFileName(next.replace(/\.png$/i, ""));
+    setRenaming(false);
+  };
   const showPreview = tool === "adjust" && ready;
 
   return createPortal(
@@ -503,9 +587,21 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
           <button type="button" onClick={undo} disabled={steps.index === 0} title="撤销（Ctrl / ⌘ + Z）" aria-label="撤销"><Undo2 size={16} /></button>
           <button type="button" onClick={redo} disabled={steps.index >= steps.count - 1} title="重做（Ctrl / ⌘ + Shift + Z）" aria-label="重做"><Redo2 size={16} /></button>
           <button type="button" className="text" onClick={reset} disabled={!edited}>还原</button>
-          <span className="image-editor-name" title={name}>{name}</span>
+          {renaming
+            ? <input className="image-editor-rename" autoFocus defaultValue={fileName} maxLength={120} aria-label="文件名"
+              onFocus={(event) => event.currentTarget.select()}
+              onBlur={(event) => commitName(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+                if (event.key === "Escape") { event.currentTarget.value = fileName; event.currentTarget.blur(); }
+              }} />
+            : <button type="button" className="image-editor-name" onClick={() => setRenaming(true)}
+              title={`保存时的文件名（原图：${name}），点击重命名`}>
+              <span>{fileName}.png</span><Pencil size={13} aria-hidden="true" />
+            </button>}
         </div>
-        <nav className="image-editor-tools" aria-label="编辑工具">
+        <nav className="image-editor-tools" aria-label="编辑工具" ref={toolsRef}>
+          <span className="segmented-thumb" aria-hidden="true" />
           {TOOLS.map(({ id, label, icon: Icon, hint }) => (
             <button type="button" key={id} aria-pressed={tool === id} onClick={() => chooseTool(id)} title={hint} disabled={!ready}>
               <Icon size={17} /><span>{label}</span>
@@ -537,14 +633,18 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
       <div className="image-editor-stage" ref={stageRef}>
         {!ready && !failed && <span className="image-editor-loading"><Loader2 size={22} className="spin" />正在读取原图…</span>}
         {failed && <span className="image-editor-loading">{failed}</span>}
-        <div className="image-editor-frame" data-tool={tool} style={{ width: fit.width, height: fit.height, visibility: ready ? "visible" : "hidden" }}>
+        <div className={`image-editor-frame ${origin ? "" : "no-origin"}`} data-tool={tool} ref={frameRef}
+          style={{ width: fit.width, height: fit.height, visibility: ready || origin ? "visible" : "hidden" }}>
+          {/* 原图读完之前先垫着预览里那张(已经加载过,马上能显示) */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {!ready && origin && <img className="image-editor-placeholder" src={origin.src} alt="" draggable={false} />}
           <canvas ref={workRef} className="image-editor-canvas"
-            style={{ transform: angle ? `rotate(${angle}deg) scale(${scale})` : undefined, visibility: showPreview ? "hidden" : undefined,
+            style={{ transform: angle ? `rotate(${angle}deg) scale(${scale})` : undefined, visibility: showPreview || !ready ? "hidden" : undefined,
               cursor: painting ? "crosshair" : undefined, ["--brush" as string]: `${brush}px` }}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} />
           <canvas ref={previewRef} className="image-editor-canvas image-editor-preview" hidden={!showPreview} />
           {tool === "crop" && ready && (
-            <div className="image-editor-crop" style={{
+            <div className={`image-editor-crop ${cropDragging ? "is-dragging" : ""}`} style={{
               left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.w * 100}%`, height: `${crop.h * 100}%`,
             }} onPointerDown={dragCrop("move")}>
               <i className="grid" aria-hidden="true" />
@@ -557,6 +657,8 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
       </div>
 
       <footer className="image-editor-options">
+        {/* 换工具时这一排重新挂上,里面的控件依次浮上来 */}
+        <div className="image-editor-options-row" key={tool}>
         {tool === "crop" && <>
           <div className="group">
             <button type="button" onClick={() => transform("left")} title="向左转 90°" aria-label="向左转"><RotateCcw size={16} /></button>
@@ -606,6 +708,7 @@ export function ImageEditor({ src, name, onClose, onFinished }: {
             data-tool={tool} aria-hidden="true" />
           <span className="hint">{TOOLS.find((item) => item.id === tool)?.hint}</span>
         </>}
+        </div>
       </footer>
     </div>,
     document.body,

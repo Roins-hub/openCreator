@@ -450,8 +450,9 @@ export function AppShell() {
     return () => clearTimeout(timer);
   }, []);
   const activeMessages = conversations.find((item) => item.id === activeId)?.messages;
-  const needsSizes = Boolean(activeMessages?.some((message) => message.role === "assistant" &&
-    (message.media || []).some((media) => media.size === undefined)));
+  // 生成结果、参考素材有没记大小的,就查一次资产列表(参考图放大时也要显示大小)
+  const needsSizes = Boolean(activeMessages?.some((message) =>
+    [...(message.media || []), ...(message.attachments || [])].some((media) => media.size === undefined)));
   useEffect(() => {
     if (!needsSizes || assetSizesLoaded.current || !readApiKey()) return;
     assetSizesLoaded.current = true;
