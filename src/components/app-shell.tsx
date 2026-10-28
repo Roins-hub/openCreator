@@ -6,7 +6,10 @@ import {
   ArrowUp, AtSign, Check, Clapperboard, Download, Image as ImageIcon, ImagePlus, KeyRound, ListChecks, Loader2, Maximize2, Menu,
   Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Sparkles, Undo2, X, BookMarked, Pencil, Trash2, LayoutGrid, Rows3,
 } from "lucide-react";
+import { flushSync } from "react-dom";
 import { turnStatus } from "@/lib/conversation-navigation";
+import { Segmented } from "@/components/segmented";
+import { TaskDetail, TaskTile } from "@/components/task-tile";
 import type { Conversation, GenerationMeta, ImageOptions, MediaRef, Message, ModelType, VideoOptions } from "@/lib/types";
 import type { Asset, AssetFolder } from "@/lib/asset-store";
 import { createClientId } from "@/lib/client-id";
@@ -66,6 +69,36 @@ type CatalogModel = VideoModel | ImageModel;
 /** 输入框里的素材:上传完成前用本地 blob 预览,上传完成后换成服务器路径(仍保留 blob 预览避免闪烁)。 */
 type ComposerAttachment = MediaRef & { previewUrl?: string; uploading?: boolean; progress?: number };
 const TASK_LAYOUT_KEY = "mote.taskLayout";
+
+/**
+ * 列表 / 网格切换的过渡:屏幕里看得到的那些记录,从卡片的位置、大小平滑变到格子里(反过来也一样),
+ * 其余的淡入淡出;切换后让原来最上面那条还停在原处。浏览器不支持或用户关了动画就直接切。
+ */
+function morphLayout(root: HTMLElement | null, update: () => void, plain: () => void) {
+  const doc = document as Document & { startViewTransition?: (callback: () => void) => { finished: Promise<void> } };
+  if (!root || !doc.startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { plain(); return; }
+  const view = root.getBoundingClientRect();
+  const visible = [...root.querySelectorAll<HTMLElement>(".task-pick[data-turn-id]")].filter((element) => {
+    const box = element.getBoundingClientRect();
+    return box.bottom > view.top && box.top < view.bottom;
+  }).slice(0, 30);
+  const anchor = visible[0]?.dataset.turnId;
+  const anchorTop = visible[0] ? visible[0].getBoundingClientRect().top - view.top : 0;
+  const ids = visible.map((element) => element.dataset.turnId || "");
+  const name = (index: number) => `task-turn-${index}`;
+  const find = (id: string) => root.querySelector<HTMLElement>(`.task-pick[data-turn-id="${CSS.escape(id)}"]`);
+  const mark = () => ids.forEach((id, index) => find(id)?.style.setProperty("view-transition-name", name(index)));
+  mark();
+  const transition = doc.startViewTransition(() => {
+    update();
+    const now = anchor ? find(anchor) : null;
+    if (now) root.scrollTop += now.getBoundingClientRect().top - root.getBoundingClientRect().top - anchorTop;
+    mark();
+  });
+  void transition.finished.finally(() => {
+    root.querySelectorAll<HTMLElement>(".task-pick").forEach((element) => element.style.removeProperty("view-transition-name"));
+  });
+}
 
 const toMediaRef = (item: ComposerAttachment): MediaRef => ({
   kind: item.kind, path: item.path, name: item.name,
@@ -180,9 +213,13 @@ export function AppShell() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+  // 网格里点开详情的那条记录
+  const [detailId, setDetailId] = useState<string | null>(null);
   const chooseLayout = (layout: "list" | "grid") => {
-    setTaskLayout(layout);
+    if (layout === taskLayout) return;
     try { window.localStorage.setItem(TASK_LAYOUT_KEY, layout); } catch { /* 只影响下次打开 */ }
+    setDetailId(null);
+    morphLayout(conversationRef.current, () => flushSync(() => setTaskLayout(layout)), () => setTaskLayout(layout));
   };
   // 素材库列表:打开页面后先在后台读一次,点 @ 时直接用,同时再刷新一次(不用等它才弹出)
   const [referenceLoading, setReferenceLoading] = useState(false);
@@ -788,6 +825,8 @@ export function AppShell() {
     const media = cardMediaRef.current;
     cardMediaRef.current = null;
     if (!media || !paths.length || (target !== COMPOSER_DROP && target !== EDITOR_DROP)) return;
+    // 从网格的详情里拖出来的:放下后详情就不再挡着输入框了
+    setDetailId(null);
     attachReferenceAssets([{
       id: media.path, kind: media.kind, path: media.path, name: media.name, mimeType: media.mimeType || "image/png", managed: true,
     }], target === EDITOR_DROP ? point : undefined);
@@ -1585,20 +1624,18 @@ export function AppShell() {
           </span>}
           {!apiKey && <Link className="key-missing" href="/settings"><KeyRound size={13} />填写 API Key</Link>}
           {/* 顶栏右侧,和左边的模型规格条同一行 */}
-          {allTaskTurns.length > 0 && <div className="topbar-segment topbar-filter" role="group" aria-label="按结果筛选生成记录">
-            {([["all", "全部", allTaskTurns.length], ["success", "成功", statusCount("success")], ["failed", "失败", statusCount("failed")]] as const)
-              .map(([value, label, count]) => <button type="button" key={value} aria-pressed={statusFilter === value}
-                className={statusFilter === value ? "active" : ""} onClick={() => setStatusFilter(value)}
-                title={value === "all" ? "显示全部生成记录" : `只看${label}的生成记录`}>
-                {value !== "all" && <i className={`status-dot ${value}`} aria-hidden="true" />}{label}<em>{count}</em>
-              </button>)}
-          </div>}
-          {allTaskTurns.length > 0 && <div className="topbar-segment" role="group" aria-label="生成记录的排列">
-            <button type="button" aria-pressed={taskLayout === "list"} className={taskLayout === "list" ? "active" : ""}
-              onClick={() => chooseLayout("list")} title="列表（横向卡片）" aria-label="列表"><Rows3 size={14} /></button>
-            <button type="button" aria-pressed={taskLayout === "grid"} className={taskLayout === "grid" ? "active" : ""}
-              onClick={() => chooseLayout("grid")} title="网格" aria-label="网格"><LayoutGrid size={14} /></button>
-          </div>}
+          {allTaskTurns.length > 0 && <Segmented className="topbar-filter" label="按结果筛选生成记录" value={statusFilter}
+            onChange={(value) => { setStatusFilter(value); setDetailId(null); }}
+            options={([["all", "全部", allTaskTurns.length], ["success", "成功", statusCount("success")], ["failed", "失败", statusCount("failed")]] as const)
+              .map(([value, label, count]) => ({
+                value, title: value === "all" ? "显示全部生成记录" : `只看${label}的生成记录`,
+                label: <>{value !== "all" && <i className={`status-dot ${value}`} aria-hidden="true" />}{label}<em>{count}</em></>,
+              }))} />}
+          {allTaskTurns.length > 0 && <Segmented label="生成记录的排列" value={taskLayout} onChange={chooseLayout}
+            options={[
+              { value: "list", label: <Rows3 size={15} />, title: "列表：完整的生成卡片", ariaLabel: "列表" },
+              { value: "grid", label: <LayoutGrid size={15} />, title: "网格：只看生成结果，点开看详情", ariaLabel: "网格" },
+            ]} />}
           {(managing || taskTurns.length > 0) && <button type="button" className={`topbar-manage ${managing && !turnSelection.closing ? "active" : ""}`}
             onClick={managing ? stopManaging : startManaging} title={managing ? "退出批量管理（Esc）" : "批量选择、下载、删除生成记录"}>
             <ListChecks size={14} />{managing ? "完成" : "批量管理"}
@@ -1667,6 +1704,20 @@ export function AppShell() {
                     },
                   };
                   const picked = managing && turnSelection.ids.has(message.id);
+                  const card = (close?: () => void) => {
+                    // 详情里做了重新编辑、重新生成、删除这类操作,顺手把详情关掉,好看到结果
+                    const props = close ? {
+                      ...shared,
+                      onReedit: () => { close(); shared.onReedit(); },
+                      onRegenerate: () => { close(); shared.onRegenerate(); },
+                      onDelete: () => { close(); shared.onDelete(); },
+                    } : shared;
+                    return image
+                      ? <ImageTaskCard {...props} fallbackModelName={imageModel?.id}
+                        onMakeVideo={(media) => { close?.(); makeVideoFrom(media); }}
+                        onUseAsReference={(media) => { close?.(); attachImageAsReference(media, generation); }} />
+                      : <VideoTaskCard {...props} fallbackModelName={videoModel?.id} />;
+                  };
                   return (
                     <div className="task-turn" key={message.id}>
                       {showDate && <div className="task-date">{date}</div>}
@@ -1676,11 +1727,13 @@ export function AppShell() {
                           onClick={(event) => togglePick(message.id, event.shiftKey)}>
                           <Check size={13} strokeWidth={3} />
                         </button>}
-                        {image
-                          ? <ImageTaskCard {...shared} fallbackModelName={imageModel?.id}
-                            onMakeVideo={makeVideoFrom}
-                            onUseAsReference={(media) => attachImageAsReference(media, generation)} />
-                          : <VideoTaskCard {...shared} fallbackModelName={videoModel?.id} />}
+                        {taskLayout === "grid"
+                          ? <TaskTile message={message} kind={image ? "image" : "video"} prompt={prompt} favorite={favorite}
+                            modelName={generation?.modelName || (image ? imageModel?.id : videoModel?.id)}
+                            onOpen={() => setDetailId(message.id)} onDragMedia={shared.onDragMedia} />
+                          : card()}
+                        {taskLayout === "grid" && detailId === message.id && !managing &&
+                          <TaskDetail message={message} onClose={() => setDetailId(null)}>{card(() => setDetailId(null))}</TaskDetail>}
                         {/* 管理时点卡片任意位置都是选择,不会误点到播放、编辑等按钮 */}
                         {managing && <button type="button" className="task-pick-overlay" tabIndex={-1} aria-hidden="true"
                           onClick={(event) => togglePick(message.id, event.shiftKey)} />}

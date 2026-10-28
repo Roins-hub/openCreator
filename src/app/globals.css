@@ -3412,78 +3412,171 @@ body.is-card-dragging .composer-editor .reference-inline-card { cursor: grabbing
 }
 @media (prefers-reduced-motion: reduce) { .reference-inline-card.is-landed { animation: none; } }
 
-/* ---------- 右侧导航:每条生成记录的结果(成功绿、失败红、生成中黄) ---------- */
-.conversation-map-rail button[data-status="success"], .conversation-map-list > button[data-status="success"] { --status: oklch(68% .17 150); }
-.conversation-map-rail button[data-status="failed"], .conversation-map-list > button[data-status="failed"] { --status: oklch(60% .2 27); }
-.conversation-map-rail button[data-status="running"], .conversation-map-list > button[data-status="running"] { --status: oklch(76% .15 75); }
-/* 细线左边的亮点:跟着刻度长短移动 */
+/* ---------- 右侧导航:每条生成记录的结果 ----------
+   用主题自己的成功 / 失败 / 生成中颜色(和卡片上的「已完成」「已失败」一致),小圆点、不发光;
+   展开的列表不整条上色:前面一个同色圆点,失败的、生成中的再在右边标一个字 */
+.conversation-map-rail button[data-status="success"], .conversation-map-list > button[data-status="success"] { --status: var(--ok); }
+.conversation-map-rail button[data-status="failed"], .conversation-map-list > button[data-status="failed"] { --status: var(--danger); }
+.conversation-map-rail button[data-status="running"], .conversation-map-list > button[data-status="running"] { --status: var(--run); }
 .conversation-map-rail button[data-status]:not([data-status="stopped"])::after {
-  content: ""; position: absolute; top: calc(50% - 3px); right: calc(var(--w, 9px) + 5px); width: 6px; height: 6px;
-  border-radius: 50%; background: var(--status); box-shadow: 0 0 6px 1px var(--status);
+  content: ""; position: absolute; top: calc(50% - 2.5px); right: calc(var(--w, 9px) + 6px); width: 5px; height: 5px;
+  border-radius: 50%; background: var(--status); opacity: .85;
   transition: right .22s cubic-bezier(.16, 1, .3, 1);
 }
+.conversation-map-rail button[data-status="success"]::after { opacity: .6; }
 .conversation-map-rail button[data-status="running"]::after { animation: status-pulse 1.4s ease-in-out infinite; }
-@keyframes status-pulse { 50% { opacity: .35; } }
-/* 展开的列表:成功的淡绿底、失败的淡红底,左边一条同色的边 */
-.conversation-map-list > button[data-status]:not([data-status="stopped"]) {
-  background-image: linear-gradient(color-mix(in oklab, var(--status) 14%, transparent), color-mix(in oklab, var(--status) 14%, transparent));
-  box-shadow: inset 3px 0 0 var(--status);
+@keyframes status-pulse { 50% { opacity: .25; } }
+.conversation-map-list > button[data-status]::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 1px 0; vertical-align: middle;
+  border-radius: 50%; background: var(--status, var(--line-strong));
 }
-.conversation-map-list > button.focus[data-status]:not([data-status="stopped"]) {
-  box-shadow: inset 3px 0 0 var(--status), 0 6px 18px oklch(20% .02 80 / .14), 0 0 0 1px var(--line);
+.conversation-map-list > button[data-status="success"]::before { opacity: .7; }
+.conversation-map-list > button[data-status="failed"], .conversation-map-list > button[data-status="running"] { padding-right: 56px; }
+.conversation-map-list > button[data-status="failed"]::after, .conversation-map-list > button[data-status="running"]::after {
+  position: absolute; top: 50%; right: 10px; translate: 0 -50%; padding: 1px 6px; border-radius: 5px;
+  color: var(--status); background: color-mix(in srgb, var(--status) 10%, var(--paper)); font-size: 11px; font-weight: 600; line-height: 1.5;
 }
+.conversation-map-list > button[data-status="failed"]::after { content: "失败"; }
+.conversation-map-list > button[data-status="running"]::after { content: "生成中"; }
 @media (prefers-reduced-motion: reduce) { .conversation-map-rail button[data-status="running"]::after { animation: none; } }
 
-/* ---------- 顶栏:按结果筛选(全部 / 成功 / 失败)、列表 / 网格 ---------- */
-.topbar-segment {
-  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 2px;
-  border: 1px solid var(--line); border-radius: max(var(--r-control), 8px); background: var(--paper);
+/* ---------- 分段切换(顶栏:全部 / 成功 / 失败、列表 / 网格):浅色轨道,选中段是一块纸色底,切换时滑过去 ---------- */
+.segmented {
+  position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; height: 32px; padding: 3px;
+  border: 1px solid var(--line); border-radius: max(var(--r-control), 8px); background: var(--warm);
 }
-.topbar-segment.topbar-filter { margin-left: auto; }
-.topbar-segment ~ .topbar-manage { margin-left: 0; }
-.topbar-segment button {
-  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: max(calc(var(--r-control) - 3px), 6px);
-  color: var(--muted); background: transparent; font-size: 12px; font-weight: 600; white-space: nowrap; transition: color .15s, background .15s;
+.segmented-thumb {
+  position: absolute; top: 3px; bottom: 3px; left: 0; width: var(--thumb-w, 0); translate: var(--thumb-x, 0) 0;
+  border-radius: max(calc(var(--r-control) - 3px), 6px); background: var(--paper);
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(20% .02 80 / .07);
 }
-.topbar-segment button:hover { color: var(--ink); background: var(--warm); }
-.topbar-segment button.active { color: var(--paper); background: var(--ink); }
-.topbar-segment em { color: var(--faint); font-size: 11px; font-style: normal; font-weight: 500; font-variant-numeric: tabular-nums; }
-.topbar-segment button.active em { color: color-mix(in srgb, var(--paper) 70%, transparent); }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; }
-.status-dot.success { background: oklch(68% .17 150); box-shadow: 0 0 6px oklch(68% .17 150); }
-.status-dot.failed { background: oklch(60% .2 27); box-shadow: 0 0 6px oklch(60% .2 27); }
+.segmented[data-ready] .segmented-thumb { transition: translate .32s cubic-bezier(.2, .8, .2, 1), width .32s cubic-bezier(.2, .8, .2, 1); }
+.segmented button {
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 30px; height: 24px; padding: 0 10px; border-radius: max(calc(var(--r-control) - 3px), 6px);
+  color: var(--muted); background: transparent; font-size: 12px; font-weight: 500; white-space: nowrap; transition: color .18s;
+}
+.segmented button:hover { color: var(--ink); }
+.segmented button[aria-pressed="true"] { color: var(--ink); font-weight: 600; }
+.segmented button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.segmented em { color: var(--faint); font-size: 11px; font-style: normal; font-weight: 500; font-variant-numeric: tabular-nums; }
+.segmented button[aria-pressed="true"] em { color: var(--muted); }
+.segmented:has(svg) button { padding: 0 8px; }
+.topbar-filter { margin-left: auto; }
+.segmented ~ .topbar-manage { margin-left: 0; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; }
+.status-dot.success { background: var(--ok); }
+.status-dot.failed { background: var(--danger); }
 .task-filter-empty { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px 0; color: var(--muted); font-size: 13px; grid-column: 1 / -1; }
-.task-filter-empty button { padding: 4px 10px; border: 1px solid var(--line); border-radius: max(var(--r-control), 8px); color: var(--ink); background: var(--paper); font-size: 12px; }
-@media (max-width: 900px) { .topbar-segment.topbar-filter em { display: none; } }
-
-/* ---------- 生成记录的网格布局:多列卡片,图片 / 视频在上面,提示词两行 ---------- */
-.message-list.is-grid {
-  width: min(1240px, calc(100% - 40px));
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; align-items: start;
+.task-filter-empty button {
+  height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: max(var(--r-control), 8px);
+  color: var(--ink); background: var(--paper); font-size: 12px;
 }
+@media (max-width: 900px) { .topbar-filter em { display: none; } }
+@media (prefers-reduced-motion: reduce) { .segmented[data-ready] .segmented-thumb { transition: none; } }
+
+/* ---------- 网格布局:一行三个,只放生成结果;点开看详情 ---------- */
+.message-list.is-grid {
+  /* 三列:3 × 格宽 + 2 × 16 = 列表宽;格子不拉伸到同一行最高的那个,各自按内容高 */
+  width: min(1080px, calc(100% - 48px));
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start;
+}
+@media (max-width: 860px) { .message-list.is-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } }
 .message-list.is-grid > .task-turn { display: contents; }
 .message-list.is-grid > :not(.task-turn) { grid-column: 1 / -1; }
-.message-list.is-grid .task-date { grid-column: 1 / -1; margin: 10px 0 0; }
-.message-list.is-grid .task-pick { height: 100%; }
-.message-list.is-grid .task-card {
-  height: 100%; margin: 0; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 10px;
+.message-list.is-grid .task-date { grid-column: 1 / -1; margin: 16px 0 -4px; }
+.message-list.is-grid > .task-turn:first-child .task-date { margin-top: 0; }
+.message-list.is-grid .task-check { top: 14px; left: 14px; }
+
+.task-tile {
+  display: flex; flex-direction: column; padding: 6px; border: 1px solid var(--line); border-radius: var(--r-card);
+  background: var(--paper); transition: border-color .18s, background .18s;
 }
-/* 视频卡片:预览挪到上面 */
-.message-list.is-grid .task-preview { order: -1; }
-.message-list.is-grid .task-id, .message-list.is-grid .task-refs { display: none; }
-.message-list.is-grid .task-head { min-height: 26px; gap: 6px; }
-.message-list.is-grid .task-actions button { width: 26px; height: 26px; }
-.message-list.is-grid .task-prompt {
-  margin-top: 6px; font-size: 13px; line-height: 1.6; white-space: normal;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+.task-tile:hover { border-color: var(--line-strong); background: var(--card-hover); }
+.task-tile-cover {
+  position: relative; display: grid; gap: 2px; width: 100%; aspect-ratio: 1; padding: 0; overflow: hidden;
+  border-radius: max(calc(var(--r-card) - 6px), 3px); background: var(--warm); cursor: zoom-in;
 }
-.message-list.is-grid .task-foot { gap: 4px 10px; padding-top: 8px; font-size: 11px; }
-/* 图片卡片:生成的图挪到最上面,两列小图 */
-.message-list.is-grid .image-task .task-main { display: flex; }
-.message-list.is-grid .image-task .image-results { order: -1; margin-top: 0; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
-.message-list.is-grid .image-task .image-results:has(> :only-child) { grid-template-columns: minmax(0, 1fr); }
-/* 网格里没有图的图片卡片(失败、已停止):上面放一块同样高的占位,和别的卡片对齐 */
-.message-list.is-grid .image-task .task-main:not(:has(.image-results))::before {
-  content: "没有生成结果"; order: -1; display: grid; place-items: center; aspect-ratio: 16 / 9; margin-bottom: 2px;
-  border-radius: 11px; color: var(--faint); background: var(--hover); font-size: 12px;
+.task-tile-cover[data-count="2"] { grid-template-columns: 1fr 1fr; }
+.task-tile-cover[data-count="3"], .task-tile-cover[data-count="4"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.task-tile-cover[data-count="3"] > .task-tile-shot:first-child { grid-row: span 2; }
+.task-tile-shot { position: relative; min-width: 0; min-height: 0; overflow: hidden; cursor: grab; }
+.task-tile-shot img {
+  display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 30%;
+  transition: scale .5s cubic-bezier(.2, .8, .2, 1);
+}
+.task-tile:hover .task-tile-shot img { scale: 1.035; }
+.task-tile-more {
+  position: absolute; right: 8px; bottom: 8px; padding: 2px 8px; border-radius: 999px;
+  color: #fff; background: oklch(18% .01 80 / .6); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.task-tile-play {
+  position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: grid; place-items: center; width: 40px; height: 40px;
+  padding-left: 2px; border-radius: 50%; color: #fff; background: oklch(18% .01 80 / .55); pointer-events: none;
+}
+.task-tile-fav {
+  position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  color: oklch(82% .13 85); background: oklch(18% .01 80 / .55); pointer-events: none;
+}
+.task-tile-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px;
+  color: var(--muted); font-size: 12px; line-height: 1.6; text-align: center;
+}
+.task-tile-state.is-failed svg { color: var(--danger); }
+.task-tile-state.is-failed span { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.task-tile-info {
+  display: grid; gap: 2px; width: 100%; padding: 10px 6px 4px; color: var(--ink); background: transparent; text-align: left;
+}
+.task-tile-prompt { overflow: hidden; font-size: 13px; line-height: 20px; white-space: nowrap; text-overflow: ellipsis; }
+.task-tile-meta {
+  display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.task-tile-meta > span:first-child { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.task-tile-status { flex: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; white-space: nowrap; }
+.task-tile-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.task-tile-status.failed { color: var(--danger); }
+.task-tile-status.running { color: var(--run); }
+.task-tile-status.running::before { animation: status-pulse 1.4s ease-in-out infinite; }
+.task-tile-cover:focus-visible, .task-tile-info:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* 详情:浮在页面上的一张纸,里面就是列表里那张生成卡片 */
+.task-detail {
+  position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 32px;
+  background: oklch(20% .01 80 / .34); animation: task-detail-fade .2s ease;
+}
+.task-detail-sheet {
+  display: flex; flex-direction: column; width: min(1000px, 100%); max-height: calc(100vh - 64px); overflow: hidden;
+  border-radius: var(--r-card); background: var(--paper); box-shadow: 0 24px 64px oklch(20% .02 80 / .24);
+  animation: task-detail-in .3s cubic-bezier(.2, .8, .2, 1);
+}
+.task-detail-sheet > header {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px 14px 24px; border-bottom: 1px solid var(--line);
+}
+.task-detail-sheet h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.task-detail-sheet > header > span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.task-detail-sheet > header > button {
+  display: grid; place-items: center; width: 32px; height: 32px; margin-left: auto; padding: 0;
+  border-radius: max(var(--r-control), 8px); color: var(--muted); background: transparent;
+}
+.task-detail-sheet > header > button:hover { color: var(--ink); background: var(--warm); }
+.task-detail-body { overflow-y: auto; padding: 20px 24px 24px; }
+.task-detail-body .task-card { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.task-detail-body .task-card:hover { background: transparent; }
+/* 从详情里拖素材出去时,详情先让开,露出后面的输入框 */
+body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transition: opacity .16s; }
+@keyframes task-detail-fade { from { opacity: 0; } }
+@keyframes task-detail-in { from { opacity: 0; transform: translateY(12px) scale(.985); } }
+@media (max-width: 640px) {
+  .task-detail { padding: 12px; }
+  .task-detail-sheet { max-height: calc(100vh - 24px); }
+  .task-detail-body { padding: 16px; }
+}
+
+/* 列表 ↔ 网格切换:看得到的记录从原来的位置、大小变过去 */
+::view-transition-group(*) { animation-duration: .42s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+::view-transition-old(*), ::view-transition-new(*) { height: 100%; object-fit: cover; object-position: top; }
+@media (prefers-reduced-motion: reduce) {
+  .task-tile-shot img, .task-detail, .task-detail-sheet { transition: none; animation: none; }
+  .task-tile-status.running::before { animation: none; }
 }
