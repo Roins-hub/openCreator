@@ -3477,11 +3477,15 @@ body.is-card-dragging .composer-editor .reference-inline-card { cursor: grabbing
 
 /* ---------- 网格布局:一行三个,只放生成结果;点开看详情 ---------- */
 .message-list.is-grid {
-  /* 三列:3 × 格宽 + 2 × 16 = 列表宽;格子不拉伸到同一行最高的那个,各自按内容高 */
-  width: min(1080px, calc(100% - 48px));
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start;
+  /* 每行最多 --grid-cols 个(3 / 4 / 5,在顶栏网格按钮的小菜单里选),每个格子至少 210px:
+     窗口不够宽时自动少放几个。列表宽度跟着列数放宽:3 个 1080、4 个 1400、5 个 1720 */
+  --grid-cols: 3;
+  width: min(calc(var(--grid-cols) * 344px + 48px), calc(100% - 48px));
+  display: grid; gap: 16px; align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(max(210px, calc((100% - (var(--grid-cols) - 1) * 16px) / var(--grid-cols))), 1fr));
 }
-@media (max-width: 860px) { .message-list.is-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } }
+.message-list.is-grid[data-cols="5"] { gap: 14px; }
+@media (max-width: 860px) { .message-list.is-grid { gap: 12px; } }
 .message-list.is-grid > .task-turn { display: contents; }
 .message-list.is-grid > :not(.task-turn) { grid-column: 1 / -1; }
 .message-list.is-grid .task-date { grid-column: 1 / -1; margin: 16px 0 -4px; }
@@ -3874,3 +3878,32 @@ body.is-resizing-sidebar .side-panels { transition: none; }
 .prompt-toggle svg { transition: transform .3s cubic-bezier(.2, 1.3, .4, 1); }
 .prompt-toggle.is-open svg { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .task-prompt.prompt-clamp { transition: none; } }
+
+/* ---------- 网格按钮的小菜单:每行 3 / 4 / 5 个 ---------- */
+.layout-switch { position: relative; flex: 0 0 auto; }
+.layout-caret { margin-left: -2px; opacity: .7; transition: transform .25s cubic-bezier(.2, 1.3, .4, 1); }
+.layout-caret.is-open { transform: rotate(180deg); }
+.layout-columns {
+  position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: 176px; padding: 6px;
+  border: 1px solid var(--line); border-radius: max(var(--r-control), 10px); background: var(--paper);
+  box-shadow: 0 16px 40px oklch(20% .02 80 / .14); transform-origin: top right;
+  animation: layout-columns-in .24s cubic-bezier(.16, 1, .3, 1);
+}
+@keyframes layout-columns-in { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
+.layout-columns-title { display: block; padding: 4px 8px 6px; color: var(--faint); font-size: 11px; }
+.layout-columns > button {
+  display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px;
+  border-radius: max(calc(var(--r-control) - 2px), 6px); color: var(--muted); background: transparent; font-size: 13px; text-align: left;
+  animation: layout-columns-in .26s cubic-bezier(.16, 1, .3, 1) both;
+}
+.layout-columns > button:nth-of-type(2) { animation-delay: .03s; }
+.layout-columns > button:nth-of-type(3) { animation-delay: .06s; }
+.layout-columns > button:hover { color: var(--ink); background: var(--row-active); }
+.layout-columns > button[aria-checked="true"] { color: var(--ink); font-weight: 600; }
+.layout-columns > button small { color: var(--faint); font-size: 11px; font-weight: 400; }
+.layout-columns-check { margin-left: auto; }
+/* 小图示:几根竖条就是每行几个 */
+.layout-columns-glyph { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 2px; width: 26px; height: 16px; }
+.layout-columns-glyph i { border-radius: 2px; background: currentColor; opacity: .35; transition: opacity .2s; }
+.layout-columns > button[aria-checked="true"] .layout-columns-glyph i, .layout-columns > button:hover .layout-columns-glyph i { opacity: .8; }
+@media (prefers-reduced-motion: reduce) { .layout-columns, .layout-columns > button { animation: none; } }

@@ -70,6 +70,10 @@ type CatalogModel = VideoModel | ImageModel;
 /** 输入框里的素材:上传完成前用本地 blob 预览,上传完成后换成服务器路径(仍保留 blob 预览避免闪烁)。 */
 type ComposerAttachment = MediaRef & { previewUrl?: string; uploading?: boolean; progress?: number };
 const TASK_LAYOUT_KEY = "mote.taskLayout";
+// 网格每行几个(大屏可以放到 5 个);窗口窄时自动少放几个
+const GRID_COLUMNS_KEY = "mote.gridColumns";
+const GRID_COLUMN_CHOICES = [3, 4, 5] as const;
+type GridColumns = (typeof GRID_COLUMN_CHOICES)[number];
 // 左侧对话栏的宽度(拖右边缘调整,记在浏览器里);字号、行高、图标跟着宽度一起放大缩小
 const SIDEBAR_WIDTH_KEY = "mote.sidebarWidth";
 const SIDEBAR_DEFAULT = 264, SIDEBAR_MIN = 220, SIDEBAR_MAX = 460;
@@ -272,7 +276,37 @@ export function AppShell() {
   };
   // 网格里点开详情的那条记录
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [gridColumns, setGridColumns] = useState<GridColumns>(3);
+  const [columnsMenu, setColumnsMenu] = useState(false);
+  const columnsMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = Number(window.localStorage.getItem(GRID_COLUMNS_KEY));
+        if ((GRID_COLUMN_CHOICES as readonly number[]).includes(saved)) setGridColumns(saved as GridColumns);
+      } catch { /* 用默认的 3 个 */ }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (!columnsMenu) return;
+    const close = (event: Event) => {
+      if (event instanceof KeyboardEvent ? event.key === "Escape" : !columnsMenuRef.current?.contains(event.target as Node)) setColumnsMenu(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", close); };
+  }, [columnsMenu]);
+  const chooseColumns = (columns: GridColumns) => {
+    setColumnsMenu(false);
+    if (columns === gridColumns) return;
+    try { window.localStorage.setItem(GRID_COLUMNS_KEY, String(columns)); } catch { /* 只影响下次打开 */ }
+    morphLayout(conversationRef.current, () => flushSync(() => setGridColumns(columns)), () => setGridColumns(columns));
+  };
   const chooseLayout = (layout: "list" | "grid") => {
+    // 已经是网格时再点网格:打开「每行几个」的小菜单
+    if (layout === "grid" && taskLayout === "grid") { setColumnsMenu((open) => !open); return; }
+    setColumnsMenu(false);
     if (layout === taskLayout) return;
     try { window.localStorage.setItem(TASK_LAYOUT_KEY, layout); } catch { /* 只影响下次打开 */ }
     setDetailId(null);
@@ -1734,11 +1768,30 @@ export function AppShell() {
                 value, title: value === "all" ? "显示全部生成记录" : `只看${label}的生成记录`,
                 label: <>{value !== "all" && <i className={`status-dot ${value}`} aria-hidden="true" />}{label}<em>{count}</em></>,
               }))} />}
-          {allTaskTurns.length > 0 && <Segmented label="生成记录的排列" value={taskLayout} onChange={chooseLayout}
-            options={[
-              { value: "list", label: <Rows3 size={15} />, title: "列表：完整的生成卡片", ariaLabel: "列表" },
-              { value: "grid", label: <LayoutGrid size={15} />, title: "网格：只看生成结果，点开看详情", ariaLabel: "网格" },
-            ]} />}
+          {allTaskTurns.length > 0 && <div className="layout-switch" ref={columnsMenuRef}>
+            <Segmented label="生成记录的排列" value={taskLayout} onChange={chooseLayout}
+              options={[
+                { value: "list", label: <Rows3 size={15} />, title: "列表：完整的生成卡片", ariaLabel: "列表" },
+                {
+                  value: "grid", ariaLabel: "网格",
+                  title: taskLayout === "grid" ? `网格：每行 ${gridColumns} 个，点击换成 3 / 4 / 5 个` : "网格：只看生成结果，点开看详情",
+                  label: <><LayoutGrid size={15} />{taskLayout === "grid" && <ChevronDown size={12} className={`layout-caret ${columnsMenu ? "is-open" : ""}`} />}</>,
+                },
+              ]} />
+            {columnsMenu && <div className="layout-columns" role="menu" aria-label="网格每行几个">
+              <span className="layout-columns-title">每行显示</span>
+              {GRID_COLUMN_CHOICES.map((columns) => (
+                <button type="button" role="menuitemradio" key={columns} aria-checked={gridColumns === columns}
+                  onClick={() => chooseColumns(columns)}>
+                  <span className="layout-columns-glyph" style={{ "--n": columns } as React.CSSProperties} aria-hidden="true">
+                    {Array.from({ length: columns }, (_, index) => <i key={index} />)}
+                  </span>
+                  {columns} 个{columns === 5 && <small>大屏</small>}
+                  {gridColumns === columns && <Check size={14} className="layout-columns-check" />}
+                </button>
+              ))}
+            </div>}
+          </div>}
           {(managing || taskTurns.length > 0) && <button type="button" className={`topbar-manage ${managing && !turnSelection.closing ? "active" : ""}`}
             onClick={managing ? stopManaging : startManaging} title={managing ? "退出批量管理（Esc）" : "批量选择、下载、删除生成记录"}>
             <ListChecks size={14} />{managing ? "完成" : "批量管理"}
@@ -1763,7 +1816,8 @@ export function AppShell() {
             </div>
           ) : (
             // 换对话时整列重新挂载,带一次淡入
-            <div className={`message-list ${taskLayout === "grid" ? "is-grid" : ""}`} key={active.id}>
+            <div className={`message-list ${taskLayout === "grid" ? "is-grid" : ""}`} key={active.id}
+              style={taskLayout === "grid" ? { "--grid-cols": gridColumns } as React.CSSProperties : undefined} data-cols={gridColumns}>
               {statusFilter !== "all" && !taskTurns.length && <p className="task-filter-empty">
                 这个对话还没有{statusFilter === "success" ? "成功" : "失败"}的生成记录。
                 <button type="button" onClick={() => setStatusFilter("all")}>显示全部</button>
