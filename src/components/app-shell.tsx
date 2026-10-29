@@ -2006,8 +2006,10 @@ export function AppShell() {
                     // 拖着别的素材悬在这张上:这张让开一点、描边,表示松手会换到这里
                     const dragFrom = attachmentDrag.drag ? attachments.findIndex((entry) => entry.path === attachmentDrag.drag?.paths[0]) : -1;
                     const reorderTarget = attachmentDrag.dropTarget === `stack:${index}` && dragFrom >= 0 && dragFrom !== index;
+                    // 正被拖着的那张:原位置空出来(留个虚线框),松手后再回来 / 落到新位置
+                    const lifted = attachmentDrag.drag?.phase === "drag" && dragFrom === index;
                     return (
-                    <div className={`stack-card kind-${item.kind} ${item.uploading ? "is-uploading" : ""} ${reorderTarget ? `is-reorder-target ${dragFrom < index ? "from-left" : "from-right"}` : ""} ${attachmentDrag.landed === `stack:${index}` ? "is-reorder-landed" : ""}`} key={item.path}
+                    <div className={`stack-card kind-${item.kind} ${item.uploading ? "is-uploading" : ""} ${reorderTarget ? `is-reorder-target ${dragFrom < index ? "from-left" : "from-right"}` : ""} ${attachmentDrag.landed === `stack:${index}` ? "is-reorder-landed" : ""} ${lifted ? "is-drag-source" : ""}`} key={item.path}
                       data-drop-target={item.uploading ? undefined : `stack:${index}`}
                       title={item.uploading ? `正在上传 · ${item.name}` : `点击放大 · ${labels[index]} · ${item.name}（按住拖动可换顺序，或拖到提示词里）`}
                       role="button" tabIndex={0} aria-label={`放大查看 ${labels[index]}`}
