@@ -99,7 +99,7 @@ export function ConversationNavigator({
       element.classList.remove("is-located");
       void element.offsetWidth;
       element.classList.add("is-located");
-      window.setTimeout(() => element.classList.remove("is-located"), 1600);
+      window.setTimeout(() => element.classList.remove("is-located"), 1950);
     };
     if (visible) { flash(); return; }
     element.scrollIntoView({ behavior: "smooth", block: "center" });

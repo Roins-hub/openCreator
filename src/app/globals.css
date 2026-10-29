@@ -4022,12 +4022,22 @@ body.is-resizing-sidebar .side-panels { transition: none; }
 /* 只写中间一段:开头和结尾就是卡片自己原来的颜色(列表卡片是 --warm,网格格子是 --paper) */
 .task-card { --locate-base: var(--warm); }
 .task-tile { --locate-base: var(--paper); }
-.task-card.is-located, .task-tile.is-located { animation: task-located 1.6s cubic-bezier(.2, .7, .2, 1); }
+.task-card.is-located, .task-tile.is-located {
+  position: relative; z-index: 3;
+  animation: task-located 1.9s cubic-bezier(.2, .8, .25, 1);
+}
+/* 卡片浮起来:往上 6px、放大一点,底下一圈柔和的阴影(颜色取主题墨色),1px 的淡墨描边,底色深一档;
+   停一会儿再落回去,落地时轻轻一弹 */
 @keyframes task-located {
-  14%, 58% {
+  0% { transform: none; }
+  16%, 62% {
+    transform: translateY(-6px) scale(1.012);
     background-color: color-mix(in srgb, var(--ink) 6%, var(--locate-base));
-    border-color: color-mix(in srgb, var(--ink) 38%, var(--line));
+    border-color: color-mix(in srgb, var(--ink) 30%, var(--line));
+    box-shadow: 0 18px 40px color-mix(in srgb, var(--ink) 16%, transparent), 0 4px 10px color-mix(in srgb, var(--ink) 8%, transparent);
   }
+  84% { transform: translateY(1px) scale(.998); }
+  100% { transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .task-card.is-located, .task-tile.is-located { animation: none; border-color: color-mix(in srgb, var(--ink) 38%, var(--line)); }
