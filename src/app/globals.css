@@ -4016,16 +4016,21 @@ body.is-resizing-sidebar .side-panels { transition: none; }
 .viewer-fav.is-on svg { animation: viewer-fav-pop .45s cubic-bezier(.2, 1.6, .4, 1); }
 @keyframes viewer-fav-pop { 40% { transform: scale(1.35) rotate(-12deg); } }
 
-/* ---------- 右侧导航点了某条:对应的卡片凸出来闪一下 ---------- */
-.is-located { animation: task-located 1.5s cubic-bezier(.2, .9, .2, 1); position: relative; z-index: 3; }
+/* ---------- 右侧导航点了某条:对应的卡片短暂「被选中」一下 ----------
+   不放大、不发光、不加粗描边:底色加深一档(墨色混进纸色),1px 边框变深,停一下再淡回去。
+   颜色全来自主题变量,换主题跟着变;列表卡片和网格格子同一套 */
+/* 只写中间一段:开头和结尾就是卡片自己原来的颜色(列表卡片是 --warm,网格格子是 --paper) */
+.task-card { --locate-base: var(--warm); }
+.task-tile { --locate-base: var(--paper); }
+.task-card.is-located, .task-tile.is-located { animation: task-located 1.6s cubic-bezier(.2, .7, .2, 1); }
 @keyframes task-located {
-  0% { transform: none; box-shadow: 0 0 0 0 transparent; }
-  18% { transform: scale(1.015) translateY(-2px); box-shadow: 0 0 0 3px var(--focus), 0 18px 44px oklch(20% .02 80 / .18); }
-  60% { transform: scale(1.015) translateY(-2px); box-shadow: 0 0 0 3px var(--focus), 0 18px 44px oklch(20% .02 80 / .18); }
-  100% { transform: none; box-shadow: 0 0 0 0 transparent; }
+  14%, 58% {
+    background-color: color-mix(in srgb, var(--ink) 6%, var(--locate-base));
+    border-color: color-mix(in srgb, var(--ink) 38%, var(--line));
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .is-located { animation: none; outline: 3px solid var(--focus); }
+  .task-card.is-located, .task-tile.is-located { animation: none; border-color: color-mix(in srgb, var(--ink) 38%, var(--line)); }
   .image-editor-layer, .image-editor-layers, .stack-card.is-reorder-landed { animation: none; }
 }
 
