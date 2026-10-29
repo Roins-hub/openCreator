@@ -169,7 +169,7 @@ export function VideoTaskCard({
   ].filter(Boolean) as string[];
 
   return (
-    <article id={`message-${message.id}`} className={`task-card ${message.status}`}>
+    <article id={`message-${message.id}`} className={`task-card ${message.status} ${videos.length > 1 ? "has-multi-video" : ""}`}>
       <div className="task-main">
         <header className="task-head">
           <StatusBadge status={message.status} />
@@ -269,16 +269,20 @@ export function VideoTaskCard({
 
       <div className="task-preview">
         {videos.length ? (
-          <>
-            <button type="button" className="task-preview-video" onClick={() => setViewer(0)} aria-label="播放视频">
-              <PosterVideo path={videos[0].path} muted loop playsInline
-                onMouseEnter={(event) => { void event.currentTarget.play().catch(() => undefined); }}
-                onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} />
-              <span className="task-play"><Play size={18} fill="currentColor" /></span>
-              {options && <span className="task-duration">{options.duration}s</span>}
-            </button>
-            {videos.length > 1 && <span className="task-more-count">共 {videos.length} 条</span>}
-          </>
+          // 一次生成了几条就显示几条(多条时两列排开),每条都能单独点开播放
+          <div className={videos.length > 1 ? "task-preview-grid" : undefined}>
+            {videos.map((video, index) => (
+              <button type="button" className="task-preview-video" key={video.path} onClick={() => setViewer(index)}
+                aria-label={videos.length > 1 ? `播放第 ${index + 1} 条视频` : "播放视频"}>
+                <PosterVideo path={video.path} muted loop playsInline
+                  onMouseEnter={(event) => { void event.currentTarget.play().catch(() => undefined); }}
+                  onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} />
+                <span className="task-play"><Play size={videos.length > 1 ? 15 : 18} fill="currentColor" /></span>
+                {videos.length > 1 && <span className="task-preview-index">{index + 1}/{videos.length}</span>}
+                {options && <span className="task-duration">{options.duration}s</span>}
+              </button>
+            ))}
+          </div>
         ) : message.status === "processing" ? (
           <div className="task-preview-empty running"><span className="shimmer" /><Loader2 size={20} className="spin" /></div>
         ) : (

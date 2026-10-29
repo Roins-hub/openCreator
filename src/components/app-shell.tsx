@@ -7,6 +7,7 @@ import {
   Minimize2, PanelLeftClose, Plus, Search as SearchIcon, Sparkles, Undo2, X, BookMarked, Pencil, Trash2, LayoutGrid, Rows3, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { ImageEditContext } from "@/components/image-editor";
+import { FavoriteContext } from "@/components/favorite-context";
 import { flushSync } from "react-dom";
 import { turnStatus } from "@/lib/conversation-navigation";
 import { Segmented } from "@/components/segmented";
@@ -912,8 +913,21 @@ export function AppShell() {
     setDraft(editor.innerText);
   });
 
-  // 输入框里已有的素材(上面那一叠)拖到写提示词的地方:在松手处插入「图N」引用
+  // 输入框里已有的素材(上面那一叠)拖到写提示词的地方:在松手处插入「图N」引用;
+  // 拖到这一叠里的另一张上:换到那张的位置(图1、图2 跟着重新编号,提示词里的「图N」也跟着变)
   const attachmentDrag = useCardDrag((target, paths, point) => {
+    if (target.startsWith("stack:")) {
+      const to = Number(target.slice(6));
+      setAttachments((items) => {
+        const from = items.findIndex((item) => item.path === paths[0]);
+        if (from < 0 || from === to || to < 0 || to >= items.length) return items;
+        const next = [...items];
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        return next;
+      });
+      return;
+    }
     if (target !== EDITOR_DROP) return;
     insertReferenceCards(attachments.filter((item) => paths.includes(item.path)), attachments, rangeAtPoint(point));
   });
@@ -1685,8 +1699,22 @@ export function AppShell() {
     saved: () => void loadReferenceAssets(),
   };
 
+  // 放大查看里的「收藏」:先在界面上变(不等服务器),失败时 toggleFavorite 会报错并以服务器为准
+  const favoriteTargets = {
+    isFavorite: (path: string) => favorites.has(path),
+    toggle: (path: string, favorite: boolean) => {
+      setFavorites((current) => {
+        const next = new Set(current);
+        if (favorite) next.add(path); else next.delete(path);
+        return next;
+      });
+      void toggleFavorite([path], favorite);
+    },
+  };
+
   return (
     <ImageEditContext.Provider value={imageEditTargets}>
+    <FavoriteContext.Provider value={favoriteTargets}>
     <main className="app-frame">
       <div className={`side-panels ${sidebarOpen ? "is-open" : ""}`} ref={sidePanelsRef}
         style={sidebarVars(sidebarWidth) as React.CSSProperties}>
@@ -1974,9 +2002,14 @@ export function AppShell() {
               {attachments.length > 0 && (
                 <div className="attachment-stack" aria-label={`${attachments.length} 个参考素材`}
                   style={{ "--count": attachments.length + 1 } as React.CSSProperties}>
-                  {attachments.map((item, index) => (
-                    <div className={`stack-card kind-${item.kind} ${item.uploading ? "is-uploading" : ""}`} key={item.path}
-                      title={item.uploading ? `正在上传 · ${item.name}` : `点击放大 · ${labels[index]} · ${item.name}`}
+                  {attachments.map((item, index) => {
+                    // 拖着别的素材悬在这张上:这张让开一点、描边,表示松手会换到这里
+                    const dragFrom = attachmentDrag.drag ? attachments.findIndex((entry) => entry.path === attachmentDrag.drag?.paths[0]) : -1;
+                    const reorderTarget = attachmentDrag.dropTarget === `stack:${index}` && dragFrom >= 0 && dragFrom !== index;
+                    return (
+                    <div className={`stack-card kind-${item.kind} ${item.uploading ? "is-uploading" : ""} ${reorderTarget ? `is-reorder-target ${dragFrom < index ? "from-left" : "from-right"}` : ""} ${attachmentDrag.landed === `stack:${index}` ? "is-reorder-landed" : ""}`} key={item.path}
+                      data-drop-target={item.uploading ? undefined : `stack:${index}`}
+                      title={item.uploading ? `正在上传 · ${item.name}` : `点击放大 · ${labels[index]} · ${item.name}（按住拖动可换顺序，或拖到提示词里）`}
                       role="button" tabIndex={0} aria-label={`放大查看 ${labels[index]}`}
                       // 点卡片放大查看;右上角的 × 是删除,不触发放大
                       onClick={(event) => { if (!(event.target as HTMLElement).closest(".stack-card-remove")) setAttachmentPreview(index); }}
@@ -1997,7 +2030,8 @@ export function AppShell() {
                         setAttachments((items) => items.filter((_, i) => i !== index));
                       }} aria-label={`移除 ${item.name}`}><X size={11} strokeWidth={2.6} /></button>
                     </div>
-                  ))}
+                    );
+                  })}
                   <button type="button" className="stack-add" onClick={() => fileRef.current?.click()}
                     disabled={uploadLimit === 0}
                     style={{ "--i": attachments.length } as React.CSSProperties}
@@ -2018,6 +2052,7 @@ export function AppShell() {
                     preview: item.kind === "image" && !item.previewUrl ? thumbUrl(item.path, 480) : undefined,
                     original: item.kind === "image" && !item.previewUrl && !opensOriginal(item.size) ? `/api/media/${item.path}` : undefined,
                     size: item.size,
+                    path: item.uploading || item.path.startsWith("pending:") ? undefined : item.path,
                   }))}
                   index={attachmentPreview} onIndex={setAttachmentPreview} onClose={() => setAttachmentPreview(null)} />
               )}
@@ -2199,6 +2234,7 @@ export function AppShell() {
           closeSidebarOnMobile();
         }} />}
     </main>
+    </FavoriteContext.Provider>
     </ImageEditContext.Provider>
   );
 }

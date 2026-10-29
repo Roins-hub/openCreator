@@ -1,6 +1,7 @@
 "use client";
 
 import { ImageEditContext } from "@/components/image-editor";
+import { FavoriteContext } from "@/components/favorite-context";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import Link from "next/link";
 import {
@@ -430,7 +431,16 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
   </>;
 
   // 预览里编辑过、存进素材库的图:存好后刷新列表(资产页没有输入框,不能「添加到输入框」)
+  // 放大查看里的「收藏」和卡片上的星标是同一个状态
+  const favoriteTargets = {
+    isFavorite: (path: string) => Boolean(assets.find((asset) => asset.path === path)?.favorite),
+    toggle: (path: string) => {
+      const asset = assets.find((item) => item.path === path);
+      if (asset) void toggleFavorite(asset);
+    },
+  };
   return <ImageEditContext.Provider value={{ saved: () => void loadAssets() }}>
+  <FavoriteContext.Provider value={favoriteTargets}>
   <main className={`utility-page asset-page ${dragging ? "is-dragging" : ""}`} {...(chat ? {} : dropHandlers)}>
     <header className="utility-topbar">
       {/* 聊天是同域名下的另一个程序,整页跳回去 */}
@@ -676,5 +686,6 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
       <span>支持 JPG / PNG / WebP 图片、MP4 / MOV 视频、MP3 / WAV 音频</span>
     </div>}
   </main>
+  </FavoriteContext.Provider>
   </ImageEditContext.Provider>;
 }

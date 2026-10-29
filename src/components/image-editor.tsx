@@ -4,11 +4,12 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { createPortal } from "react-dom";
 import {
   Brush, Check, ChevronDown, Crop, Download, Droplets, Eraser, FlipHorizontal2, FlipVertical2, FolderPlus, Grid3x3,
-  ImagePlus, Loader2, Pencil, Redo2, RotateCcw, RotateCw, SlidersHorizontal, Undo2,
+  GripVertical, ImagePlus, Layers, Loader2, Pencil, Redo2, RotateCcw, RotateCw, SlidersHorizontal, Trash2, Undo2, Upload,
 } from "lucide-react";
 import { useSlidingThumb } from "@/components/segmented";
 import { apiKeyHeaders } from "@/lib/api-key";
 import { uploadMedia } from "@/lib/direct-upload";
+import { createClientId } from "@/lib/client-id";
 
 /**
  * 编辑完的图片能送去哪里:页面自己提供(工作台能「添加到输入框」,资产页没有输入框就不给)。
@@ -22,10 +23,18 @@ export type ImageEditTargets = {
 };
 export const ImageEditContext = createContext<ImageEditTargets>({});
 
-type Tool = "crop" | "adjust" | "draw" | "mosaic" | "blur" | "erase";
+type Tool = "crop" | "adjust" | "draw" | "mosaic" | "blur" | "erase" | "layers";
+/** 加进来的图片图层:位置、大小按原图像素算;base 是原图那一层(可以和图层一起调上下顺序) */
+type Layer = { id: string; name: string; url: string; image: ImageBitmap; x: number; y: number; w: number; h: number; opacity: number };
+type BaseEntry = { id: "base" };
+type StackEntry = BaseEntry | Layer;
+const BASE: BaseEntry = { id: "base" };
+const isLayer = (entry: StackEntry): entry is Layer => entry.id !== "base";
+/** 图层面板一行的高度(拖动排序时按它算挪了几格) */
+const LAYER_ROW = 52;
 type Adjust = { brightness: number; contrast: number; saturation: number; warmth: number };
 type Rect = { x: number; y: number; w: number; h: number };
-type Snapshot = { work: HTMLCanvasElement; base: HTMLCanvasElement };
+type Snapshot = { work: HTMLCanvasElement; base: HTMLCanvasElement; stack: StackEntry[] };
 
 const TOOLS: { id: Tool; label: string; icon: typeof Crop; hint: string }[] = [
   { id: "crop", label: "裁剪", icon: Crop, hint: "裁剪、旋转、翻转、拉直" },
@@ -34,6 +43,7 @@ const TOOLS: { id: Tool; label: string; icon: typeof Crop; hint: string }[] = [
   { id: "mosaic", label: "马赛克", icon: Grid3x3, hint: "涂过的地方打上马赛克" },
   { id: "blur", label: "涂抹", icon: Droplets, hint: "涂过的地方变模糊" },
   { id: "erase", label: "擦除", icon: Eraser, hint: "擦掉涂鸦、马赛克和涂抹,露出原来的图" },
+  { id: "layers", label: "图层", icon: Layers, hint: "加入别的图片(上传、拖进来、粘贴),移动缩放,拖动调整上下层级" },
 ];
 const NO_ADJUST: Adjust = { brightness: 0, contrast: 0, saturation: 0, warmth: 0 };
 const FULL: Rect = { x: 0, y: 0, w: 1, h: 1 };
@@ -194,6 +204,18 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
   const baseRef = useRef<HTMLCanvasElement | null>(null);
   const historyRef = useRef<{ list: Snapshot[]; index: number }>({ list: [], index: 0 });
   const strokeRef = useRef<{ id: number; x: number; y: number; source: HTMLCanvasElement | null } | null>(null);
+  // 画笔先画在这层透明画布上,松手再按透明度合进图里(同一笔里重叠的地方不会变深)
+  const inkRef = useRef<HTMLCanvasElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  // 图层(从下到上);同步存一份在 ref 里,记历史、合成时直接读
+  const [stack, setStack] = useState<StackEntry[]>([BASE]);
+  const stackRef = useRef<StackEntry[]>([BASE]);
+  const urlsRef = useRef<string[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [rowDrag, setRowDrag] = useState<{ id: string; from: number; to: number; dy: number } | null>(null);
+  const [landedRow, setLandedRow] = useState<string | null>(null);
+  const [baseThumb, setBaseThumb] = useState("");
+  const [dropping, setDropping] = useState(false);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState("");
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -210,6 +232,7 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
   const [adjust, setAdjust] = useState<Adjust>(NO_ADJUST);
   const [color, setColor] = useState(COLORS[2]);
   const [brush, setBrush] = useState(24);
+  const [alpha, setAlpha] = useState(100);
   const [menu, setMenu] = useState(false);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
@@ -232,7 +255,7 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
       context(work).drawImage(bitmap, 0, 0);
       bitmap.close?.();
       baseRef.current = copyOf(work);
-      historyRef.current = { list: [{ work: copyOf(work), base: baseRef.current }], index: 0 };
+      historyRef.current = { list: [{ work: copyOf(work), base: baseRef.current, stack: [BASE] }], index: 0 };
       setSize({ width: work.width, height: work.height });
       setReady(true);
     })().catch((cause: Error) => { if (alive) setFailed(cause.message || "图片读取失败"); });
@@ -269,7 +292,7 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
   const record = useCallback(() => {
     const history = historyRef.current;
     const list = history.list.slice(0, history.index + 1);
-    list.push({ work: copyOf(workRef.current!), base: baseRef.current! });
+    list.push({ work: copyOf(workRef.current!), base: baseRef.current!, stack: stackRef.current });
     while (list.length > limit) list.splice(1, 1);
     historyRef.current = { list, index: list.length - 1 };
     setSteps({ index: list.length - 1, count: list.length });
@@ -284,6 +307,9 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
     work.height = entry.work.height;
     context(work).drawImage(entry.work, 0, 0);
     baseRef.current = entry.base;
+    stackRef.current = entry.stack;
+    setStack(entry.stack);
+    setSelected((id) => entry.stack.some((item) => item.id === id) ? id : null);
     history.index = index;
     setSteps({ index, count: history.list.length });
     const from = frameRect();
@@ -301,6 +327,28 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
     setSteps({ index: 0, count: 1 });
   };
 
+  const updateStack = (next: StackEntry[]) => {
+    stackRef.current = next;
+    setStack(next);
+  };
+  useEffect(() => () => urlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
+
+  /** 按当前顺序把原图和所有图层合成一张(保存、裁剪、旋转前用) */
+  const composite = () => {
+    const work = workRef.current!;
+    if (stackRef.current.length === 1) return work;
+    const out = canvasOf(work.width, work.height);
+    const outContext = context(out);
+    outContext.imageSmoothingQuality = "high";
+    for (const entry of stackRef.current) {
+      if (!isLayer(entry)) { outContext.drawImage(work, 0, 0); continue; }
+      outContext.globalAlpha = entry.opacity;
+      outContext.drawImage(entry.image, entry.x, entry.y, entry.w, entry.h);
+      outContext.globalAlpha = 1;
+    }
+    return out;
+  };
+
   /** 换一张新画布(裁剪、旋转、调整之后):擦除以这张为准 */
   const replaceWith = (next: HTMLCanvasElement) => {
     const work = workRef.current!;
@@ -313,9 +361,19 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
     record();
   };
 
+  /** 裁剪、旋转、翻转会动到整张图:先把图层合进原图 */
+  const flatten = () => {
+    if (stackRef.current.length === 1) return;
+    const out = composite();
+    updateStack([BASE]);
+    setSelected(null);
+    replaceWith(out);
+  };
+
   // ---------- 裁剪 / 拉直 / 调整:切换工具或保存前先落实 ----------
   const commitCrop = () => {
     if (crop === FULL && angle === 0) return false;
+    flatten();
     const work = workRef.current!;
     let source: HTMLCanvasElement = work;
     if (angle !== 0) {
@@ -360,6 +418,7 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
 
   const transform = (kind: "left" | "right" | "flipX" | "flipY") => {
     commitPending();
+    flatten();
     const work = workRef.current!;
     const turn = kind === "left" || kind === "right";
     const out = canvasOf(turn ? work.height : work.width, turn ? work.width : work.height);
@@ -415,7 +474,7 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
   };
   const stamp = (from: { x: number; y: number }, to: { x: number; y: number }, unit: number, source: HTMLCanvasElement | null) => {
     const work = workRef.current!;
-    const workContext = context(work);
+    const workContext = context(inkRef.current!);
     const width = brush * unit;
     if (tool === "draw" || !source) {
       workContext.save();
@@ -448,8 +507,12 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
     workContext.restore();
   };
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (tool === "layers") { setSelected(null); return; }
     if (!painting || event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    const ink = inkRef.current!, work = workRef.current!;
+    if (ink.width !== work.width || ink.height !== work.height) { ink.width = work.width; ink.height = work.height; }
+    context(ink).clearRect(0, 0, ink.width, ink.height);
     const point = toImage(event);
     const source = tool === "mosaic" ? pixelated(workRef.current!) : tool === "blur" ? blurred(workRef.current!) : tool === "erase" ? baseRef.current : null;
     strokeRef.current = { id: event.pointerId, x: point.x, y: point.y, source };
@@ -465,8 +528,143 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
   const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!strokeRef.current || strokeRef.current.id !== event.pointerId) return;
     strokeRef.current = null;
+    const ink = inkRef.current!;
+    const workContext = context(workRef.current!);
+    workContext.globalAlpha = alpha / 100;
+    workContext.drawImage(ink, 0, 0);
+    workContext.globalAlpha = 1;
+    context(ink).clearRect(0, 0, ink.width, ink.height);
     record();
   };
+
+  // ---------- 图层 ----------
+  const addImages = async (files: readonly File[]) => {
+    const images = files.filter((file) => file.type.startsWith("image/"));
+    if (!images.length || !size.width) return;
+    commitPending();
+    let next = stackRef.current;
+    let last = "";
+    for (const [index, file] of images.entries()) {
+      try {
+        const image = await createImageBitmap(file);
+        const url = URL.createObjectURL(file);
+        urlsRef.current.push(url);
+        // 先放在中间,最大占原图的一半;连着加几张时错开一点
+        const scale = Math.min(1, (size.width * 0.5) / image.width, (size.height * 0.5) / image.height);
+        const w = image.width * scale, h = image.height * scale;
+        const offset = index * Math.min(size.width, size.height) * 0.04;
+        const layer: Layer = {
+          id: `layer-${createClientId()}`, name: file.name || `图片 ${index + 1}`, url, image,
+          x: (size.width - w) / 2 + offset, y: (size.height - h) / 2 + offset, w, h, opacity: 1,
+        };
+        next = [...next, layer];
+        last = layer.id;
+      } catch { setNotice(`「${file.name}」不是能读取的图片`); }
+    }
+    if (!last) return;
+    updateStack(next);
+    setSelected(last);
+    setTool("layers");
+    record();
+  };
+  const removeLayer = (id: string) => {
+    if (id === "base") return;
+    updateStack(stackRef.current.filter((entry) => entry.id !== id));
+    setSelected(null);
+    record();
+  };
+  const setLayerOpacity = (id: string, opacity: number, commit = false) => {
+    updateStack(stackRef.current.map((entry) => entry.id === id && isLayer(entry) ? { ...entry, opacity } : entry));
+    if (commit) record();
+  };
+  /** 在图上拖图层:mode 是 move(移动)或四个角(等比缩放) */
+  const dragLayer = (id: string, mode: "move" | "nw" | "ne" | "sw" | "se") => (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setSelected(id);
+    const layer = stackRef.current.find((entry): entry is Layer => entry.id === id && isLayer(entry));
+    const frame = frameRef.current?.getBoundingClientRect();
+    if (!layer || !frame) return;
+    const k = size.width / frame.width;
+    const ratio = layer.w / layer.h;
+    const start = { x: event.clientX, y: event.clientY };
+    let moved = false;
+    const move = (moveEvent: PointerEvent) => {
+      const dx = (moveEvent.clientX - start.x) * k, dy = (moveEvent.clientY - start.y) * k;
+      let { x, y, w, h } = layer;
+      if (mode === "move") { x += dx; y += dy; } else {
+        const grow = mode === "se" || mode === "ne" ? dx : -dx;
+        w = Math.max(16, layer.w + grow);
+        h = w / ratio;
+        if (mode === "nw" || mode === "sw") x = layer.x + layer.w - w;
+        if (mode === "nw" || mode === "ne") y = layer.y + layer.h - h;
+      }
+      moved = true;
+      updateStack(stackRef.current.map((entry) => entry.id === id ? { ...layer, x, y, w, h } : entry));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (moved) record();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  /** 图层面板里按住一行上下拖:其它行让开,松手换到新位置(面板里上面的是上层) */
+  const dragRow = (id: string, from: number) => (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("button, input")) return;
+    const count = stackRef.current.length;
+    const startY = event.clientY;
+    let started = false, to = from;
+    const move = (moveEvent: PointerEvent) => {
+      const dy = moveEvent.clientY - startY;
+      if (!started && Math.abs(dy) < 4) return;
+      started = true;
+      to = Math.min(count - 1, Math.max(0, from + Math.round(dy / LAYER_ROW)));
+      setRowDrag({ id, from, to, dy });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setRowDrag(null);
+      if (!started) { setSelected(id === "base" ? null : id); return; }
+      if (to === from) return;
+      const shown = [...stackRef.current].reverse();
+      const [item] = shown.splice(from, 1);
+      shown.splice(to, 0, item);
+      updateStack(shown.reverse());
+      setLandedRow(id);
+      window.setTimeout(() => setLandedRow((value) => value === id ? null : value), 520);
+      record();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  // 图层面板里原图那一行的小缩略图
+  useEffect(() => {
+    if (tool !== "layers" || !ready) return;
+    const frame = requestAnimationFrame(() => {
+      const work = workRef.current!;
+      const scale = 96 / Math.max(work.width, work.height);
+      const small = canvasOf(work.width * scale, work.height * scale);
+      context(small).drawImage(work, 0, 0, small.width, small.height);
+      setBaseThumb(small.toDataURL("image/png"));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [tool, ready, tick, steps.index]);
+  // 粘贴图片:作为新图层
+  useEffect(() => {
+    if (!ready) return;
+    const onPaste = (event: ClipboardEvent) => {
+      const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
+      if (!files.length) return;
+      event.preventDefault();
+      void addImages(files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  });
 
   // ---------- 裁剪框的拖动 ----------
   const dragCrop = (mode: string) => (event: React.PointerEvent<HTMLElement>) => {
@@ -514,7 +712,7 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
   // ---------- 保存 ----------
   const output = async () => {
     commitPending();
-    const work = workRef.current!;
+    const work = composite();
     const blob = await new Promise<Blob | null>((resolve) => work.toBlob(resolve, "image/png"));
     if (!blob) throw new Error("导出图片失败");
     const stem = fileName.trim().replace(/\.png$/i, "") || name.replace(/\.[^.]+$/, "") || "图片";
@@ -559,6 +757,7 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
       event.stopPropagation();
       const mod = event.ctrlKey || event.metaKey;
       if (event.key === "Escape") { if (menu) setMenu(false); else close(); }
+      else if ((event.key === "Delete" || event.key === "Backspace") && tool === "layers" && selected) { event.preventDefault(); removeLayer(selected); }
       else if (mod && event.key.toLowerCase() === "z" && !event.shiftKey) { event.preventDefault(); if (historyRef.current.index > 0) undo(); }
       else if (mod && (event.key.toLowerCase() === "y" || (event.key.toLowerCase() === "z" && event.shiftKey))) {
         event.preventDefault();
@@ -581,11 +780,16 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
   return createPortal(
     <div className={`image-editor ${leaving ? "is-leaving" : ""}`} role="dialog" aria-modal="true" aria-label="编辑图片"
       onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
+      // 把图片拖进来:作为新图层(拦住,不让下面输入框的拖放也收到)
+      onDragEnter={(event) => { event.stopPropagation(); if (ready && event.dataTransfer.types.includes("Files")) { event.preventDefault(); setDropping(true); } }}
+      onDragOver={(event) => { event.stopPropagation(); if (ready && event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
+      onDragLeave={(event) => { event.stopPropagation(); if (event.currentTarget === event.target || !event.currentTarget.contains(event.relatedTarget as Node)) setDropping(false); }}
+      onDrop={(event) => { event.preventDefault(); event.stopPropagation(); setDropping(false); void addImages([...event.dataTransfer.files]); }}
       onPointerDown={(event) => { if (menu && !(event.target as HTMLElement).closest(".image-editor-save")) setMenu(false); }}>
       <header className="image-editor-bar">
         <div className="image-editor-history">
-          <button type="button" onClick={undo} disabled={steps.index === 0} title="撤销（Ctrl / ⌘ + Z）" aria-label="撤销"><Undo2 size={16} /></button>
-          <button type="button" onClick={redo} disabled={steps.index >= steps.count - 1} title="重做（Ctrl / ⌘ + Shift + Z）" aria-label="重做"><Redo2 size={16} /></button>
+          <button type="button" onClick={undo} disabled={steps.index === 0} title="撤销（Ctrl / ⌘ + Z）" aria-label="撤销"><Undo2 size={17} strokeWidth={2.4} /></button>
+          <button type="button" onClick={redo} disabled={steps.index >= steps.count - 1} title="重做（Ctrl / ⌘ + Shift + Z）" aria-label="重做"><Redo2 size={17} strokeWidth={2.4} /></button>
           <button type="button" className="text" onClick={reset} disabled={!edited}>还原</button>
           {renaming
             ? <input className="image-editor-rename" autoFocus defaultValue={fileName} maxLength={120} aria-label="文件名"
@@ -638,11 +842,36 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
           {/* 原图读完之前先垫着预览里那张(已经加载过,马上能显示) */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {!ready && origin && <img className="image-editor-placeholder" src={origin.src} alt="" draggable={false} />}
-          <canvas ref={workRef} className="image-editor-canvas"
-            style={{ transform: angle ? `rotate(${angle}deg) scale(${scale})` : undefined, visibility: showPreview || !ready ? "hidden" : undefined,
-              cursor: painting ? "crosshair" : undefined, ["--brush" as string]: `${brush}px` }}
-            onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} />
-          <canvas ref={previewRef} className="image-editor-canvas image-editor-preview" hidden={!showPreview} />
+          {/* 原图和图层放在一起:拉直时一起转;层级按 stack 的顺序 */}
+          <div className="image-editor-content" style={{ transform: angle ? `rotate(${angle}deg) scale(${scale})` : undefined }}>
+            {stack.map((entry, index) => isLayer(entry)
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img key={entry.id} className={`image-editor-layer ${selected === entry.id ? "is-selected" : ""}`} src={entry.url} alt={entry.name}
+                draggable={false} onPointerDown={tool === "layers" ? dragLayer(entry.id, "move") : undefined}
+                style={{
+                  left: `${entry.x / size.width * 100}%`, top: `${entry.y / size.height * 100}%`,
+                  width: `${entry.w / size.width * 100}%`, height: `${entry.h / size.height * 100}%`,
+                  opacity: entry.opacity, zIndex: index * 2, pointerEvents: tool === "layers" ? "auto" : "none",
+                }} />
+              : <div key="base" className="image-editor-base" style={{ zIndex: index * 2 }}>
+                <canvas ref={workRef} className="image-editor-canvas"
+                  style={{ visibility: showPreview || !ready ? "hidden" : undefined, cursor: painting ? "crosshair" : undefined }}
+                  onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} />
+                <canvas ref={inkRef} className="image-editor-canvas image-editor-ink" style={{ opacity: alpha / 100 }} />
+                <canvas ref={previewRef} className="image-editor-canvas image-editor-preview" hidden={!showPreview} />
+              </div>)}
+          </div>
+          {tool === "layers" && (() => {
+            const layer = stack.find((entry): entry is Layer => entry.id === selected && isLayer(entry));
+            return layer ? <div className="image-editor-layer-box" style={{
+              left: `${layer.x / size.width * 100}%`, top: `${layer.y / size.height * 100}%`,
+              width: `${layer.w / size.width * 100}%`, height: `${layer.h / size.height * 100}%`,
+            }} onPointerDown={dragLayer(layer.id, "move")}>
+              {(["nw", "ne", "sw", "se"] as const).map((corner) => (
+                <span key={corner} className="corner" data-corner={corner} onPointerDown={dragLayer(layer.id, corner)} aria-hidden="true" />
+              ))}
+            </div> : null;
+          })()}
           {tool === "crop" && ready && (
             <div className={`image-editor-crop ${cropDragging ? "is-dragging" : ""}`} style={{
               left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.w * 100}%`, height: `${crop.h * 100}%`,
@@ -654,6 +883,33 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
             </div>
           )}
         </div>
+        {tool === "layers" && ready && <aside className="image-editor-layers" aria-label="图层">
+          <header><b>图层</b><span>拖动调整上下层级</span></header>
+          <div className="image-editor-layer-list" style={{ height: stack.length * LAYER_ROW }}>
+            {[...stack].reverse().map((entry, index) => {
+              let shift = 0;
+              if (rowDrag && rowDrag.id !== entry.id) {
+                if (rowDrag.from < rowDrag.to && index > rowDrag.from && index <= rowDrag.to) shift = -LAYER_ROW;
+                if (rowDrag.from > rowDrag.to && index >= rowDrag.to && index < rowDrag.from) shift = LAYER_ROW;
+              }
+              const dragging = rowDrag?.id === entry.id;
+              const active = entry.id === "base" ? !selected : selected === entry.id;
+              return <div key={entry.id} role="button" tabIndex={0}
+                className={`image-editor-layer-row ${active ? "is-active" : ""} ${dragging ? "is-dragging" : ""} ${landedRow === entry.id ? "is-landed" : ""}`}
+                style={{ transform: `translateY(${index * LAYER_ROW + (dragging ? rowDrag.dy : shift)}px)` }}
+                onPointerDown={dragRow(entry.id, index)}
+                onKeyDown={(event) => { if (event.key === "Enter") setSelected(entry.id === "base" ? null : entry.id); }}>
+                <GripVertical size={14} className="grip" aria-hidden="true" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={isLayer(entry) ? entry.url : baseThumb || undefined} alt="" draggable={false} />
+                <span className="name">{isLayer(entry) ? entry.name : "原图"}</span>
+                {isLayer(entry) && <button type="button" className="remove" onClick={() => removeLayer(entry.id)}
+                  aria-label={`删除图层 ${entry.name}`} title="删除这个图层"><Trash2 size={13} /></button>}
+              </div>;
+            })}
+          </div>
+        </aside>}
+        {dropping && <div className="image-editor-drop" aria-hidden="true"><Upload size={22} /><b>松手加入图片</b><span>作为新图层放在最上面</span></div>}
       </div>
 
       <footer className="image-editor-options">
@@ -704,9 +960,29 @@ export function ImageEditor({ src, name, origin, onClose, onFinished }: {
             <span>笔刷大小 <b>{brush}</b></span>
             <input type="range" min={4} max={140} step={1} value={brush} onChange={(event) => setBrush(Number(event.target.value))} />
           </label>
-          <span className="brush-preview" style={{ width: Math.min(brush, 56), height: Math.min(brush, 56), background: tool === "draw" ? color : undefined }}
+          <label className="slider">
+            <span>不透明度 <b>{alpha}%</b></span>
+            <input type="range" min={5} max={100} step={1} value={alpha} onChange={(event) => setAlpha(Number(event.target.value))}
+              onDoubleClick={() => setAlpha(100)} />
+          </label>
+          <span className="brush-preview" style={{ width: Math.min(brush, 56), height: Math.min(brush, 56), background: tool === "draw" ? color : undefined, opacity: Math.max(.15, alpha / 100) }}
             data-tool={tool} aria-hidden="true" />
           <span className="hint">{TOOLS.find((item) => item.id === tool)?.hint}</span>
+        </>}
+        {tool === "layers" && <>
+          <input ref={fileRef} type="file" accept="image/*" multiple hidden
+            onChange={(event) => { void addImages(event.target.files ? [...event.target.files] : []); event.target.value = ""; }} />
+          <button type="button" className="apply" onClick={() => fileRef.current?.click()}><Upload size={15} />上传图片</button>
+          {(() => {
+            const layer = stack.find((entry): entry is Layer => entry.id === selected && isLayer(entry));
+            return layer ? <label className="slider">
+              <span>图层不透明度 <b>{Math.round(layer.opacity * 100)}%</b></span>
+              <input type="range" min={5} max={100} step={1} value={Math.round(layer.opacity * 100)}
+                onChange={(event) => setLayerOpacity(layer.id, Number(event.target.value) / 100)}
+                onPointerUp={(event) => setLayerOpacity(layer.id, Number(event.currentTarget.value) / 100, true)} />
+            </label> : null;
+          })()}
+          <span className="hint">也可以把图片直接拖进来或 Ctrl + V 粘贴；拖动图层移动，拉四角缩放，Delete 删除</span>
         </>}
         </div>
       </footer>

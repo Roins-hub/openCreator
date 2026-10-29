@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Download, Music, SquarePen, X } from "lucide-react";
 import { formatBytes } from "@/components/generation-info";
 import { ImageEditor, editorOriginFrom, type EditorOrigin } from "@/components/image-editor";
+import { FavoriteButton } from "@/components/favorite-context";
 import { ImageZoom } from "@/components/image-zoom";
 import { ProgressVideo } from "@/components/load-progress";
 import { mediaUrl, opensOriginal, thumbUrl, viewUrl } from "@/lib/media-url";
@@ -25,6 +26,8 @@ export interface PreviewItem {
   original?: string;
   /** 文件大小(字节),知道时显示在说明后面 */
   size?: number;
+  /** 素材在存储里的路径(能收藏);还在上传的没有 */
+  path?: string;
 }
 
 export const mediaPreviewItem = (media: MediaRef, caption?: string, size?: number): PreviewItem => {
@@ -39,6 +42,7 @@ export const mediaPreviewItem = (media: MediaRef, caption?: string, size?: numbe
   preview: media.kind === "image" ? thumbUrl(media.path, 480) : undefined,
   original: direct ? undefined : mediaUrl(media.path),
   size: bytes,
+  path: media.path,
   };
 };
 
@@ -117,6 +121,7 @@ export function MediaPreview({ items, index, onIndex, onClose }: {
           <p title={current.caption || current.name}>{current.caption || current.name}
             {currentSize ? <small className="viewer-size"> · {formatBytes(currentSize)}</small> : null}</p>
           {items.length > 1 && <span>{index + 1} / {items.length}</span>}
+          <FavoriteButton path={current.path} />
           {current.kind === "image" && <button type="button" className="viewer-edit" onClick={(event) => setEditing({ item: current, origin: viewerImageOrigin(event.currentTarget) })}
             title="裁剪、调整、涂鸦、马赛克、涂抹、擦除"><SquarePen size={15} />编辑</button>}
           {current.download && <a href={current.download} download={current.name}><Download size={15} />下载</a>}

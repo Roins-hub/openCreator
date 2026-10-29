@@ -3816,7 +3816,7 @@ body.is-card-dragging .task-detail { opacity: 0; pointer-events: none; transitio
 /* 详情至少这么高:底栏推到最下面,「更多」菜单展开时下面有地方,不盖住底栏的文字,
    也不会因为菜单超出底边冒出滚动条、整块内容跟着跳一下;滚动条的位置也预留好 */
 .task-detail-body { scrollbar-gutter: stable; }
-.task-detail-body .task-main { min-height: 340px; }
+.task-detail-body .task-main { min-height: 300px; }
 .task-detail-body .task-main > :nth-child(1) { animation-delay: .12s; }
 .task-detail-body .task-main > :nth-child(2) { animation-delay: .17s; }
 .task-detail-body .task-main > :nth-child(3) { animation-delay: .22s; }
@@ -3916,3 +3916,116 @@ body.is-resizing-sidebar .side-panels { transition: none; }
 .layout-columns-glyph i { border-radius: 2px; background: currentColor; opacity: .35; transition: opacity .2s; }
 .layout-columns > button[aria-checked="true"] .layout-columns-glyph i, .layout-columns > button:hover .layout-columns-glyph i { opacity: .8; }
 @media (prefers-reduced-motion: reduce) { .layout-columns, .layout-columns > button { animation: none; } }
+
+/* ---------- 编辑器:撤销 / 重做 / 还原加粗;图层;画笔墨水层 ---------- */
+.image-editor-history > button:not(.image-editor-name):not(:disabled) { color: var(--ink); }
+.image-editor-history > button.text { font-weight: 700; }
+.image-editor-content { position: absolute; inset: 0; transition: transform .2s cubic-bezier(.16, 1, .3, 1); }
+.image-editor-base { position: absolute; inset: 0; }
+.image-editor-ink { pointer-events: none; }
+.image-editor-layer {
+  position: absolute; max-width: none; object-fit: fill; user-select: none; cursor: move;
+  animation: image-editor-layer-in .42s cubic-bezier(.2, 1.2, .4, 1);
+}
+@keyframes image-editor-layer-in { from { opacity: 0; transform: scale(.9); } }
+.image-editor-layer-box {
+  position: absolute; z-index: 60; cursor: move; touch-action: none;
+  outline: 1.5px solid #fff; box-shadow: 0 0 0 1px oklch(0% 0 0 / .35);
+}
+.image-editor-layer-box .corner {
+  position: absolute; width: 14px; height: 14px; border: 1.5px solid oklch(20% 0 0 / .5); border-radius: 50%; background: #fff;
+  transition: transform .15s cubic-bezier(.2, 1.4, .4, 1);
+}
+.image-editor-layer-box .corner:hover { transform: scale(1.25); }
+.image-editor-layer-box .corner[data-corner="nw"] { left: -7px; top: -7px; cursor: nwse-resize; }
+.image-editor-layer-box .corner[data-corner="se"] { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.image-editor-layer-box .corner[data-corner="ne"] { right: -7px; top: -7px; cursor: nesw-resize; }
+.image-editor-layer-box .corner[data-corner="sw"] { left: -7px; bottom: -7px; cursor: nesw-resize; }
+/* 选中框的圆点会超出画面一点:图层模式下画面本身不裁,图片内容那层裁 */
+.image-editor-frame[data-tool="layers"] { overflow: visible; }
+.image-editor-frame[data-tool="layers"] .image-editor-content { overflow: hidden; border-radius: inherit; }
+
+.image-editor-layers {
+  position: absolute; z-index: 4; top: 16px; right: 16px; width: 224px; padding: 10px 8px 8px;
+  border: 1px solid var(--line); border-radius: max(var(--r-control), 12px); background: var(--paper);
+  box-shadow: 0 14px 36px oklch(20% .02 80 / .12); animation: image-editor-panel-in .4s cubic-bezier(.16, 1, .3, 1);
+}
+@keyframes image-editor-panel-in { from { opacity: 0; transform: translateX(14px); } }
+.image-editor-layers > header { display: flex; align-items: baseline; gap: 8px; padding: 0 6px 8px; }
+.image-editor-layers > header b { font-size: 13px; }
+.image-editor-layers > header span { color: var(--faint); font-size: 11px; }
+.image-editor-layer-list { position: relative; max-height: calc(100dvh - 300px); overflow: hidden; transition: height .3s; }
+.image-editor-layer-row {
+  position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 6px;
+  border-radius: max(calc(var(--r-control) - 2px), 8px); color: var(--muted); background: transparent; cursor: grab; user-select: none;
+  touch-action: none; transition: transform .26s cubic-bezier(.2, .9, .2, 1.05), background-color .18s, box-shadow .2s, color .18s;
+}
+.image-editor-layer-row:hover { color: var(--ink); background: var(--row-active); }
+.image-editor-layer-row.is-active { color: var(--ink); background: var(--row-active); font-weight: 600; }
+.image-editor-layer-row.is-dragging {
+  z-index: 2; cursor: grabbing; transition: background-color .18s, box-shadow .2s; background: var(--paper);
+  box-shadow: 0 10px 26px oklch(20% .02 80 / .18), 0 0 0 1px var(--line); scale: 1.03;
+}
+.image-editor-layer-row.is-landed { animation: image-editor-row-land .5s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes image-editor-row-land { 40% { scale: 1.05; } }
+.image-editor-layer-row .grip { flex: none; color: var(--faint); }
+.image-editor-layer-row img {
+  flex: none; width: 34px; height: 34px; object-fit: cover; border-radius: 6px; background: var(--warm); box-shadow: 0 0 0 1px var(--line);
+}
+.image-editor-layer-row .name { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.image-editor-layer-row .remove {
+  flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; color: var(--faint); opacity: 0;
+}
+.image-editor-layer-row:hover .remove, .image-editor-layer-row.is-active .remove { opacity: 1; }
+.image-editor-layer-row .remove:hover { color: var(--danger); background: var(--danger-soft); }
+.image-editor-drop {
+  position: absolute; z-index: 8; inset: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  border: 2px dashed var(--focus); border-radius: max(var(--r-card), 14px); color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 78%, transparent); pointer-events: none;
+  animation: image-editor-fade .2s ease-out;
+}
+.image-editor-drop span { color: var(--muted); font-size: 12px; }
+@media (max-width: 900px) { .image-editor-layers { width: 180px; } }
+
+/* ---------- 生成卡片:多条视频都显示(2 列) ---------- */
+.task-card.has-multi-video { grid-template-columns: minmax(0, 1fr) min(420px, 44%); }
+.task-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.task-preview-grid .task-preview-video { border-radius: 9px; }
+.task-preview-grid .task-play { width: 32px; height: 32px; }
+.task-preview-index {
+  position: absolute; left: 6px; top: 6px; padding: 1px 6px; border-radius: 5px;
+  color: white; background: oklch(0% 0 0 / .5); font-size: 11px; font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 输入框素材栈:拖动换顺序 ---------- */
+.stack-card.is-reorder-target { box-shadow: 0 0 0 2px var(--ink), 0 8px 20px oklch(20% .02 80 / .18); }
+/* 从左边拖过来:这张会往左挪一格,先往左让一点;从右边来就往右让 */
+.stack-card.is-reorder-target.from-left { translate: -10px 0; }
+.stack-card.is-reorder-target.from-right { translate: 10px 0; }
+.stack-card { transition: translate .22s cubic-bezier(.2, .9, .2, 1.05), box-shadow .2s; }
+.stack-card.is-reorder-landed { animation: stack-card-land .5s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes stack-card-land { 40% { scale: 1.08; } }
+
+/* ---------- 放大查看:收藏 ---------- */
+.viewer-fav {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; font-size: 13px; font-weight: 600;
+  border: 1px solid var(--line); border-radius: max(var(--r-control), 8px); color: var(--ink); background: var(--paper);
+  transition: border-color .15s, background .15s, color .15s, transform .15s;
+}
+.viewer-fav:hover { border-color: var(--line-strong); background: var(--warm); transform: translateY(-1px); }
+.viewer-fav.is-on { color: oklch(62% .15 75); border-color: color-mix(in srgb, oklch(62% .15 75) 40%, var(--line)); }
+.viewer-fav.is-on svg { animation: viewer-fav-pop .45s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes viewer-fav-pop { 40% { transform: scale(1.35) rotate(-12deg); } }
+
+/* ---------- 右侧导航点了某条:对应的卡片凸出来闪一下 ---------- */
+.is-located { animation: task-located 1.5s cubic-bezier(.2, .9, .2, 1); position: relative; z-index: 3; }
+@keyframes task-located {
+  0% { transform: none; box-shadow: 0 0 0 0 transparent; }
+  18% { transform: scale(1.015) translateY(-2px); box-shadow: 0 0 0 3px var(--focus), 0 18px 44px oklch(20% .02 80 / .18); }
+  60% { transform: scale(1.015) translateY(-2px); box-shadow: 0 0 0 3px var(--focus), 0 18px 44px oklch(20% .02 80 / .18); }
+  100% { transform: none; box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-located { animation: none; outline: 3px solid var(--focus); }
+  .image-editor-layer, .image-editor-layers, .stack-card.is-reorder-landed { animation: none; }
+}

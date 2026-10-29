@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Download, Info, SquarePen, X } from "lucide-react";
 import { ImageEditor, type EditorOrigin } from "@/components/image-editor";
+import { FavoriteButton } from "@/components/favorite-context";
 import { viewerImageOrigin } from "@/components/media-preview";
 import type { MediaRef, Message } from "@/lib/types";
 import { mediaDownloadUrl } from "@/lib/download-files";
@@ -72,6 +73,7 @@ export function ResultViewer({
             {!infoOpen && <button type="button" className="viewer-info-toggle" onClick={() => toggleInfo(true)}>
               <Info size={15} />生成信息
             </button>}
+            <FavoriteButton path={current.path} />
             {!isVideo && <button type="button" className="viewer-edit" onClick={(event) => setEditing({ origin: viewerImageOrigin(event.currentTarget) })}
               title="裁剪、调整、涂鸦、马赛克、涂抹、擦除"><SquarePen size={15} />编辑</button>}
             <a href={mediaDownloadUrl(current)} download={current.name}><Download size={15} />下载</a>

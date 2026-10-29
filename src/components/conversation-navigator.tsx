@@ -84,9 +84,28 @@ export function ConversationNavigator({
 
   if (nodes.length < 5) return null;
 
+  /** 跳到那条记录;滚到位后卡片凸出来闪一下,一眼就能看到是哪张 */
   const jump = (id: string) => {
-    document.getElementById(`message-${id}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const element = document.getElementById(`message-${id}`);
+    if (!element) return;
+    const root = scrollRootRef.current;
+    const box = element.getBoundingClientRect(), view = root?.getBoundingClientRect();
+    const visible = view ? box.top >= view.top && box.bottom <= view.bottom : false;
+    let done = false;
+    const flash = () => {
+      if (done) return;
+      done = true;
+      root?.removeEventListener("scrollend", flash);
+      element.classList.remove("is-located");
+      void element.offsetWidth;
+      element.classList.add("is-located");
+      window.setTimeout(() => element.classList.remove("is-located"), 1600);
+    };
+    if (visible) { flash(); return; }
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    root?.addEventListener("scrollend", flash);
+    // 不支持 scrollend 的浏览器:估一个滚动结束的时间
+    window.setTimeout(flash, 700);
   };
   const indexOf = (id: string) => nodes.findIndex((item) => item.id === id);
   const list = searching ? matches : nodes;
