@@ -3987,9 +3987,8 @@ body.is-resizing-sidebar .side-panels { transition: none; }
 .image-editor-drop span { color: var(--muted); font-size: 12px; }
 @media (max-width: 900px) { .image-editor-layers { width: 180px; } }
 
-/* ---------- 生成卡片:多条视频都显示(2 列) ---------- */
-.task-card.has-multi-video { grid-template-columns: minmax(0, 1fr) min(420px, 44%); }
-.task-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+/* ---------- 生成卡片:多条视频都显示,一条一条竖着排(预览列宽度不变) ---------- */
+.task-preview-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .task-preview-grid .task-preview-video { border-radius: 9px; }
 .task-preview-grid .task-play { width: 32px; height: 32px; }
 .task-preview-index {
