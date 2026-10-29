@@ -347,6 +347,8 @@ export function AppShell() {
   });
   // 收起输入框:只是藏起来(写了一半的提示词、素材都还在),下面留一条可以点开的小条
   const [composerHidden, setComposerHidden] = useState(false);
+  // 重复拖进来的素材:让输入框里已有的那张跳一下
+  const [flashPaths, setFlashPaths] = useState<string[]>([]);
   const revealComposerRef = useRef(false);
   const hideComposer = () => {
     const panel = composerRef.current;
@@ -940,14 +942,24 @@ export function AppShell() {
     if (composerHidden) showComposer();
     const next = [...attachments];
     const skipped: string[] = [];
+    // 已经在输入框里的同一个素材不重复加:让已有的那张跳一下,并说一声(拖到写字的地方照样插入它的「图N」)
+    const already: number[] = [];
     for (const asset of assets) {
-      if (next.some((item) => item.path === asset.path)) continue;
+      const existing = next.findIndex((item) => item.path === asset.path);
+      if (existing >= 0) { if (existing < attachments.length) already.push(existing); continue; }
       if (!modeKinds.includes(asset.kind) || remainingFor(asset.kind, next) <= 0) { skipped.push(asset.name); continue; }
       if (videoModel && mode !== "first_last" && next.length >= videoModel.limits.total) { skipped.push(asset.name); continue; }
       next.push({ kind: asset.kind, path: asset.path, name: asset.name, mimeType: asset.mimeType });
     }
     if (next.length !== attachments.length) setAttachments(next);
-    setError(skipped.length ? `${skipped.length} 个素材没有加入：当前模型不支持这种素材，或已达到素材上限` : "");
+    if (already.length) {
+      setFlashPaths(already.map((index) => attachments[index].path));
+      window.setTimeout(() => setFlashPaths([]), 650);
+    }
+    const labelsNow = referenceLabels(attachments);
+    setError(skipped.length ? `${skipped.length} 个素材没有加入：当前模型不支持这种素材，或已达到素材上限`
+      : already.length && !point ? `已经在输入框里了（${already.map((index) => labelsNow[index]).join("、")}），同一个素材不用重复添加`
+        : "");
     if (point) insertReferenceCards(next.filter((item) => assets.some((asset) => asset.path === item.path)), next, rangeAtPoint(point));
   };
 
@@ -2009,7 +2021,7 @@ export function AppShell() {
                     // 正被拖着的那张:原位置空出来(留个虚线框),松手后再回来 / 落到新位置
                     const lifted = attachmentDrag.drag?.phase === "drag" && dragFrom === index;
                     return (
-                    <div className={`stack-card kind-${item.kind} ${item.uploading ? "is-uploading" : ""} ${reorderTarget ? `is-reorder-target ${dragFrom < index ? "from-left" : "from-right"}` : ""} ${attachmentDrag.landed === `stack:${index}` ? "is-reorder-landed" : ""} ${lifted ? "is-drag-source" : ""}`} key={item.path}
+                    <div className={`stack-card kind-${item.kind} ${item.uploading ? "is-uploading" : ""} ${reorderTarget ? `is-reorder-target ${dragFrom < index ? "from-left" : "from-right"}` : ""} ${attachmentDrag.landed === `stack:${index}` || flashPaths.includes(item.path) ? "is-reorder-landed" : ""} ${lifted ? "is-drag-source" : ""}`} key={item.path}
                       data-drop-target={item.uploading ? undefined : `stack:${index}`}
                       title={item.uploading ? `正在上传 · ${item.name}` : `点击放大 · ${labels[index]} · ${item.name}（按住拖动可换顺序，或拖到提示词里）`}
                       role="button" tabIndex={0} aria-label={`放大查看 ${labels[index]}`}
