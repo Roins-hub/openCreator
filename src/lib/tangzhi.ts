@@ -44,6 +44,8 @@ export interface VideoModel {
   price: number;
   /** 不同分辨率价格不同时,每档的单价 */
   prices?: Partial<Record<VideoResolution, number>>;
+  /** 有的档按条、有的档按秒(例如 720p 一条固定价,超分档按秒)时,每档各自的计费方式 */
+  billings?: Partial<Record<VideoResolution, "per_second" | "per_request">>;
   promptMin: number;
   promptMax: number;
   /**
@@ -130,6 +132,17 @@ interface PricingEntry {
   billing_expr?: string;
   model_price?: number;
   quota_type?: number;
+  /** 同一个模型按插件分开定价时,每个插件自己的计费表达式 */
+  billing_plugin_variants?: { plugin_key?: string; billing_mode?: string; billing_expr?: string }[];
+}
+
+/**
+ * 有插件专用价格时用它:dola 号池(超分档按秒)单独定价,主表达式只是内置豆包插件的固定价。
+ * dola 插件只绑在号池渠道上,有 dola 的价格就以它为准。
+ */
+export function effectivePricing(entry: PricingEntry): PricingEntry {
+  const variant = entry.billing_plugin_variants?.find((item) => item.plugin_key === "dola" && item.billing_expr);
+  return variant ? { ...entry, billing_mode: variant.billing_mode || "tiered_expr", billing_expr: variant.billing_expr } : entry;
 }
 
 /**
@@ -150,14 +163,22 @@ export function videoPricing(entry: PricingEntry, resolutions: readonly VideoRes
         vars: { "u:seconds": seconds, "u:duration": seconds, "u:videos": 1, "u:count": 1, n: 1 },
         params: { "u:resolution": resolution, resolution },
       }).micros);
-      let perSecond = false;
       const prices: Partial<Record<VideoResolution, number>> = {};
+      const billings: Partial<Record<VideoResolution, "per_second" | "per_request">> = {};
       for (const resolution of resolutions) {
         const one = at(resolution, 1);
-        if (at(resolution, 2) > one * 1.5) perSecond = true;
-        if (one > 0) prices[resolution] = one;
+        if (!(one > 0)) continue;
+        prices[resolution] = one;
+        billings[resolution] = at(resolution, 2) > one * 1.5 ? "per_second" : "per_request";
       }
-      if (Object.keys(prices).length) return { billing: perSecond ? "per_second" as const : "per_request" as const, prices };
+      const kinds = new Set(Object.values(billings));
+      if (Object.keys(prices).length) {
+        return {
+          billing: kinds.has("per_second") ? "per_second" as const : "per_request" as const, prices,
+          // 各档计费方式不一样时才带上,每档按自己的方式显示「/秒」或「/条」
+          ...(kinds.size > 1 ? { billings } : {}),
+        };
+      }
     } catch {
       // 看不懂的表达式退回下面的固定价
     }
@@ -221,7 +242,7 @@ export function toVideoModels(payload: unknown, group: string | null = "default"
     const tag = (String(entry.tags || "").split(",")[0] || "").trim().toUpperCase();
     const defaults = TAG_DEFAULTS[tag] || FALLBACK_DEFAULTS;
     const spec = videoSpec(entry.model_name, entry.description || "", tag);
-    const pricing = videoPricing(entry, spec.resolutions);
+    const pricing = videoPricing(effectivePricing(entry), spec.resolutions);
     const scale = groupRatio * rechargeRate;
     const prices = Object.fromEntries(Object.entries(pricing.prices).map(([resolution, usd]) => [resolution, Number(usd) * scale]));
     const distinct = new Set(Object.values(prices)).size > 1;
@@ -235,6 +256,7 @@ export function toVideoModels(payload: unknown, group: string | null = "default"
       billing: pricing.billing,
       price: prices[spec.resolution] ?? Object.values(prices)[0] ?? 0,
       ...(distinct ? { prices } : {}),
+      ...("billings" in pricing && pricing.billings ? { billings: pricing.billings } : {}),
       promptMin: 1,
       promptMax: defaults.promptMax,
       ...classifyModel(entry.model_name, entry.tags, vendors.get(entry.vendor_id ?? -1)),
@@ -245,10 +267,11 @@ export function toVideoModels(payload: unknown, group: string | null = "default"
 }
 
 /** 价格文字;传了分辨率且这档单独定价时按这档显示 */
-export function formatPrice(model: Pick<VideoModel, "billing" | "price" | "generic" | "prices">, resolution?: VideoResolution) {
+export function formatPrice(model: Pick<VideoModel, "billing" | "price" | "generic" | "prices" | "billings">, resolution?: VideoResolution) {
   const price = (resolution && model.prices?.[resolution]) || model.price;
   if (model.generic || !(price > 0)) return "价格未知";
-  return `¥${price.toFixed(2)}/${model.billing === "per_second" ? "秒" : "条"}`;
+  const billing = (resolution && model.billings?.[resolution]) || model.billing;
+  return `¥${price.toFixed(2)}/${billing === "per_second" ? "秒" : "条"}`;
 }
 
 /**

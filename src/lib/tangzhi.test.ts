@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildVideoRequest, expandDurations, fitVideoOptions, parseVideoDescription, remainingMedia, smartVideoRatio,
-  formatPrice, toVideoModels, videoPricing, videoRequestError, type VideoModel,
+  effectivePricing, formatPrice, toVideoModels, videoPricing, videoRequestError, type VideoModel,
 } from "./tangzhi";
 import type { MediaRef, VideoOptions } from "./types";
 
@@ -266,6 +266,19 @@ describe("video prices from the relay's billing expressions", () => {
     expect(videoPricing(entry('u("resolution") == "720p" ? tier("720p", u("seconds") * 0.1455) : tier("480p", u("seconds") * 0.1058)'),
       ["480p", "720p"])).toEqual({ billing: "per_second", prices: { "480p": 0.1058, "720p": 0.1455 } });
     expect(videoPricing({ quota_type: 1, model_price: 6.9 }, ["720p"])).toEqual({ billing: "per_request", prices: { "720p": 6.9 } });
+    // 主表达式是内置豆包插件的固定价,dola 插件有自己的按分辨率价格:以 dola 的为准
+    const both = effectivePricing({ billing_mode: "tiered_expr", billing_expr: 'tier("720p", 1.2)', billing_plugin_variants: [
+      { plugin_key: "doubao", billing_mode: "tiered_expr", billing_expr: 'tier("720p", 1.2)' },
+      { plugin_key: "dola", billing_mode: "tiered_expr", billing_expr: 'u("resolution") == "2k" ? tier("2k", u("seconds") * 0.7) : tier("720p", 1.2)' },
+    ] });
+    expect(videoPricing(both, ["720p", "2k"]).prices).toEqual({ "720p": 1.2, "2k": 0.7 });
+    // dola:720p 一条固定价,超分档按秒 —— 每档各自记计费方式
+    const dola = videoPricing(entry('u("resolution") == "1080p" ? tier("1080p", u("seconds") * 0.4) : u("resolution") == "2k" ? tier("2k", u("seconds") * 0.7) : u("resolution") == "4k" ? tier("4k", u("seconds") * 1.2) : u("resolution") == "480p" ? tier("480p", 1.2) : tier("720p", 1.2)'),
+      ["480p", "720p", "1080p", "2k", "4k"]);
+    expect(dola.prices).toEqual({ "480p": 1.2, "720p": 1.2, "1080p": 0.4, "2k": 0.7, "4k": 1.2 });
+    expect("billings" in dola && dola.billings).toEqual({ "480p": "per_request", "720p": "per_request", "1080p": "per_second", "2k": "per_second", "4k": "per_second" });
+    expect(formatPrice({ billing: "per_second", price: 1.2, prices: { "720p": 1.2, "2k": 0.7 }, billings: { "720p": "per_request", "2k": "per_second" } }, "720p")).toBe("¥1.20/条");
+    expect(formatPrice({ billing: "per_second", price: 1.2, prices: { "720p": 1.2, "2k": 0.7 }, billings: { "720p": "per_request", "2k": "per_second" } }, "2k")).toBe("¥0.70/秒");
     expect(videoPricing({}, ["720p"]).prices).toEqual({});
   });
 
