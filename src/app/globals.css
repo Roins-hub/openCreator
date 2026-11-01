@@ -4019,6 +4019,10 @@ body.is-resizing-sidebar .side-panels { transition: none; }
 /* 图片结果格子等面积:宽度由比例算出来(和 210px 见方的面积一样),横竖图一样大 */
 .image-results { display: flex; flex-wrap: wrap; }
 .image-result { width: min(100%, var(--tile-w, 210px)); }
+.image-result.is-failed {
+  display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center;
+  color: var(--danger); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 12px;
+}
 
 /* ---------- 输入框素材栈:拖动换顺序 ---------- */
 .stack-card.is-reorder-target { box-shadow: 0 0 0 2px var(--ink), 0 8px 20px oklch(20% .02 80 / .18); }

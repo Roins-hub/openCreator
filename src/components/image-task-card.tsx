@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePromptClamp } from "@/components/prompt-clamp";
 import Link from "next/link";
 import {
-  Clapperboard, Copy, Download, FolderOpen, ImagePlus, Info,
+  AlertCircle, Clapperboard, Copy, Download, FolderOpen, ImagePlus, Info,
   MoreHorizontal, Pencil, RefreshCw, Star, Trash2,
 } from "lucide-react";
 import type { MediaRef, Message } from "@/lib/types";
@@ -57,6 +57,8 @@ export function ImageTaskCard({
   const totalSize = images.reduce((sum, item) => sum + (sizeOf(item) || 0), 0);
   const options = message.generation?.imageOptions ? fitImageOptions(message.generation.imageOptions) : undefined;
   const pending = message.status === "processing" ? unfinishedTaskIds(message).length : 0;
+  // 一次要了几张、有的失败了:失败的也占一个格子,不然看着像只要了一张
+  const failed = message.failedTaskIds?.length || 0;
   const labels = referenceLabels(references);
   // 点参考图放大查看
   const [refPreview, setRefPreview] = useState<number | null>(null);
@@ -168,7 +170,7 @@ export function ImageTaskCard({
             index={refPreview} onIndex={setRefPreview} onClose={() => setRefPreview(null)} />
         )}
 
-        {(images.length > 0 || pending > 0) && (
+        {(images.length > 0 || pending > 0 || failed > 0) && (
           <div className="image-results">
             {images.map((image, index) => (
               <figure className="image-result" key={image.path} style={tile(shapes[image.path] ?? requested)}>
@@ -193,12 +195,19 @@ export function ImageTaskCard({
                 <span className="shimmer" />
               </div>
             ))}
+            {Array.from({ length: failed }, (_, index) => (
+              <div className="image-result is-failed" key={`failed-${index}`} style={tile(requested)}
+                title={message.error || "这张图片生成失败"}>
+                <AlertCircle size={16} /><span>生成失败</span>
+              </div>
+            ))}
           </div>
         )}
 
         <footer className="task-foot">
           {message.status === "failed" && <span className="task-error">{message.error || "图片生成失败"}</span>}
           {message.status === "complete" && message.error && <span className="task-error">部分失败：{message.error}</span>}
+          {message.status === "processing" && failed > 0 && <span className="task-error">{failed} 张失败：{message.error || "图片生成失败"}</span>}
           <TaskTimes message={message} durationTitle="从提交到出图的用时" />
           {totalSize > 0 && <span className="task-note task-size" title={images.length > 1 ? `${images.length} 张图片合计` : "图片文件大小"}>
             大小 {formatBytes(totalSize)}</span>}
