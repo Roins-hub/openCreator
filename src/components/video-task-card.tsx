@@ -35,10 +35,23 @@ type Props = {
   onDragMedia?: (event: React.PointerEvent<HTMLElement>, media: MediaRef) => void;
 };
 
-/** 视频比例 "9:16" → 宽/高;智能比例和没有记录的旧任务按 16:9 */
-export function videoRatio(ratio?: string) {
+/** 比例 "9:16" → 宽/高;智能比例、auto 和没有记录的旧任务用 fallback */
+export function videoRatio(ratio?: string, fallback = 16 / 9) {
   const [w, h] = (ratio || "").split(":").map(Number);
-  return w > 0 && h > 0 ? w / h : 16 / 9;
+  return w > 0 && h > 0 ? w / h : fallback;
+}
+
+/**
+ * 等面积:宽高比 ratio 的框和边长 side 的正方形面积一样时的宽度。
+ * 横竖不同的结果看起来一样大,竖的不会因为宽度占满而显得特别大。
+ */
+export function equalAreaWidth(ratio: number, side: number) {
+  return Math.round(side * Math.sqrt(ratio));
+}
+
+/** 视频预览列里的宽度占比:16:9 及更宽的占满整列,其它比例和整列 16:9 等面积 */
+export function videoPreviewWidth(ratio: number) {
+  return Math.min(1, Math.sqrt(ratio / (16 / 9)));
 }
 
 function formatElapsed(ms: number) {
@@ -146,6 +159,12 @@ export function VideoTaskCard({
   const [shapes, setShapes] = useState<Record<string, number>>({});
   const requested = videoRatio(options?.ratio);
   const shapeOf = (video: MediaRef) => shapes[video.path] ?? requested;
+  // 一次要了几条但有的没出来(上游失败):在缺的位置放一个失败占位,不然看着像只要了一条
+  const missing = message.status === "complete" && options && options.count > videos.length ? options.count - videos.length : 0;
+  const slots = videos.length + missing;
+  // 竖的多条两列并排,横的一条一条竖着排
+  const portrait = (videos[0] ? shapeOf(videos[0]) : requested) < 1;
+  const widthOf = (ratio: number) => slots > 1 && portrait ? "100%" : `${videoPreviewWidth(ratio) * 100}%`;
   const shortTaskId = taskId ? (taskId.length > 22 ? `${taskId.slice(0, 10)}…${taskId.slice(-8)}` : taskId) : "";
 
   useEffect(() => {
@@ -279,21 +298,29 @@ export function VideoTaskCard({
 
       <div className="task-preview">
         {videos.length ? (
-          // 一次生成了几条就显示几条(多条时两列排开),每条都能单独点开播放
-          <div className={videos.length > 1 ? "task-preview-grid" : undefined}>
+          // 一次生成了几条就显示几条,每条都能单独点开播放
+          <div className={slots > 1 ? `task-preview-grid ${portrait ? "is-columns" : ""}` : undefined}>
             {videos.map((video, index) => (
-              <button type="button" className={`task-preview-video ${shapeOf(video) < 1 ? "is-portrait" : ""}`} key={video.path}
-                style={{ "--ar": shapeOf(video) } as React.CSSProperties} onClick={() => setViewer(index)}
-                aria-label={videos.length > 1 ? `播放第 ${index + 1} 条视频` : "播放视频"}>
+              <button type="button" className="task-preview-video" key={video.path}
+                style={{ "--ar": shapeOf(video), "--vw": widthOf(shapeOf(video)) } as React.CSSProperties}
+                onClick={() => setViewer(index)}
+                aria-label={slots > 1 ? `播放第 ${index + 1} 条视频` : "播放视频"}>
                 <PosterVideo path={video.path} muted loop playsInline
                   onShape={(ratio) => setShapes((current) =>
                     Math.abs((current[video.path] ?? 0) - ratio) < 0.01 ? current : { ...current, [video.path]: ratio })}
                   onMouseEnter={(event) => { void event.currentTarget.play().catch(() => undefined); }}
                   onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} />
-                <span className="task-play"><Play size={videos.length > 1 ? 15 : 18} fill="currentColor" /></span>
-                {videos.length > 1 && <span className="task-preview-index">{index + 1}/{videos.length}</span>}
+                <span className="task-play"><Play size={slots > 1 ? 15 : 18} fill="currentColor" /></span>
+                {slots > 1 && <span className="task-preview-index">{index + 1}/{slots}</span>}
                 {options && <span className="task-duration">{options.duration}s</span>}
               </button>
+            ))}
+            {Array.from({ length: missing }, (_, index) => (
+              <div className="task-preview-video is-failed" key={`missing-${index}`} title={message.error || "这条视频生成失败"}
+                style={{ "--ar": requested, "--vw": widthOf(requested) } as React.CSSProperties}>
+                <AlertCircle size={18} /><span>这条生成失败</span>
+                <span className="task-preview-index">{videos.length + index + 1}/{slots}</span>
+              </div>
             ))}
           </div>
         ) : message.status === "processing" ? (

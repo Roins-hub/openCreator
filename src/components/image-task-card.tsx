@@ -13,7 +13,7 @@ import { findReference, referenceLabels, splitPromptReferences } from "@/lib/pro
 import { unfinishedTaskIds } from "@/lib/generation-stop";
 import { MediaThumb, ThumbImage } from "@/components/media-thumb";
 import { MediaPreview, mediaPreviewItem } from "@/components/media-preview";
-import { formatTime, StatusBadge, TaskTimes } from "@/components/video-task-card";
+import { equalAreaWidth, formatTime, StatusBadge, TaskTimes, videoRatio } from "@/components/video-task-card";
 import { ResultViewer } from "@/components/result-viewer";
 import { formatBytes } from "@/components/generation-info";
 
@@ -60,7 +60,10 @@ export function ImageTaskCard({
   const labels = referenceLabels(references);
   // 点参考图放大查看
   const [refPreview, setRefPreview] = useState<number | null>(null);
-  const shape = (options?.ratio || "1:1").replace(":", " / ");
+  // 结果格子等面积:横竖图看起来一样大。先按提交的比例,图片加载后按真实比例
+  const requested = videoRatio(options?.ratio, 1);
+  const [shapes, setShapes] = useState<Record<string, number>>({});
+  const tile = (ratio: number) => ({ "--shape": ratio, "--tile-w": `${equalAreaWidth(ratio, 210)}px` }) as React.CSSProperties;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -166,12 +169,17 @@ export function ImageTaskCard({
         )}
 
         {(images.length > 0 || pending > 0) && (
-          <div className="image-results" style={{ "--shape": shape } as React.CSSProperties}>
+          <div className="image-results">
             {images.map((image, index) => (
-              <figure className="image-result" key={image.path}>
+              <figure className="image-result" key={image.path} style={tile(shapes[image.path] ?? requested)}>
                 <button type="button" className="image-result-open" onClick={() => setViewer(index)} aria-label={`查看第 ${index + 1} 张`}
                   onPointerDown={(event) => onDragMedia?.(event, image)}>
-                  <ThumbImage path={image.path} width={1080} alt={image.name} />
+                  <ThumbImage path={image.path} width={1080} alt={image.name}
+                    onLoad={(event) => {
+                      const { naturalWidth: w, naturalHeight: h } = event.currentTarget;
+                      if (!w || !h) return;
+                      setShapes((current) => Math.abs((current[image.path] ?? 0) - w / h) < 0.01 ? current : { ...current, [image.path]: w / h });
+                    }} />
                 </button>
                 <figcaption className="image-result-actions">
                   <button type="button" onClick={() => onMakeVideo(image)} title="用这张图生成视频"><Clapperboard size={13} /><span>做成视频</span></button>
@@ -181,7 +189,7 @@ export function ImageTaskCard({
               </figure>
             ))}
             {Array.from({ length: pending }, (_, index) => (
-              <div className="image-result is-pending" key={`pending-${index}`} aria-label="生成中">
+              <div className="image-result is-pending" key={`pending-${index}`} aria-label="生成中" style={tile(requested)}>
                 <span className="shimmer" />
               </div>
             ))}

@@ -3996,9 +3996,17 @@ body.is-resizing-sidebar .side-panels { transition: none; }
   color: white; background: oklch(0% 0 0 / .5); font-size: 11px; font-variant-numeric: tabular-nums;
 }
 
-/* 生成卡片的视频预览按画面比例显示:横的铺满预览列,竖的限高 380px、在列里居中 */
-.task-preview-video { aspect-ratio: var(--ar, 16 / 9); }
-.task-preview-video.is-portrait { width: min(100%, calc(380px * var(--ar))); margin-inline: auto; }
+/* 生成卡片的视频预览按画面比例、等面积显示:16:9 铺满预览列,竖的和它一样大(窄而高),在列里居中;
+   多条竖视频两列并排,失败的那条放一个同样大小的占位 */
+.task-preview-video { width: var(--vw, 100%); aspect-ratio: var(--ar, 16 / 9); margin-inline: auto; }
+.task-preview-grid.is-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.task-preview-video.is-failed {
+  display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center;
+  color: var(--danger); background: var(--hover); border: 1px dashed var(--line-strong); font-size: 12px; text-align: center;
+}
+/* 图片结果格子等面积:宽度由比例算出来(和 210px 见方的面积一样),横竖图一样大 */
+.image-results { display: flex; flex-wrap: wrap; }
+.image-result { width: min(100%, var(--tile-w, 210px)); }
 
 /* ---------- 输入框素材栈:拖动换顺序 ---------- */
 .stack-card.is-reorder-target { box-shadow: 0 0 0 2px var(--ink), 0 8px 20px oklch(20% .02 80 / .18); }
