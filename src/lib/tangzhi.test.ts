@@ -282,6 +282,17 @@ describe("video prices from the relay's billing expressions", () => {
     expect(videoPricing({}, ["720p"]).prices).toEqual({});
   });
 
+  it("reads the admin's visual price table, split by resolution and reference video", () => {
+    const tier = (label: string, price: number) => `tier("${label}", ${price} + u("seconds") * 0 + u("tokens") * 0 / 1000000)`;
+    const expr = `u("resolution") == "720p" && u("video_input") == "video" ? ${tier("720p·video", 1.2)} : `
+      + `u("resolution") == "1080p" && u("video_input") == "none" ? ${tier("1080p·none", 2.2)} : `
+      + `u("resolution") == "1080p" && u("video_input") == "video" ? ${tier("1080p·video", 2.2)} : `
+      + `u("resolution") == "2k" && u("video_input") == "none" ? ${tier("2k·none", 3.17)} : `
+      + `u("resolution") == "4k" && u("video_input") == "none" ? ${tier("4k·none", 5.15)} : ${tier("720p·none", 1.2)}`;
+    const pricing = videoPricing(entry(expr), ["720p", "1080p", "2k", "4k"]);
+    expect(pricing).toEqual({ billing: "per_request", prices: { "720p": 1.2, "1080p": 2.2, "2k": 3.17, "4k": 5.15 } });
+  });
+
   it("shows the price for the chosen resolution, or 价格未知", () => {
     const model = { billing: "per_second" as const, price: 0.1058, prices: { "480p": 0.1058, "720p": 0.1455 } };
     expect(formatPrice(model, "720p")).toBe("¥0.15/秒");

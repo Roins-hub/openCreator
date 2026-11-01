@@ -161,7 +161,8 @@ export function videoPricing(entry: PricingEntry, resolutions: readonly VideoRes
       const usd = (value: number) => (value > 1000 ? value / 1e6 : value);
       const at = (resolution: string, seconds: number) => usd(evaluateExpr(root, {
         vars: { "u:seconds": seconds, "u:duration": seconds, "u:videos": 1, "u:count": 1, n: 1 },
-        params: { "u:resolution": resolution, resolution },
+        // 有的表达式还按「有没有参考视频」分档(video_input),列表价按没有参考视频算
+        params: { "u:resolution": resolution, resolution, "u:video_input": "none", video_input: "none" },
       }).micros);
       const prices: Partial<Record<VideoResolution, number>> = {};
       const billings: Partial<Record<VideoResolution, "per_second" | "per_request">> = {};
