@@ -4000,10 +4000,22 @@ body.is-resizing-sidebar .side-panels { transition: none; }
    多条竖视频两列并排,失败的那条放一个同样大小的占位 */
 .task-preview-video { width: var(--vw, 100%); aspect-ratio: var(--ar, 16 / 9); margin-inline: auto; }
 .task-preview-grid.is-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.task-preview-video.is-failed {
-  display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center;
-  color: var(--danger); background: var(--hover); border: 1px dashed var(--line-strong); font-size: 12px; text-align: center;
+/* 两列时单出来的最后一格(3 条的第 3 条)放在下一行中间 */
+.task-preview-grid.is-columns > :last-child:nth-child(odd) {
+  grid-column: 1 / -1; width: calc((100% - 8px) / 2);
 }
+.task-preview-video.is-failed, .task-preview-video.is-running {
+  display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center;
+  font-size: 12px; text-align: center;
+}
+.task-preview-video.is-failed { color: var(--danger); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.task-preview-video.is-running { color: var(--run); background: var(--run-soft); }
+.task-preview-video.is-running .shimmer {
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 20%, oklch(100% 0 0 / .55) 50%, transparent 80%);
+  background-size: 220% 100%; animation: shimmer 1.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .task-preview-video.is-running .shimmer { animation: none; } }
 /* 图片结果格子等面积:宽度由比例算出来(和 210px 见方的面积一样),横竖图一样大 */
 .image-results { display: flex; flex-wrap: wrap; }
 .image-result { width: min(100%, var(--tile-w, 210px)); }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { equalAreaWidth, videoPreviewWidth, videoRatio } from "./video-task-card";
+import { equalAreaWidth, videoPreviewLayout, videoPreviewWidth, videoRatio } from "./video-task-card";
 
 describe("videoRatio", () => {
   it("turns the requested ratio into width / height", () => {
@@ -26,5 +26,20 @@ describe("equal area sizing", () => {
     expect(videoPreviewWidth(16 / 9)).toBe(1);
     expect(videoPreviewWidth(21 / 9)).toBe(1);
     expect(videoPreviewWidth(9 / 16)).toBeCloseTo(0.5625);
+  });
+});
+
+describe("videoPreviewLayout", () => {
+  it("puts several portrait videos in two columns at full cell width", () => {
+    for (const slots of [2, 3, 4]) expect(videoPreviewLayout(slots, 9 / 16)).toEqual({ columns: 2, width: "100%" });
+  });
+
+  it("stacks landscape videos in one column", () => {
+    expect(videoPreviewLayout(3, 16 / 9)).toEqual({ columns: 1, width: "100%" });
+  });
+
+  it("keeps a single video at its equal-area width", () => {
+    expect(videoPreviewLayout(1, 9 / 16).columns).toBe(1);
+    expect(parseFloat(videoPreviewLayout(1, 9 / 16).width)).toBeCloseTo(56.25);
   });
 });

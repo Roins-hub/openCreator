@@ -54,6 +54,16 @@ export function videoPreviewWidth(ratio: number) {
   return Math.min(1, Math.sqrt(ratio / (16 / 9)));
 }
 
+/**
+ * 一次生成多条时的统一排法(所有格子同一个比例、同样大小):
+ * 竖的(比 1:1 窄)两列,2 条一行、3 条 2+1(最后一条居中)、4 条 2×2;
+ * 横的一条一条竖着排;只有一条时按等面积宽度居中。
+ */
+export function videoPreviewLayout(slots: number, ratio: number) {
+  const columns = slots > 1 && ratio < 1 ? 2 : 1;
+  return { columns, width: columns === 2 ? "100%" : `${videoPreviewWidth(ratio) * 100}%` };
+}
+
 function formatElapsed(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
   const minutes = String(Math.floor(total / 60)).padStart(2, "0");
@@ -160,11 +170,13 @@ export function VideoTaskCard({
   const requested = videoRatio(options?.ratio);
   const shapeOf = (video: MediaRef) => shapes[video.path] ?? requested;
   // 一次要了几条但有的没出来(上游失败):在缺的位置放一个失败占位,不然看着像只要了一条
-  const missing = message.status === "complete" && options && options.count > videos.length ? options.count - videos.length : 0;
-  const slots = videos.length + missing;
-  // 竖的多条两列并排,横的一条一条竖着排
-  const portrait = (videos[0] ? shapeOf(videos[0]) : requested) < 1;
-  const widthOf = (ratio: number) => slots > 1 && portrait ? "100%" : `${videoPreviewWidth(ratio) * 100}%`;
+  // 要了几条就排几个格子:出来的放视频,还在生成的放加载中,没出来的放失败占位
+  const slots = Math.max(options?.count ?? 1, videos.length);
+  const missing = slots - videos.length;
+  // 所有格子用同一个比例(第一条视频的真实比例,没有视频时按提交的比例),排法一致
+  const shape = videos[0] ? shapeOf(videos[0]) : requested;
+  const layout = videoPreviewLayout(slots, shape);
+  const slotStyle = { "--ar": shape, "--vw": layout.width } as React.CSSProperties;
   const shortTaskId = taskId ? (taskId.length > 22 ? `${taskId.slice(0, 10)}…${taskId.slice(-8)}` : taskId) : "";
 
   useEffect(() => {
@@ -297,12 +309,10 @@ export function VideoTaskCard({
       </div>
 
       <div className="task-preview">
-        {videos.length ? (
-          // 一次生成了几条就显示几条,每条都能单独点开播放
-          <div className={slots > 1 ? `task-preview-grid ${portrait ? "is-columns" : ""}` : undefined}>
+        {videos.length || message.status === "processing" ? (
+          <div className={slots > 1 ? `task-preview-grid ${layout.columns === 2 ? "is-columns" : ""}` : undefined}>
             {videos.map((video, index) => (
-              <button type="button" className="task-preview-video" key={video.path}
-                style={{ "--ar": shapeOf(video), "--vw": widthOf(shapeOf(video)) } as React.CSSProperties}
+              <button type="button" className="task-preview-video" key={video.path} style={slotStyle}
                 onClick={() => setViewer(index)}
                 aria-label={slots > 1 ? `播放第 ${index + 1} 条视频` : "播放视频"}>
                 <PosterVideo path={video.path} muted loop playsInline
@@ -315,16 +325,19 @@ export function VideoTaskCard({
                 {options && <span className="task-duration">{options.duration}s</span>}
               </button>
             ))}
-            {Array.from({ length: missing }, (_, index) => (
-              <div className="task-preview-video is-failed" key={`missing-${index}`} title={message.error || "这条视频生成失败"}
-                style={{ "--ar": requested, "--vw": widthOf(requested) } as React.CSSProperties}>
-                <AlertCircle size={18} /><span>这条生成失败</span>
-                <span className="task-preview-index">{videos.length + index + 1}/{slots}</span>
+            {Array.from({ length: missing }, (_, index) => message.status === "processing" ? (
+              <div className="task-preview-video is-running" key={`slot-${index}`} style={slotStyle} aria-label="生成中">
+                <span className="shimmer" /><Loader2 size={18} className="spin" />
+                {slots > 1 && <span className="task-preview-index">{videos.length + index + 1}/{slots}</span>}
+              </div>
+            ) : (
+              <div className="task-preview-video is-failed" key={`slot-${index}`} style={slotStyle}
+                title={message.error || "这条视频生成失败"}>
+                <AlertCircle size={16} /><span>生成失败</span>
+                {slots > 1 && <span className="task-preview-index">{videos.length + index + 1}/{slots}</span>}
               </div>
             ))}
           </div>
-        ) : message.status === "processing" ? (
-          <div className="task-preview-empty running"><span className="shimmer" /><Loader2 size={20} className="spin" /></div>
         ) : (
           <div className="task-preview-empty"><Play size={20} /></div>
         )}
