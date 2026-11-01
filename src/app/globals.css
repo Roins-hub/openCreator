@@ -3996,6 +3996,10 @@ body.is-resizing-sidebar .side-panels { transition: none; }
   color: white; background: oklch(0% 0 0 / .5); font-size: 11px; font-variant-numeric: tabular-nums;
 }
 
+/* 生成卡片的视频预览按画面比例显示:横的铺满预览列,竖的限高 380px、在列里居中 */
+.task-preview-video { aspect-ratio: var(--ar, 16 / 9); }
+.task-preview-video.is-portrait { width: min(100%, calc(380px * var(--ar))); margin-inline: auto; }
+
 /* ---------- 输入框素材栈:拖动换顺序 ---------- */
 .stack-card.is-reorder-target { box-shadow: 0 0 0 2px var(--ink), 0 8px 20px oklch(20% .02 80 / .18); }
 /* 从左边拖过来:这张会往左挪一格,先往左让一点;从右边来就往右让 */

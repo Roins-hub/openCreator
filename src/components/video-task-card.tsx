@@ -35,6 +35,12 @@ type Props = {
   onDragMedia?: (event: React.PointerEvent<HTMLElement>, media: MediaRef) => void;
 };
 
+/** 视频比例 "9:16" → 宽/高;智能比例和没有记录的旧任务按 16:9 */
+export function videoRatio(ratio?: string) {
+  const [w, h] = (ratio || "").split(":").map(Number);
+  return w > 0 && h > 0 ? w / h : 16 / 9;
+}
+
 function formatElapsed(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
   const minutes = String(Math.floor(total / 60)).padStart(2, "0");
@@ -136,6 +142,10 @@ export function VideoTaskCard({
   const labels = referenceLabels(references);
   // 点参考素材放大查看
   const [refPreview, setRefPreview] = useState<number | null>(null);
+  // 预览框的宽高比:先按提交时选的比例(智能比例按 16:9),封面/视频加载后按画面真实比例
+  const [shapes, setShapes] = useState<Record<string, number>>({});
+  const requested = videoRatio(options?.ratio);
+  const shapeOf = (video: MediaRef) => shapes[video.path] ?? requested;
   const shortTaskId = taskId ? (taskId.length > 22 ? `${taskId.slice(0, 10)}…${taskId.slice(-8)}` : taskId) : "";
 
   useEffect(() => {
@@ -272,9 +282,12 @@ export function VideoTaskCard({
           // 一次生成了几条就显示几条(多条时两列排开),每条都能单独点开播放
           <div className={videos.length > 1 ? "task-preview-grid" : undefined}>
             {videos.map((video, index) => (
-              <button type="button" className="task-preview-video" key={video.path} onClick={() => setViewer(index)}
+              <button type="button" className={`task-preview-video ${shapeOf(video) < 1 ? "is-portrait" : ""}`} key={video.path}
+                style={{ "--ar": shapeOf(video) } as React.CSSProperties} onClick={() => setViewer(index)}
                 aria-label={videos.length > 1 ? `播放第 ${index + 1} 条视频` : "播放视频"}>
                 <PosterVideo path={video.path} muted loop playsInline
+                  onShape={(ratio) => setShapes((current) =>
+                    Math.abs((current[video.path] ?? 0) - ratio) < 0.01 ? current : { ...current, [video.path]: ratio })}
                   onMouseEnter={(event) => { void event.currentTarget.play().catch(() => undefined); }}
                   onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} />
                 <span className="task-play"><Play size={videos.length > 1 ? 15 : 18} fill="currentColor" /></span>

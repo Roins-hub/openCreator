@@ -20,15 +20,25 @@ export function ThumbImage({ path, width = 480, alt = "", ...props }: { path: st
  * 视频预览:封面用云存储截的首帧(十几 KB),不预读视频本身,播放时才开始加载;
  * 截不到封面时退回预读元数据显示首帧。
  */
-export function PosterVideo({ path, width = 480, ...props }: { path: string; width?: number } & VideoHTMLAttributes<HTMLVideoElement>) {
+export function PosterVideo({ path, width = 480, onShape, ...props }: {
+  path: string; width?: number;
+  /** 拿到画面真实宽高比(宽/高)时回调:封面图加载完,或拿不到封面时视频元数据加载完 */
+  onShape?: (ratio: number) => void;
+} & VideoHTMLAttributes<HTMLVideoElement>) {
   const [failed, setFailed] = useState(false);
   const poster = thumbUrl(path, width);
+  const report = (w: number, h: number) => { if (onShape && w > 0 && h > 0) onShape(w / h); };
   return <>
-    <video {...props} src={mediaUrl(path)} poster={failed ? undefined : poster} preload={failed ? "metadata" : "none"} />
-    {/* 探测封面能不能拿到(video 的 poster 加载失败没有事件) */}
+    <video {...props} src={mediaUrl(path)} poster={failed ? undefined : poster} preload={failed ? "metadata" : "none"}
+      onLoadedMetadata={(event) => {
+        report(event.currentTarget.videoWidth, event.currentTarget.videoHeight);
+        props.onLoadedMetadata?.(event);
+      }} />
+    {/* 探测封面能不能拿到(video 的 poster 加载失败没有事件),顺便读出画面宽高比 */}
     {/* 用内联 display:none 而不是 hidden 属性:外面的 img { display: block } 之类样式会盖掉 hidden */}
     {/* eslint-disable-next-line @next/next/no-img-element */}
-    {!failed && <img alt="" aria-hidden="true" style={{ display: "none" }} src={poster} onError={() => setFailed(true)} />}
+    {!failed && <img alt="" aria-hidden="true" style={{ display: "none" }} src={poster} onError={() => setFailed(true)}
+      onLoad={(event) => report(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />}
   </>;
 }
 
