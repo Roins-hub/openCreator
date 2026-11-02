@@ -188,6 +188,29 @@ describe("buildVideoRequest", () => {
   });
 });
 
+describe("Muse models", () => {
+  const url = (item: MediaRef) => `https://vip.example/api/media/${item.path}`;
+  const [muse] = toVideoModels({ data: [{
+    model_name: "muse-video", tags: "视频生成,图生视频,最多4张参考图,按秒计费", supported_endpoint_types: ["openai-video"],
+    description: "(按秒计费) 4图片，0音频，0视频，单图≤10MiB，合计≤24MiB，720p、5-10s，文生视频/图生视频",
+    billing_mode: "tiered_expr", billing_expr: 'tier("base", u("seconds") * 0.2)',
+  }] });
+
+  it("sends only the fields the Muse plugin accepts", () => {
+    expect(muse.protocol).toBe("muse");
+    expect(muse.frames).toBe(false);
+    expect(muse.limits).toMatchObject({ images: 4, audios: 0, videos: 0 });
+    const body = buildVideoRequest(muse, " 文艺复兴油画少女 ", options({ duration: 10, ratio: "16:9" }),
+      [media("image", "a.png")], url, "mote_9");
+    expect(body).toEqual({
+      model: "muse-video", prompt: "文艺复兴油画少女", duration: 10, resolution: "720p", aspect_ratio: "16:9",
+      images: ["https://vip.example/api/media/uploads/a.png"],
+    });
+    const text = buildVideoRequest(muse, "提示词", options({ ratio: "adaptive" }), [], url, "mote_10");
+    expect(Object.keys(text).sort()).toEqual(["duration", "model", "prompt", "resolution"]);
+  });
+});
+
 describe("Dola (Ark) models", () => {
   const dola = byId("doubao-seedance-2-5-260628");
   const url = (item: MediaRef) => `https://media.example/${item.path}`;

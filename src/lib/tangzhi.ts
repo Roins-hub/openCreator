@@ -53,7 +53,7 @@ export interface VideoModel {
    * - "videos":统一 /v1/videos 格式(duration / aspect_ratio / references),原样转发给上游
    * - "ark":火山方舟格式,经 new-api 的豆包插件转换,只认 seconds / metadata / images
    */
-  protocol: "videos" | "ark";
+  protocol: "videos" | "ark" | "muse";
   /** 模型选择面板的分组:厂商 → 系列 */
   vendor: string;
   series: string;
@@ -196,6 +196,14 @@ export function arkProtocol(tag: string, modelId: string) {
   return tag === "DOLA" || /^doubao-seedance/i.test(modelId);
 }
 
+/** 视频模型走哪种请求格式:方舟插件、Muse 插件,其余是统一 /v1/videos */
+export function videoProtocol(tag: string, modelId: string): VideoModel["protocol"] {
+  if (arkProtocol(tag, modelId)) return "ark";
+  // new-api 的 Muse 插件(muse-video)只认自己的几个字段,多带一个(比如 client_task_id)就整单拒绝
+  if (/^muse-video$/i.test(modelId)) return "muse";
+  return "videos";
+}
+
 /**
  * 按模型描述锁定可选参数:分辨率、时长、比例、参考素材、首尾帧。
  * 描述里没提到的就不限制(比例用渠道默认,素材用通用上限);分辨率、时长都没写时按名字或通用值兜底。
@@ -216,6 +224,8 @@ export function videoSpec(id: string, description: string, tag = "") {
   const limits: MediaLimits = media.mentioned
     ? { images: media.images ?? 0, audios: media.audios ?? 0, videos: media.videos ?? 0, total: 0 }
     : { images: 9, audios: 3, videos: 3, total: 0 };
+  // Muse 参考素材只收图片
+  if (videoProtocol(tag, id) === "muse") Object.assign(limits, { audios: 0, videos: 0, images: Math.min(limits.images, 4) });
   limits.total = media.total ?? limits.images + limits.audios + limits.videos;
   return {
     resolution,
@@ -224,7 +234,7 @@ export function videoSpec(id: string, description: string, tag = "") {
     ratios: (listedRatios.length ? listedRatios : defaults.ratios).filter((ratio) => !ratios.excluded.includes(ratio)),
     limits,
     // 首尾帧要两张图:只收 1 张参考图的模型也做不了
-    frames: media.frames && limits.images >= 2,
+    frames: media.frames && limits.images >= 2 && videoProtocol(tag, id) !== "muse",
     face: specFace(description),
   };
 }
@@ -251,7 +261,7 @@ export function toVideoModels(payload: unknown, group: string | null = "default"
       type: "video",
       id: entry.model_name,
       tag,
-      protocol: arkProtocol(tag, entry.model_name) ? "ark" : "videos",
+      protocol: videoProtocol(tag, entry.model_name),
       description: entry.description || "",
       ...spec,
       billing: pricing.billing,
@@ -285,7 +295,7 @@ export function genericVideoModel(id: string): VideoModel {
     type: "video", id, tag: "", description: "", resolution, resolutions: [resolution], frames: true,
     durations: [5, 10], ratios: ALL_RATIOS,
     limits: { images: 9, audios: 3, videos: 3, total: 12 }, face: "", billing: "per_request", price: 0,
-    promptMin: 1, promptMax: FALLBACK_DEFAULTS.promptMax, protocol: arkProtocol("", id) ? "ark" : "videos",
+    promptMin: 1, promptMax: FALLBACK_DEFAULTS.promptMax, protocol: videoProtocol("", id),
     ...classifyModel(id), generic: true,
   };
 }
@@ -430,6 +440,7 @@ export function buildVideoRequest(
   const urls = (kind: MediaKind) => attachments.filter((item) => item.kind === kind).map(mediaUrl);
   const mode = effectiveReferenceMode(options.referenceMode, attachments.length);
   if (model.protocol === "ark") return buildArkRequest(model, prompt, options, mode, urls("image"));
+  if (model.protocol === "muse") return buildMuseRequest(model, prompt, options, urls("image"));
   const body: Record<string, unknown> = {
     model: model.id,
     prompt: prompt.trim(),
@@ -449,6 +460,22 @@ export function buildVideoRequest(
       ...single(urls("audio"), "audio", "audios"),
     };
   }
+  return body;
+}
+
+/**
+ * Muse 格式(new-api Muse 插件,上游 muse2api):只有 prompt / duration / aspect_ratio / resolution / images,
+ * 没有首尾帧,参考素材只收图片。插件对不认识的字段直接报错,所以这里一个多余字段都不带。
+ */
+function buildMuseRequest(model: VideoModel, prompt: string, options: VideoOptions, images: string[]) {
+  const body: Record<string, unknown> = {
+    model: model.id,
+    prompt: prompt.trim(),
+    duration: options.duration,
+    resolution: options.resolution,
+  };
+  if (options.ratio !== "adaptive") body.aspect_ratio = options.ratio;
+  if (images.length) body.images = images;
   return body;
 }
 
