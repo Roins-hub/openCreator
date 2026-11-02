@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildVideoRequest, expandDurations, fitVideoOptions, parseVideoDescription, remainingMedia, smartVideoRatio,
-  effectivePricing, formatPrice, toVideoModels, videoPricing, videoRequestError, type VideoModel,
+  effectivePricing, formatPrice, formatPriceRange, priceBreakdown, toVideoModels, videoPricing, videoRequestError, type VideoModel, type VideoResolution,
 } from "./tangzhi";
 import type { MediaRef, VideoOptions } from "./types";
 
@@ -314,6 +314,20 @@ describe("video prices from the relay's billing expressions", () => {
       + `u("resolution") == "4k" && u("video_input") == "none" ? ${tier("4k·none", 5.15)} : ${tier("720p·none", 1.2)}`;
     const pricing = videoPricing(entry(expr), ["720p", "1080p", "2k", "4k"]);
     expect(pricing).toEqual({ billing: "per_request", prices: { "720p": 1.2, "1080p": 2.2, "2k": 3.17, "4k": 5.15 } });
+  });
+
+  it("shows a price range when resolutions are priced differently", () => {
+    const dola = { billing: "per_request" as const, price: 1.2, resolutions: ["720p", "1080p", "2k", "4k"] as VideoResolution[],
+      prices: { "720p": 1.2, "1080p": 2.2, "2k": 3.17, "4k": 5.15 } };
+    expect(formatPriceRange(dola)).toBe("¥1.20–¥5.15/条");
+    expect(priceBreakdown(dola)).toBe("720P ¥1.20/条 · 1080P ¥2.20/条 · 2K ¥3.17/条 · 4K ¥5.15/条");
+    // 只有一档或都一样:和单价一样
+    expect(formatPriceRange({ ...dola, resolutions: ["720p"] })).toBe("¥1.20/条");
+    expect(formatPriceRange({ billing: "per_second" as const, price: 0.4, resolutions: ["480p", "720p"] as VideoResolution[],
+      prices: { "480p": 0.4, "720p": 0.4 } })).toBe("¥0.40/秒");
+    // 各档单位不同:最低价加「起」
+    expect(formatPriceRange({ ...dola, billings: { "720p": "per_request", "1080p": "per_second", "2k": "per_second", "4k": "per_second" },
+      prices: { "720p": 1.2, "1080p": 0.4, "2k": 0.7, "4k": 1.2 } })).toBe("¥0.40/秒起");
   });
 
   it("shows the price for the chosen resolution, or 价格未知", () => {

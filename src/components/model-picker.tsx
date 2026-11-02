@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Check, ChevronDown, Clapperboard, Image as ImageIcon, ListChecks, Search, Star, Trash2, X } from "lucide-react";
-import { durationSummary, formatPrice, type VideoModel } from "@/lib/tangzhi";
+import { durationSummary, formatPriceRange, priceBreakdown, type VideoModel } from "@/lib/tangzhi";
 import { tierPrice, yuan, type ImageModel, type ImageResolution } from "@/lib/image-models";
 import { channelOf, groupModels, matchesQuery } from "@/lib/model-catalog";
 import { useSlidingIndicator } from "@/components/sliding-indicator";
@@ -30,7 +30,7 @@ const sortModels = (list: PickerModel[], resolution: ImageResolution) => [...lis
 });
 
 function priceText(model: PickerModel, resolution: ImageResolution) {
-  if (model.type === "video") return formatPrice(model);
+  if (model.type === "video") return formatPriceRange(model);
   if (model.generic) return "价格未知";
   const price = tierPrice(model.price, resolution);
   return price === undefined ? model.priceLabel : `${resolution.toUpperCase()} ${yuan(price)}/张`;
@@ -416,7 +416,7 @@ export function ModelPicker({
                             <em key={label} className={label === channelOf(model.id, model.tag) ? "is-channel" : undefined}>{label}</em>
                           ))}</span>
                         </button>
-                        <span className="pick-row-price">{priceText(model, imageResolution)}</span>
+                        <span className="pick-row-price" title={model.type === "video" ? priceBreakdown(model) : undefined}>{priceText(model, imageResolution)}</span>
                         {model.id === value && <Check size={14} className="pick-row-check" aria-label="当前模型" />}
                         <button type="button" className={`pick-row-star ${starred ? "is-on" : ""}`} aria-pressed={starred}
                           aria-label={starred ? `取消星标 ${model.id}` : `加星 ${model.id}`}

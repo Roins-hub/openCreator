@@ -285,6 +285,38 @@ export function formatPrice(model: Pick<VideoModel, "billing" | "price" | "gener
   return `¥${price.toFixed(2)}/${billing === "per_second" ? "秒" : "条"}`;
 }
 
+type PricedModel = Pick<VideoModel, "billing" | "price" | "generic" | "prices" | "billings" | "resolutions">;
+
+/**
+ * 模型列表里的价格:各分辨率价格不同时显示区间「¥1.20–¥5.15/条」(单位不一致时显示「起」),
+ * 只有一档或都一样时和 formatPrice 相同。
+ */
+export function formatPriceRange(model: PricedModel) {
+  const tiers = model.resolutions
+    .map((resolution) => ({ price: model.prices?.[resolution] ?? 0, billing: model.billings?.[resolution] || model.billing }))
+    .filter((tier) => tier.price > 0);
+  if (model.generic || tiers.length < 2) return formatPrice(model);
+  const values = tiers.map((tier) => tier.price);
+  const low = Math.min(...values), high = Math.max(...values);
+  if (high - low < 0.005) return formatPrice(model);
+  const units = new Set(tiers.map((tier) => tier.billing));
+  const unit = (billing: VideoModel["billing"]) => (billing === "per_second" ? "秒" : "条");
+  if (units.size > 1) {
+    const cheapest = tiers.find((tier) => tier.price === low)!;
+    return `¥${low.toFixed(2)}/${unit(cheapest.billing)}起`;
+  }
+  return `¥${low.toFixed(2)}–¥${high.toFixed(2)}/${unit(tiers[0].billing)}`;
+}
+
+/** 各分辨率的价格明细,做悬停提示用:「720P ¥1.20/条 · 4K ¥5.15/条」 */
+export function priceBreakdown(model: PricedModel) {
+  if (model.generic) return "";
+  return model.resolutions
+    .filter((resolution) => (model.prices?.[resolution] ?? 0) > 0)
+    .map((resolution) => `${resolution.toUpperCase()} ${formatPrice(model, resolution)}`)
+    .join(" · ");
+}
+
 /**
  * 自定义中转站里只知道名字的视频模型:不猜参数,用通用的时长、比例和素材上限,
  * 分辨率取名字里写的(没有就 720p),实际能不能用以中转站的返回为准。

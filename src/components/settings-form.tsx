@@ -12,7 +12,7 @@ import {
 } from "@/lib/api-key";
 import { Dropdown } from "@/components/dropdown";
 import {
-  durationSummary, formatPrice, mediaSummary, TANGZHI_BASE_URL, TANGZHI_KEY_PAGE, type VideoModel,
+  durationSummary, formatPriceRange, mediaSummary, priceBreakdown, TANGZHI_BASE_URL, TANGZHI_KEY_PAGE, type VideoModel,
 } from "@/lib/tangzhi";
 import { ThemePicker } from "@/components/theme-picker";
 import { BackToTop } from "@/components/back-to-top";
@@ -475,7 +475,7 @@ export function SettingsForm() {
                   <span>{model.resolutions.map((item) => item.toUpperCase()).join(" / ")}</span>
                   <span>{durationSummary(model.durations)}</span>
                   <span>{mediaSummary(model.limits)}</span>
-                  <span>{formatPrice(model)}</span>
+                  <span title={priceBreakdown(model)}>{formatPriceRange(model)}</span>
                 </div>
               ))}
             </div>
