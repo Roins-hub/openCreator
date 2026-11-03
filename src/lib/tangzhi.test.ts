@@ -191,15 +191,16 @@ describe("buildVideoRequest", () => {
 describe("Muse models", () => {
   const url = (item: MediaRef) => `https://vip.example/api/media/${item.path}`;
   const [muse] = toVideoModels({ data: [{
-    model_name: "muse-video", tags: "视频生成,图生视频,最多4张参考图,按秒计费", supported_endpoint_types: ["openai-video"],
-    description: "(按秒计费) 4图片，0音频，0视频，单图≤10MiB，合计≤24MiB，720p、5-10s，文生视频/图生视频",
+    model_name: "muse-video", tags: "视频生成,图生视频,最多10个参考素材,支持视频音频参考,按秒计费", supported_endpoint_types: ["openai-video"],
+    description: "(按秒计费) 10图片，3视频，3音频，合计≤10个，单个≤40MiB，参考视频≤2分钟，720p、5-10s，文生视频/图生视频/参考视频音频生视频",
     billing_mode: "tiered_expr", billing_expr: 'tier("base", u("seconds") * 0.2)',
   }] });
 
   it("sends only the fields the Muse plugin accepts", () => {
     expect(muse.protocol).toBe("muse");
     expect(muse.frames).toBe(false);
-    expect(muse.limits).toMatchObject({ images: 4, audios: 0, videos: 0 });
+    expect(muse.limits).toEqual({ images: 10, audios: 3, videos: 3, total: 10 });
+    expect(muse.durations).toEqual([5, 6, 7, 8, 9, 10]);
     const body = buildVideoRequest(muse, " 文艺复兴油画少女 ", options({ duration: 10, ratio: "16:9" }),
       [media("image", "a.png")], url, "mote_9");
     expect(body).toEqual({
@@ -208,6 +209,22 @@ describe("Muse models", () => {
     });
     const text = buildVideoRequest(muse, "提示词", options({ ratio: "adaptive" }), [], url, "mote_10");
     expect(Object.keys(text).sort()).toEqual(["duration", "model", "prompt", "resolution"]);
+  });
+
+  it("forwards video and audio references as separate Muse fields", () => {
+    const body = buildVideoRequest(muse, "参考视频的运镜", options({ duration: 8, ratio: "9:16" }),
+      [media("image", "a.png"), media("video", "b.mp4"), media("audio", "c.mp3"), media("video", "d.mov")], url, "mote_11");
+    expect(body).toEqual({
+      model: "muse-video", prompt: "参考视频的运镜", duration: 8, resolution: "720p", aspect_ratio: "9:16",
+      images: ["https://vip.example/api/media/uploads/a.png"],
+      videos: ["https://vip.example/api/media/uploads/b.mp4", "https://vip.example/api/media/uploads/d.mov"],
+      audios: ["https://vip.example/api/media/uploads/c.mp3"],
+    });
+    const ok = options({ duration: 8, ratio: "16:9" });
+    expect(videoRequestError(muse, "x", ok, Array.from({ length: 4 }, (_, i) => media("video", `${i}.mp4`)))).toBe("当前模型最多 3 个参考视频");
+    expect(videoRequestError(muse, "x", ok, [...Array.from({ length: 8 }, (_, i) => media("image", `${i}.png`)),
+      media("video", "v.mp4"), media("audio", "a.mp3"), media("audio", "b.mp3")])).toBe("当前模型素材合计最多 10 个");
+    expect(videoRequestError(muse, "x", ok, [media("image", "a.png"), media("video", "v.mp4"), media("audio", "a.mp3")])).toBe("");
   });
 });
 

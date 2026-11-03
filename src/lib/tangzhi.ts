@@ -224,9 +224,9 @@ export function videoSpec(id: string, description: string, tag = "") {
   const limits: MediaLimits = media.mentioned
     ? { images: media.images ?? 0, audios: media.audios ?? 0, videos: media.videos ?? 0, total: 0 }
     : { images: 9, audios: 3, videos: 3, total: 0 };
-  // Muse 参考素材只收图片
-  if (videoProtocol(tag, id) === "muse") Object.assign(limits, { audios: 0, videos: 0, images: Math.min(limits.images, 4) });
   limits.total = media.total ?? limits.images + limits.audios + limits.videos;
+  // Muse(muse2api 对齐 muse.ai 网页端):各类素材合计最多 10 个,描述写多了也不放宽
+  if (videoProtocol(tag, id) === "muse") limits.total = Math.min(limits.total, 10);
   return {
     resolution,
     resolutions,
@@ -472,7 +472,7 @@ export function buildVideoRequest(
   const urls = (kind: MediaKind) => attachments.filter((item) => item.kind === kind).map(mediaUrl);
   const mode = effectiveReferenceMode(options.referenceMode, attachments.length);
   if (model.protocol === "ark") return buildArkRequest(model, prompt, options, mode, urls("image"));
-  if (model.protocol === "muse") return buildMuseRequest(model, prompt, options, urls("image"));
+  if (model.protocol === "muse") return buildMuseRequest(model, prompt, options, urls);
   const body: Record<string, unknown> = {
     model: model.id,
     prompt: prompt.trim(),
@@ -496,10 +496,11 @@ export function buildVideoRequest(
 }
 
 /**
- * Muse 格式(new-api Muse 插件,上游 muse2api):只有 prompt / duration / aspect_ratio / resolution / images,
- * 没有首尾帧,参考素材只收图片。插件对不认识的字段直接报错,所以这里一个多余字段都不带。
+ * Muse 格式(new-api Muse 插件 1.0.4+,上游 muse2api):prompt / duration / aspect_ratio / resolution
+ * 加 images / videos / audios 三类参考素材(公网 URL),没有首尾帧。
+ * 插件对不认识的字段直接报错,所以这里一个多余字段都不带。
  */
-function buildMuseRequest(model: VideoModel, prompt: string, options: VideoOptions, images: string[]) {
+function buildMuseRequest(model: VideoModel, prompt: string, options: VideoOptions, urls: (kind: MediaKind) => string[]) {
   const body: Record<string, unknown> = {
     model: model.id,
     prompt: prompt.trim(),
@@ -507,7 +508,10 @@ function buildMuseRequest(model: VideoModel, prompt: string, options: VideoOptio
     resolution: options.resolution,
   };
   if (options.ratio !== "adaptive") body.aspect_ratio = options.ratio;
-  if (images.length) body.images = images;
+  for (const [kind, field] of [["image", "images"], ["video", "videos"], ["audio", "audios"]] as const) {
+    const list = urls(kind);
+    if (list.length) body[field] = list;
+  }
   return body;
 }
 
