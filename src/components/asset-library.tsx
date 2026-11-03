@@ -93,12 +93,30 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
   const { containerRef: filterSliderRef, indicator: filterIndicator } = useSlidingIndicator<HTMLDivElement>(":scope > .active");
   const { containerRef: sourceSliderRef, indicator: sourceIndicator } = useSlidingIndicator<HTMLDivElement>(":scope > .active");
 
-  const loadAssets = useCallback(async () => {
+  // 后台刷新时拿它和服务端的列表比,找出在其他设备删掉的
+  const assetsRef = useRef<Asset[]>([]);
+  useEffect(() => { assetsRef.current = assets; }, [assets]);
+  const loadAssets = useCallback(async (background = false) => {
     const [all, folderList] = await Promise.all([
       request<Asset[]>(chat ? "/api/assets?scope=chat" : "/api/assets"),
       request<AssetFolder[]>(chat ? "/api/asset-folders?scope=chat" : "/api/asset-folders").catch(() => undefined),
     ]);
-    setAssets(all.filter((asset) => chat ? asset.source === "chat" : asset.source !== "chat"));
+    const next = all.filter((asset) => chat ? asset.source === "chat" : asset.source !== "chat");
+    if (background) {
+      const present = new Set(next.map((asset) => asset.path));
+      const gone = assetsRef.current.filter((asset) => !present.has(asset.path));
+      if (gone.length) {
+        setNotice(`${gone.length} 个资源已在其他设备删除，已从列表移除`);
+        setSelected((current) => {
+          if (!gone.some((asset) => current.has(asset.path))) return current;
+          const kept = new Set(current);
+          gone.forEach((asset) => kept.delete(asset.path));
+          return kept;
+        });
+        setPreview(null);
+      }
+    }
+    setAssets(next);
     if (folderList) setFolders(folderList);
   }, [chat]);
   useEffect(() => {
@@ -107,10 +125,41 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
         setError("请先在设置中填写中转站 API Key，才能查看你的资产");
         return;
       }
-      openSession().then(loadAssets).catch((cause) => setError(cause.message));
+      openSession().then(() => loadAssets()).catch((cause) => setError(cause.message));
     }, 0);
     return () => clearTimeout(timer);
   }, [loadAssets]);
+
+  // 多设备同步:页面在前台时每 30 秒、切回页面时(15 秒内不重复)拉一次最新列表;
+  // 正在上传、改名或批量操作时先不刷,免得打断
+  const lastRefreshRef = useRef(0);
+  const refreshBlocked = busy || Boolean(renaming) || uploads.some((item) => !item.error);
+  const refreshAssets = useCallback((force: boolean) => {
+    if (document.visibilityState !== "visible" || !readApiKey()) return;
+    if (!force && Date.now() - lastRefreshRef.current < 15_000) return;
+    lastRefreshRef.current = Date.now();
+    void loadAssets(true).catch(() => undefined);
+  }, [loadAssets]);
+  useEffect(() => {
+    if (refreshBlocked) return;
+    const onVisible = () => refreshAssets(false);
+    const timer = window.setInterval(() => refreshAssets(true), 30_000);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [refreshAssets, refreshBlocked]);
+  // 缩略图 / 视频加载不出来:多半是在其他设备删了,马上核对一次(5 秒内只核对一次)
+  const lastMissingCheckRef = useRef(0);
+  const checkMissing = () => {
+    if (Date.now() - lastMissingCheckRef.current < 5_000) return;
+    lastMissingCheckRef.current = Date.now();
+    lastRefreshRef.current = Date.now();
+    void loadAssets(true).catch(() => undefined);
+  };
 
   const folderIds = useMemo(() => new Set(folders.map((item) => item.id)), [folders]);
   // 正在看的文件夹被删掉了就回到「全部」;回收站里不按文件夹分
@@ -584,11 +633,11 @@ export function AssetLibrary({ scope = "assets" }: { scope?: "assets" | "chat" }
                   <span>{asset.name}</span>
                 </a>
                 : asset.kind === "video"
-                ? <PosterVideo controls={!selecting} path={asset.path} />
+                ? <PosterVideo controls={!selecting} path={asset.path} onError={checkMissing} />
                 : asset.kind === "audio"
                   ? <><Music size={30} /><audio controls={!selecting} preload="none" src={`/api/media/${asset.path}`} /></>
                   : <ThumbImage path={asset.path} width={480} alt={asset.name} className={selecting ? undefined : "is-zoomable"}
-                    onClick={() => { if (!selecting) openPreview(asset); }} />}
+                    onClick={() => { if (!selecting) openPreview(asset); }} onError={checkMissing} />}
               {selecting && <button type="button" className="asset-select-overlay" tabIndex={-1} aria-hidden="true"
                 onClick={(event) => { if (!cardDrag.justDropped()) toggleSelect(asset, event); }} />}
             </div>

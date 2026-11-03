@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePromptClamp } from "@/components/prompt-clamp";
 import Link from "next/link";
 import {
-  AlertCircle, Clapperboard, Copy, Download, FolderOpen, ImagePlus, Info,
+  AlertCircle, Clapperboard, Copy, Download, FolderOpen, ImageOff, ImagePlus, Info,
   MoreHorizontal, Pencil, RefreshCw, Star, Trash2,
 } from "lucide-react";
 import type { MediaRef, Message } from "@/lib/types";
@@ -65,6 +65,9 @@ export function ImageTaskCard({
   // 结果格子等面积:横竖图看起来一样大。先按提交的比例,图片加载后按真实比例
   const requested = videoRatio(options?.ratio, 1);
   const [shapes, setShapes] = useState<Record<string, number>>({});
+  // 文件加载不出来(在其他设备的资产库删了,或过了保留期):显示占位,不显示裂图
+  const [gone, setGone] = useState<Set<string>>(() => new Set());
+  const markGone = (path: string) => setGone((current) => current.has(path) ? current : new Set(current).add(path));
   const tile = (ratio: number) => ({ "--shape": ratio, "--tile-w": `${equalAreaWidth(ratio, 210)}px` }) as React.CSSProperties;
 
   useEffect(() => {
@@ -173,6 +176,12 @@ export function ImageTaskCard({
         {(images.length > 0 || pending > 0 || failed > 0) && (
           <div className="image-results">
             {images.map((image, index) => (
+              gone.has(image.path) ? (
+                <div className="image-result is-gone" key={image.path} style={tile(shapes[image.path] ?? requested)}
+                  title="这张图片已在其他设备删除，或已超过保留期">
+                  <ImageOff size={16} /><span>已删除或已过期</span>
+                </div>
+              ) :
               <figure className="image-result" key={image.path} style={tile(shapes[image.path] ?? requested)}>
                 <button type="button" className="image-result-open" onClick={() => setViewer(index)} aria-label={`查看第 ${index + 1} 张`}
                   onPointerDown={(event) => onDragMedia?.(event, image)}>
@@ -181,7 +190,8 @@ export function ImageTaskCard({
                       const { naturalWidth: w, naturalHeight: h } = event.currentTarget;
                       if (!w || !h) return;
                       setShapes((current) => Math.abs((current[image.path] ?? 0) - w / h) < 0.01 ? current : { ...current, [image.path]: w / h });
-                    }} />
+                    }}
+                    onError={() => markGone(image.path)} />
                 </button>
                 <figcaption className="image-result-actions">
                   <button type="button" onClick={() => onMakeVideo(image)} title="用这张图生成视频"><Clapperboard size={13} /><span>做成视频</span></button>

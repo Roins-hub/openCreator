@@ -5,7 +5,7 @@ import { usePromptClamp } from "@/components/prompt-clamp";
 import Link from "next/link";
 import {
   AlertCircle, CheckCircle2, Copy, Download, Info, Loader2,
-  MoreHorizontal, PauseCircle, Pencil, Play, RefreshCw, Star, Trash2, FolderOpen,
+  MoreHorizontal, PauseCircle, Pencil, Play, RefreshCw, Star, Trash2, FolderOpen, VideoOff,
 } from "lucide-react";
 import type { MediaRef, Message, VideoOptions } from "@/lib/types";
 import { findReference, referenceLabels, splitPromptReferences } from "@/lib/prompt-references";
@@ -167,6 +167,8 @@ export function VideoTaskCard({
   const [refPreview, setRefPreview] = useState<number | null>(null);
   // 预览框的宽高比:先按提交时选的比例(智能比例按 16:9),封面/视频加载后按画面真实比例
   const [shapes, setShapes] = useState<Record<string, number>>({});
+  // 视频加载不出来(在其他设备的资产库删了,或过了保留期):显示占位
+  const [gone, setGone] = useState<Set<string>>(() => new Set());
   const requested = videoRatio(options?.ratio);
   const shapeOf = (video: MediaRef) => shapes[video.path] ?? requested;
   // 一次要了几条但有的没出来(上游失败):在缺的位置放一个失败占位,不然看着像只要了一条
@@ -311,7 +313,13 @@ export function VideoTaskCard({
       <div className="task-preview">
         {videos.length || message.status === "processing" ? (
           <div className={slots > 1 ? `task-preview-grid ${layout.columns === 2 ? "is-columns" : ""}` : undefined}>
-            {videos.map((video, index) => (
+            {videos.map((video, index) => gone.has(video.path) ? (
+              <div className="task-preview-video is-failed is-gone" key={video.path} style={slotStyle}
+                title="这条视频已在其他设备删除，或已超过保留期">
+                <VideoOff size={16} /><span>已删除或已过期</span>
+                {slots > 1 && <span className="task-preview-index">{index + 1}/{slots}</span>}
+              </div>
+            ) : (
               <button type="button" className="task-preview-video" key={video.path} style={slotStyle}
                 onClick={() => setViewer(index)}
                 aria-label={slots > 1 ? `播放第 ${index + 1} 条视频` : "播放视频"}>
@@ -319,7 +327,8 @@ export function VideoTaskCard({
                   onShape={(ratio) => setShapes((current) =>
                     Math.abs((current[video.path] ?? 0) - ratio) < 0.01 ? current : { ...current, [video.path]: ratio })}
                   onMouseEnter={(event) => { void event.currentTarget.play().catch(() => undefined); }}
-                  onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} />
+                  onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }}
+                  onError={() => setGone((current) => current.has(video.path) ? current : new Set(current).add(video.path))} />
                 <span className="task-play"><Play size={slots > 1 ? 15 : 18} fill="currentColor" /></span>
                 {slots > 1 && <span className="task-preview-index">{index + 1}/{slots}</span>}
                 {options && <span className="task-duration">{options.duration}s</span>}

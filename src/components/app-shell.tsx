@@ -479,35 +479,56 @@ export function AppShell() {
     });
   }, []);
 
-  // 切回这个标签页 / 窗口时,拉一次最新的对话和分组(另一台设备可能刚改过);15 秒内不重复拉
+  // 多设备同步:切回这个标签页 / 窗口时(15 秒内不重复),以及页面在前台时每 30 秒,
+  // 拉一次最新的对话、分组、收藏和提示词库(另一台设备可能刚改过)
   const lastSyncRef = useRef(0);
+  const conversationsRef = useRef<Conversation[]>([]);
+  const activeIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
   useEffect(() => {
     if (!apiKey) return;
-    const sync = () => {
-      if (document.visibilityState !== "visible" || Date.now() - lastSyncRef.current < 15_000) return;
+    const sync = (force: boolean) => {
+      if (document.visibilityState !== "visible") return;
+      if (!force && Date.now() - lastSyncRef.current < 15_000) return;
       lastSyncRef.current = Date.now();
       void Promise.all([
         request<Conversation[]>("/api/conversations"),
         request<ConversationGroup[]>("/api/groups"),
-      ]).then(([serverConversations, serverGroups]) => {
+        request<string[]>("/api/favorites").catch(() => undefined),
+        request<PromptTemplate[]>("/api/prompts").catch(() => undefined),
+        request<PromptLayout>("/api/prompt-library").catch(() => undefined),
+      ]).then(([serverConversations, serverGroups, serverFavorites, serverPrompts, serverLayout]) => {
         rememberGroups(serverGroups);
         setGroups(serverGroups);
-        setConversations((current) => {
-          const serverIds = new Set(serverConversations.map((item) => item.id));
-          // 本机刚建、还没保存到服务端的对话先留着
-          const pending = current.filter((item) => !serverIds.has(item.id) && Date.now() - new Date(item.createdAt).getTime() < 60_000);
-          return [...pending, ...serverConversations.map((item) =>
-            keepLocalMessages(item, current.find((local) => local.id === item.id), inflightRef.current))];
-        });
-        // 当前打开的对话保持不变;还没打开过对话时打开最新的一个
-        setActiveId((id) => id || serverConversations[0]?.id);
+        if (serverFavorites) setFavorites(new Set(serverFavorites));
+        if (serverPrompts) setCustomPrompts(serverPrompts);
+        if (serverLayout) setPromptLayout(serverLayout);
+        const serverIds = new Set(serverConversations.map((item) => item.id));
+        // 本机刚建、还没保存到服务端的对话先留着
+        const isPending = (item: Conversation) => !serverIds.has(item.id) && Date.now() - new Date(item.createdAt).getTime() < 60_000;
+        const pendingIds = new Set(conversationsRef.current.filter(isPending).map((item) => item.id));
+        setConversations((current) => [
+          ...current.filter(isPending),
+          ...serverConversations.map((item) =>
+            keepLocalMessages(item, current.find((local) => local.id === item.id), inflightRef.current)),
+        ]);
+        // 当前打开的对话保持不变;在其他设备删掉了就换到最新的一个并提示;还没打开过对话时打开最新的一个
+        const open = activeIdRef.current;
+        if (open && !serverIds.has(open) && !pendingIds.has(open) && conversationsRef.current.some((item) => item.id === open)) {
+          setError("当前对话已在其他设备删除，已切换到最新的对话");
+        }
+        setActiveId((id) => id && (serverIds.has(id) || pendingIds.has(id)) ? id : serverConversations[0]?.id);
       }).catch(() => undefined);
     };
-    document.addEventListener("visibilitychange", sync);
-    window.addEventListener("focus", sync);
+    const onVisible = () => sync(false);
+    const timer = window.setInterval(() => sync(true), 30_000);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
     return () => {
-      document.removeEventListener("visibilitychange", sync);
-      window.removeEventListener("focus", sync);
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, [apiKey]);
 
