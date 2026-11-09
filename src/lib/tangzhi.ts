@@ -191,6 +191,44 @@ export function videoPricing(entry: PricingEntry, resolutions: readonly VideoRes
   };
 }
 
+/** 「视频」「video」「图生视频」这类是分类标签,不是渠道号 */
+const GENERIC_TAGS = /^(?:视频|视频生成|图片|图片生成|图像|生图|文生|图生|图生视频|文生视频|音频|对话|聊天|video|videos|image|images|audio|chat|text)$/i;
+
+/**
+ * 渠道标签:只看第一个标签,像渠道号(CH01、DOLA)才算;「视频」「video」这类分类标签、
+ * 说明性的长标签都当没有(后面的标签多是系列名或卖点,不是渠道号)。
+ * 新加的模型标签写法不一样时在这里补规则,并在 model-spec.live.test.ts 的样本里加一条。
+ */
+export function channelTag(tags: unknown) {
+  const tag = (String(tags || "").split(/[,，]/)[0] || "").trim();
+  if (!tag || GENERIC_TAGS.test(tag)) return "";
+  return /^[a-z][a-z0-9_-]{0,11}$/i.test(tag) ? tag.toUpperCase() : "";
+}
+
+/** 名字里写的分辨率:480p / 2k,也认「-480」「_1080」这种省掉 p 的写法 */
+export function resolutionFromName(id: string) {
+  const explicit = id.match(/(480p|720p|768p|1080p|2k|4k)/i)?.[1];
+  if (explicit) return explicit.toLowerCase();
+  const bare = id.match(/(?:^|[-_])(480|720|768|1080)(?=$|[-_])/)?.[1];
+  return bare ? `${bare}p` : "";
+}
+
+/**
+ * 读出来的参数看着不对劲时给出提示(测试和排查用):时长零散、名字里的分辨率不在可选里、
+ * 描述写了参考图数量却读成 0 张。新描述格式读错时这里会先报出来。
+ */
+export function specWarnings(model: Pick<VideoModel, "id" | "description" | "durations" | "resolutions" | "limits">) {
+  const warnings: string[] = [];
+  const d = model.durations;
+  const contiguous = d.every((value, index) => index === 0 || value === d[index - 1] + 1);
+  if (d.length > 6 && !contiguous) warnings.push(`时长零散:${d.join(",")}`);
+  const named = resolutionFromName(model.id);
+  if (named && !model.resolutions.includes(named as VideoResolution)) warnings.push(`名字里是 ${named},可选分辨率却是 ${model.resolutions.join("/")}`);
+  const text = model.description.replace(/\s+/g, "");
+  if (model.limits.images === 0 && /(?:\d+张?(?:参考)?图(?!生)|参考图\d)/.test(text) && !/0图/.test(text)) warnings.push("描述写了参考图数量,却读成 0 张");
+  return warnings;
+}
+
 /** 豆包/Dola 这一路走 new-api 的方舟插件,请求格式和统一 /v1/videos 不同。 */
 export function arkProtocol(tag: string, modelId: string) {
   return tag === "DOLA" || /^doubao-seedance/i.test(modelId);
@@ -211,7 +249,7 @@ export function videoProtocol(tag: string, modelId: string): VideoModel["protoco
 export function videoSpec(id: string, description: string, tag = "") {
   const clauses = specClauses(description);
   const listed = specResolutions(clauses).allowed.filter(isResolution);
-  const named = (id.match(/(480p|720p|768p|1080p|2k|4k)/i)?.[1] || "").toLowerCase();
+  const named = resolutionFromName(id);
   const resolutions = listed.length ? RESOLUTIONS.filter((item) => listed.includes(item))
     : isResolution(named) ? [named] : ["720p" as VideoResolution];
   const preferred = /默认\s*(\d{3,4}p|[24]k)/i.exec(description)?.[1]?.toLowerCase() || "";
@@ -250,7 +288,7 @@ export function toVideoModels(payload: unknown, group: string | null = "default"
   for (const entry of data.data || []) {
     if (!entry.model_name || !entry.supported_endpoint_types?.includes("openai-video")) continue;
     if (group && entry.enable_groups && !entry.enable_groups.includes(group)) continue;
-    const tag = (String(entry.tags || "").split(",")[0] || "").trim().toUpperCase();
+    const tag = channelTag(entry.tags);
     const defaults = TAG_DEFAULTS[tag] || FALLBACK_DEFAULTS;
     const spec = videoSpec(entry.model_name, entry.description || "", tag);
     const pricing = videoPricing(effectivePricing(entry), spec.resolutions);
@@ -322,7 +360,7 @@ export function priceBreakdown(model: PricedModel) {
  * 分辨率取名字里写的(没有就 720p),实际能不能用以中转站的返回为准。
  */
 export function genericVideoModel(id: string): VideoModel {
-  const resolution = (id.match(/(480p|720p|768p|1080p|2k|4k)/i)?.[1] || "720p").toLowerCase() as VideoResolution;
+  const resolution = (resolutionFromName(id) || "720p") as VideoResolution;
   return {
     type: "video", id, tag: "", description: "", resolution, resolutions: [resolution], frames: true,
     durations: [5, 10], ratios: ALL_RATIOS,

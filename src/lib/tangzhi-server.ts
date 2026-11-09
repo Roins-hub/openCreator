@@ -184,10 +184,14 @@ export function upstreamMessage(data: unknown, status: number): string {
       try { current = JSON.parse(text); continue; } catch { return text || `中转站返回 ${status}`; }
     }
     if (!current || typeof current !== "object") break;
-    const item = current as { error?: unknown; message?: unknown };
+    const item = current as { error?: unknown; message?: unknown; detail?: unknown; msg?: unknown };
     if (item.error && typeof item.error === "object") { current = item.error; continue; }
     if (typeof item.error === "string" && item.error) { current = item.error; continue; }
     if (typeof item.message === "string" && item.message) { current = item.message; continue; }
+    // FastAPI 风格的上游(如 dola 号池):{"detail":"…"} 或 {"detail":[{"msg":"…"}]}
+    if (typeof item.detail === "string" && item.detail) { current = item.detail; continue; }
+    if (Array.isArray(item.detail) && item.detail.length) { current = item.detail[0]; continue; }
+    if (typeof item.msg === "string" && item.msg) { current = item.msg; continue; }
     break;
   }
   return `中转站返回 ${status}`;

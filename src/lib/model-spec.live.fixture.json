@@ -1,0 +1,767 @@
+{
+ "capturedAt": "2026-11-09",
+ "source": "new.tangzhi.org /api/pricing (video models only)",
+ "data": [
+  {
+   "model_name": "官转sd2.0",
+   "tags": "视频,按秒计费",
+   "description": "(按秒计费) 官转直连；480p/720p/1080p；4s-15s；9图片，3视频，3音频；参考视频不加价；可真人；可选生成声音 generate_audio；不支持首尾帧；不传分辨率默认1080p；不传时长默认6秒。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"480p\" ? tier(\"480p\", u(\"seconds\") * 0.529) : u(\"resolution\") == \"720p\" ? tier(\"720p\", u(\"seconds\") * 0.82) : tier(\"1080p\", u(\"seconds\") * 2.4599)"
+  },
+  {
+   "model_name": "ch1308-sd-2.0-720p",
+   "tags": "CH13",
+   "description": "(按秒计费) 9 图片， 3 音频， 3视频，合计≤ 12，720p，4s - 15s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.6325)"
+  },
+  {
+   "model_name": "ch0113-sd-2.0-720p-mini",
+   "tags": "CH01",
+   "description": "(按秒计费) 9 图片， 3 音频， 3视频，合计≤ 12，720p，4s - 15s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.437)"
+  },
+  {
+   "model_name": "HY-Seedance-2.0-720",
+   "tags": "视频,Seedance",
+   "description": "720p、4–15秒；按条计费；9图/0视频/3音频，原生不卡脸，支持500并发上限",
+   "supported_endpoint_types": [
+    "openai-video",
+    "video-generation"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 5.244)"
+  },
+  {
+   "model_name": "zy-wan-3.0",
+   "tags": "视频",
+   "description": "ZY Wan 3.0；固定1080p、支持4–30秒和10图/5视频/5音频；标注支持原生人物参考，仍须通过审核；按条计费。",
+   "supported_endpoint_types": [
+    "openai-video",
+    "video-generation"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 5.175)"
+  },
+  {
+   "model_name": "ch0102-sd-2.0-720p",
+   "tags": "CH01",
+   "description": "(按秒计费) 9图片，3音频，3视频，合计≤12，720p，4s-15s，过人脸，满血，官转",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.805)"
+  },
+  {
+   "model_name": "ch0113-sd-2.0-480p-mini",
+   "tags": "CH01",
+   "description": "(按秒计费) 9 图片， 3 音频， 3视频，合计≤ 12，480p，4s - 15s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.2875)"
+  },
+  {
+   "model_name": "ch0104-sd-2.0-720p",
+   "tags": "CH01",
+   "description": "(按次计费) 9图片，3音频，3视频，合计≤12，720p，4s-15s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 1,
+   "model_price": 6.9,
+   "billing_mode": null,
+   "billing_expr": null
+  },
+  {
+   "model_name": "FT特价MiniMax H3-768p",
+   "tags": "视频,MiniMax",
+   "description": "768p；1–15秒；9图/0视频/3音频；按秒计费；音频参考需同时提供图片；支持@imageN/@audioN按对应素材数组顺序引用。（不传 duration 按 6 秒计费）",
+   "supported_endpoint_types": [
+    "openai-video",
+    "video-generation"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.0953)"
+  },
+  {
+   "model_name": "sd17-seedance-2.0",
+   "tags": "视频",
+   "description": "适合用途：人物短片；标注支持原生人物参考，仍须通过审核；5–15 秒；720p；最多 9 张参考图 / 3 段参考音频。使用注意：不接参考视频和首尾帧。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 5.4625)"
+  },
+  {
+   "model_name": "grok-imagine-video",
+   "tags": "视频",
+   "description": "文生 / 图生，按秒计费（不传 duration 按 6 秒）。时长 1–15 秒；480p / 720p；参考图最多 1。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"720p\" ? tier(\"720p\", u(\"seconds\") * 0.1455) : u(\"resolution\") == \"1080p\" ? tier(\"720p\", u(\"seconds\") * 0.1455) : tier(\"480p\", u(\"seconds\") * 0.1058)"
+  },
+  {
+   "model_name": "sd-2.0mini(腾讯官转)",
+   "tags": "视频,按秒计费",
+   "description": "(按秒计费) 腾讯官方直连；480p/720p；4s-15s；9图片，3视频，3音频；不带参考视频时补2秒黑屏、按生成秒数+2秒计费；带参考视频时按生成秒数+参考视频时长计费、每条参考视频按5秒预估、最多+15秒；可选返回官方源链接 return_official_url；不支持首尾帧；不传分辨率默认480p；不传时长默认6秒。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"720p\" ? (u(\"video_reference\") == \"with\" ? tier(\"720p · 含视频参考\", u(\"seconds\") * 0.4022) : tier(\"720p · 无视频参考\", u(\"seconds\") * 0.5677)) : (u(\"video_reference\") == \"with\" ? tier(\"480p · 含视频参考\", u(\"seconds\") * 0.1667) : tier(\"480p · 无视频参考\", u(\"seconds\") * 0.2922))"
+  },
+  {
+   "model_name": "cvk-2.5-480",
+   "tags": "视频生成",
+   "description": "480p｜30 图 10 视频 10 音频",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.5175)"
+  },
+  {
+   "model_name": "ch0108-sd-2.5-720p",
+   "tags": "CH01",
+   "description": "(按秒计费) 30图片，10音频，0视频，合计≤40，720p，4s-30s，可真人,满血，官转",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 1.035)"
+  },
+  {
+   "model_name": "omni-v2v-no-water",
+   "tags": "视频",
+   "description": "Omni 视频转视频（无水印），按次计费。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 1.7653)"
+  },
+  {
+   "model_name": "cvk-s",
+   "tags": "视频生成",
+   "description": "sd2.0；480p 超分 720p",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 2.53)"
+  },
+  {
+   "model_name": "sd-2.0fast(腾讯官转)",
+   "tags": "视频,按秒计费",
+   "description": "(按秒计费) 腾讯官方直连；480p/720p；4s-15s；9图片，3视频，3音频；不带参考视频时补2秒黑屏、按生成秒数+2秒计费；带参考视频时按生成秒数+参考视频时长计费、每条参考视频按5秒预估、最多+15秒；可选返回官方源链接 return_official_url；不支持首尾帧；不传分辨率默认480p；不传时长默认6秒。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"720p\" ? (u(\"video_reference\") == \"with\" ? tier(\"720p · 含视频参考\", u(\"seconds\") * 0.5466) : tier(\"720p · 无视频参考\", u(\"seconds\") * 0.9199)) : (u(\"video_reference\") == \"with\" ? tier(\"480p · 含视频参考\", u(\"seconds\") * 0.2811) : tier(\"480p · 无视频参考\", u(\"seconds\") * 0.47))"
+  },
+  {
+   "model_name": "sd-2.5(腾讯官转)",
+   "tags": "视频,按秒计费",
+   "description": "(按秒计费) 腾讯官方直连；480p/720p/1080p；5s-30s；30图片，10视频，10音频；不带参考视频时补2秒黑屏、按生成秒数+2秒计费；带参考视频时按生成秒数+参考视频时长计费、每条参考视频按5秒预估、最多+30秒；可选返回官方源链接 return_official_url；不支持首尾帧；不传分辨率默认1080p；不传时长默认6秒。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"720p\" ? (u(\"video_reference\") == \"with\" ? tier(\"720p · 含视频参考\", u(\"seconds\") * 0.8821) : tier(\"720p · 无视频参考\", u(\"seconds\") * 1.342)) : u(\"resolution\") == \"1080p\" ? (u(\"video_reference\") == \"with\" ? tier(\"1080p · 含视频参考\", u(\"seconds\") * 1.9164) : tier(\"1080p · 无视频参考\", u(\"seconds\") * 2.9384)) : (u(\"video_reference\") == \"with\" ? tier(\"480p · 含视频参考\", u(\"seconds\") * 0.4855) : tier(\"480p · 无视频参考\", u(\"seconds\") * 0.7344))"
+  },
+  {
+   "model_name": "cvk-2.5-720",
+   "tags": "视频生成",
+   "description": "720p｜30 图 10 视频 10 音频",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.782)"
+  },
+  {
+   "model_name": "muse-video",
+   "tags": "视频生成,图生视频,最多10个参考素材,支持视频音频参考,按秒计费",
+   "description": "(按秒计费) 10图片，3视频，3音频，合计≤10个，单个≤40MiB，参考视频≤2分钟，720p、5-10s，文生视频/图生视频/参考视频音频生视频",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.15)"
+  },
+  {
+   "model_name": "cvk-原生满血-480",
+   "tags": "视频生成",
+   "description": "sd2.0；原生过人脸｜5-15 秒",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.2875)"
+  },
+  {
+   "model_name": "cvk-q",
+   "tags": "视频生成",
+   "description": "sd2.0；原生过人脸｜720p",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 3.91)"
+  },
+  {
+   "model_name": "ch1306-sd-2.0-480p",
+   "tags": "CH13",
+   "description": "(按次计费) 9图片，3音频，0视频，合计≤12，480p，4s-15s，可真人，sd2.0mini",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 1,
+   "model_price": 4.025,
+   "billing_mode": null,
+   "billing_expr": null
+  },
+  {
+   "model_name": "zy-特价sd2.5",
+   "tags": "视频",
+   "description": "非dola，支持5/10/15/30秒，最多9图，不支持视频/音频参考，支持@image引用；按条收费",
+   "supported_endpoint_types": [
+    "openai-video",
+    "video-generation"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 5.6925)"
+  },
+  {
+   "model_name": "cvk-原生满血-720",
+   "tags": "视频生成",
+   "description": "sd2.0；原生过人脸｜5-15 秒",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.5175)"
+  },
+  {
+   "model_name": "sd16-seedance-2.0-mini",
+   "tags": "视频",
+   "description": "适合用途：Mini 档首尾帧；4–15 秒；480p / 720p 同价，按次计费；最多 9 张参考图 / 3 段参考音频 / 3 段参考视频。使用注意：后台检查人脸，可能被拦截；首尾帧须成对。默认 480p，不提供 1080p / 4K。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 4.485)"
+  },
+  {
+   "model_name": "omni-v2v",
+   "tags": "视频",
+   "description": "Omni 视频转视频，按次计费。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 1.5935)"
+  },
+  {
+   "model_name": "官转sd2.5",
+   "tags": "视频,按秒计费",
+   "description": "(按秒计费) 官转直连；480p/720p/1080p；4s-30s；30图片，10视频，10音频；参考视频不加价；可真人；可选生成声音 generate_audio；不支持首尾帧；不传分辨率默认1080p；不传时长默认6秒。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"480p\" ? tier(\"480p\", u(\"seconds\") * 0.7274) : u(\"resolution\") == \"720p\" ? tier(\"720p\", u(\"seconds\") * 1.5077) : tier(\"1080p\", u(\"seconds\") * 3.703)"
+  },
+  {
+   "model_name": "X-seednce2.5",
+   "tags": "视频,按秒计费",
+   "description": "(按秒计费) X 特价线路 Seedance 2.5；480p 15s-30s，720p 4s-30s；720p 为超分输出；30图片，0视频，10音频；不支持首尾帧；不传分辨率默认720p；不传时长默认6秒。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"480p\" ? tier(\"480p\", u(\"seconds\") * 0.5233) : tier(\"720p\", u(\"seconds\") * 0.598)"
+  },
+  {
+   "model_name": "cvk-k",
+   "tags": "视频生成",
+   "description": "sd2.0；720p｜9 图 3 视频 3 音频",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 3.22)"
+  },
+  {
+   "model_name": "ch0107-sd-2.5-480p",
+   "tags": "CH01",
+   "description": "(按秒计费) 30图片，10音频，10视频，合计≤50，480p，4s-30s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.598)"
+  },
+  {
+   "model_name": "ch0107-sd-2.5-720p",
+   "tags": "CH01",
+   "description": "(按秒计费) 30图片，10音频，10视频，合计≤50，720p，4s-30s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.8625)"
+  },
+  {
+   "model_name": "sd16-seedance-2.0-fast",
+   "tags": "视频",
+   "description": "适合用途：Fast 档多模态；4–15 秒；480p / 720p 同价，按次计费；最多 9 张参考图 / 3 段参考音频 / 3 段参考视频。使用注意：后台检查人脸，可能被拦截；首尾帧须成对。默认 480p，不提供 1080p / 4K。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 5.635)"
+  },
+  {
+   "model_name": "seedance-2.0-fast",
+   "tags": "DOLA",
+   "description": "(按次计费) 10图片，0音频，0视频，过人脸，合计≤10，720p，超分（1080p，2k，4k），5s/10s/15s/30s",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"1080p\" ? tier(\"1080p\", 2.2 + u(\"seconds\") * 0 + u(\"tokens\") * 0 / 1000000) : u(\"resolution\") == \"2k\" ? tier(\"2k\", 3.17 + u(\"seconds\") * 0 + u(\"tokens\") * 0 / 1000000) : u(\"resolution\") == \"4k\" ? tier(\"4k\", 5.15 + u(\"seconds\") * 0 + u(\"tokens\") * 0 / 1000000) : tier(\"720p\", 1.2 + u(\"seconds\") * 0 + u(\"tokens\") * 0 / 1000000)"
+  },
+  {
+   "model_name": "满血-480p",
+   "tags": "视频生成",
+   "description": "sd2.0；480p｜9 图 3 视频 3 音频",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 3.22)"
+  },
+  {
+   "model_name": "ch1306-sd-2.0-720p",
+   "tags": "CH13",
+   "description": "(按次计费) 9图片，3音频，0视频，合计≤12，720p，4s-15s，可真人，sd2.0mini",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 1,
+   "model_price": 5.75,
+   "billing_mode": null,
+   "billing_expr": null
+  },
+  {
+   "model_name": "sd17-seedance-2.5-2",
+   "tags": "视频",
+   "description": "适合用途：多模态视频创作。支持 10–30 秒、720p；最多 30 张参考图片、10 段参考音频、10 段参考视频。使用注意：有人脸限制，不支持首尾帧；人物参考可优先选择明确支持原生人物的型号，仍须通过审核。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 9.775)"
+  },
+  {
+   "model_name": "FT-官渠特价2.0-903",
+   "tags": "视频",
+   "description": "FT视频；720p；4–15秒整数，默认15秒；9图/0视频/3音频；比例9:16/16:9/1:1/4:3/3:4/21:9；按条计费，不乘时长；按素材顺序@引用；文件24小时自动清理，请尽快下载。",
+   "supported_endpoint_types": [
+    "openai-video",
+    "video-generation"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 5.4855)"
+  },
+  {
+   "model_name": "sd17-seedance-2.0-2",
+   "tags": "视频",
+   "description": "适合用途：人物短片备选；标注支持原生人物参考，仍须通过审核；5–15 秒；720p；最多 9 张参考图 / 3 段参考音频。使用注意：不接参考视频和首尾帧；与基础款为独立线路，请根据实际状态选择。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 6.325)"
+  },
+  {
+   "model_name": "grok-imagine-video-1.5",
+   "tags": "视频",
+   "description": "图生优先，按秒计费（不传 duration 按 6 秒）。时长 1–15 秒；480p / 720p / 1080p；参考图最多 7。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"720p\" ? tier(\"720p\", u(\"seconds\") * 0.2222) : u(\"resolution\") == \"1080p\" ? tier(\"1080p\", u(\"seconds\") * 0.4232) : tier(\"480p\", u(\"seconds\") * 0.1535)"
+  },
+  {
+   "model_name": "sd8-seedance-2.0-mini",
+   "tags": null,
+   "description": "固定 720p，4–15 秒，默认 15 秒。¥1.95/条。参考图 3、音频 1，不支持参考视频。后台过人脸。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"default\", u(\"videos\") * 2.2425)"
+  },
+  {
+   "model_name": "ch0112-sd-2.0-480p-fast",
+   "tags": "CH01",
+   "description": "(按秒计费) 9 图片， 3 音频， 3视频，合计≤ 12，480p，4s - 15s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.4025)"
+  },
+  {
+   "model_name": "官转sd2.0fast",
+   "tags": "视频,按秒计费",
+   "description": "(按秒计费) 官转直连；480p/720p；4s-15s；9图片，3视频，3音频；参考视频不加价；可真人；可选生成声音 generate_audio；不支持首尾帧；不传分辨率默认720p；不传时长默认6秒。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"480p\" ? tier(\"480p\", u(\"seconds\") * 0.4365) : tier(\"720p\", u(\"seconds\") * 0.6613)"
+  },
+  {
+   "model_name": "ch0102-sd-2.0-1080p",
+   "tags": "CH01",
+   "description": "(按秒计费) 9图片，3音频，3视频，合计≤12，1080p，4s-15s，过人脸",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.92)"
+  },
+  {
+   "model_name": "cvk-2.5-1080",
+   "tags": "视频生成",
+   "description": "1080p｜30 图 10 视频 10 音频",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 1.38)"
+  },
+  {
+   "model_name": "sd-2.5-线路1（2.5）",
+   "tags": "视频,按秒计费",
+   "description": "(按秒计费) CM 线路 Seedance 2.5；480p/720p；4s-30s；30图片，10视频，10音频；不支持首尾帧；不传分辨率默认480p；不传时长默认15秒。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"720p\" ? tier(\"720p\", u(\"seconds\") * 0.9718) : tier(\"480p\", u(\"seconds\") * 0.6279)"
+  },
+  {
+   "model_name": "omni-fast",
+   "tags": "视频",
+   "description": "Omni 文生 / 图生视频，按次计费。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 1.3368)"
+  },
+  {
+   "model_name": "cvk",
+   "tags": "视频生成",
+   "description": "sd2.0；720p｜4-15 秒",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 3.45)"
+  },
+  {
+   "model_name": "ch0101-sd-2.0-720p",
+   "tags": "CH01",
+   "description": "(按秒计费) 9图片，3音频，3视频，合计≤12，720p，5s-15s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.667)"
+  },
+  {
+   "model_name": "ch0101-sd-2.0-480p",
+   "tags": "CH01",
+   "description": "(按秒计费) 9 图片， 3 音频， 3视频，合计≤ 12，480p，4s - 15s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.529)"
+  },
+  {
+   "model_name": "gv4-grok-imagine-video-1.5",
+   "tags": "视频",
+   "description": "适合用途：Grok 图文试做；6–15 秒；480p / 720p；文生或最多 7 张参考图。使用注意：画幅 16:9 / 9:16 / 1:1；不接参考音频、视频和首尾帧。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 2.53)"
+  },
+  {
+   "model_name": "sd17-seedance-2.0-3",
+   "tags": "视频",
+   "description": "适合用途：短片创作；720p，时长可选 5 / 10 / 15 秒，最多 9 张参考图。比例 21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16。使用注意：有人脸限制；不支持参考音频、参考视频或首尾帧，完成时间以实际任务状态为准。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 4.485)"
+  },
+  {
+   "model_name": "ch0112-sd-2.0-720p-fast",
+   "tags": "CH01",
+   "description": "(按秒计费) 9 图片， 3 音频， 3视频，合计≤ 12，720p，4s - 15s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.644)"
+  },
+  {
+   "model_name": "ch1309-sd-2.0-480p",
+   "tags": "CH13",
+   "description": "(按秒计费) 9图片，3音频，0视频，合计≤12，480p，4s-15s，可真人，sd2.0mini",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.276)"
+  },
+  {
+   "model_name": "omni-fast-no-water",
+   "tags": "视频",
+   "description": "Omni 文生 / 图生视频（无水印），按次计费。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 1.5065)"
+  },
+  {
+   "model_name": "2.5特价-1-720",
+   "tags": "视频生成",
+   "description": "特价 720p｜30 图 5 视频 10 音频",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 5.52)"
+  },
+  {
+   "model_name": "sd-2.0-特价",
+   "tags": "视频生成",
+   "description": "sd2.0；特价 720p｜5-15 秒",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 2.07)"
+  },
+  {
+   "model_name": "XB-SD2.5-30参",
+   "tags": "video",
+   "description": "720p、4–30s，默认4秒；按条计费，不乘生成秒数、参考数量或参考视频秒数。最多30图/10参考视频/10参考音频，三种素材合计不得超过30个，重复引用按出现次数计数。参考视频每段2–15秒、服务端实测合计不超过15秒；不可测或超限在预扣及提交前拒绝，客户端填写时长不能绕过。音频必须搭配图片，本站按用户确认保留最多10段、合计30秒；当前上游目录同时声明音频最短2秒与音频合计1秒，存在矛盾，音频实际受理能力待上游确认，不承诺已通过生成验收。素材使用可直接下载的公网HTTPS链接，本地文件可先POST /v1/assets上传。使用@imageN/@videoN/@audioN引用各数组从1开始的素材。不要传上游计费模式、原生parameters/content、首尾帧或outputCount覆盖字段。新请求的图片、视频、音频在上游提交前校验并固定到本站R2，保留素材顺序、重复引用与幂等体；素材准备失败不会提交生成。 本站人民币按条计费，720p ¥5.8/条；4–30秒同价，参考素材不额外加价。按次收费，所选分辨率决定价格。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 6.67)"
+  },
+  {
+   "model_name": "ch1309-sd-2.0-720p",
+   "tags": "CH13",
+   "description": "(按秒计费) 9图片，3音频，0视频，合计≤12，720p，4s-15s，可真人，sd2.0mini",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.391)"
+  },
+  {
+   "model_name": "sd-2.0(腾讯官转)",
+   "tags": "视频,按秒计费",
+   "description": "(按秒计费) 腾讯官方直连；480p/720p/1080p；4s-15s；9图片，3视频，3音频；不带参考视频时补2秒黑屏、按生成秒数+2秒计费；带参考视频时按生成秒数+参考视频时长计费、每条参考视频按5秒预估、最多+15秒；可选返回官方源链接 return_official_url；不支持首尾帧；不传分辨率默认480p；不传时长默认6秒。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "u(\"resolution\") == \"720p\" ? (u(\"video_reference\") == \"with\" ? tier(\"720p · 含视频参考\", u(\"seconds\") * 0.5877) : tier(\"720p · 无视频参考\", u(\"seconds\") * 0.9077)) : u(\"resolution\") == \"1080p\" ? (u(\"video_reference\") == \"with\" ? tier(\"1080p · 含视频参考\", u(\"seconds\") * 1.2776) : tier(\"1080p · 无视频参考\", u(\"seconds\") * 2.2485)) : u(\"resolution\") == \"4k\" ? (u(\"video_reference\") == \"with\" ? tier(\"4K · 含视频参考\", u(\"seconds\") * 3.5771) : tier(\"4K · 无视频参考\", u(\"seconds\") * 5.8767)) : (u(\"video_reference\") == \"with\" ? tier(\"480p · 含视频参考\", u(\"seconds\") * 0.3322) : tier(\"480p · 无视频参考\", u(\"seconds\") * 0.5111))"
+  },
+  {
+   "model_name": "ch1307-sd-2.5-720p",
+   "tags": "CH13",
+   "description": "(按秒计费) 30 图片， 10 音频， 10视频，合计≤ 50，720p，4s - 30s，可真人",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"seconds\") * 0.8625)"
+  },
+  {
+   "model_name": "sd16-seedance-2.0",
+   "tags": "视频",
+   "description": "适合用途：高清多模态；4–15 秒；480p / 720p / 1080p / 4K 同价，按次计费；最多 9 张参考图 / 3 段参考音频 / 3 段参考视频。使用注意：后台检查人脸，可能被拦截；首尾帧须成对。默认 480p，高清档请用 resolution 指定。",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 6.67)"
+  },
+  {
+   "model_name": "sd17-seedance-2.5-3",
+   "tags": null,
+   "description": "9图0音0视/720P/5-10-15/21:9 16:9 4:3 1:1 3:4 9:16/高速并发",
+   "supported_endpoint_types": [
+    "openai-video"
+   ],
+   "quota_type": 0,
+   "model_price": 0,
+   "billing_mode": "tiered_expr",
+   "billing_expr": "tier(\"base\", u(\"videos\") * 4.485)"
+  }
+ ]
+}

@@ -9,6 +9,14 @@ describe("relay error messages", () => {
     expect(friendlyMessage("prompt 太短")).toBe("prompt 太短");
   });
 
+  it("reads FastAPI-style detail from upstreams like the dola pool", () => {
+    const detail = "seedance-2.0 生成 30 秒视频，dola 要扣 8 个额度，超过每个号每日上限 4 个，号池无法生成；请改用更短时长";
+    expect(upstreamMessage({ detail }, 422)).toBe(detail);
+    expect(upstreamMessage({ error: { message: JSON.stringify({ detail }) } }, 422)).toBe(detail);
+    expect(upstreamMessage({ detail: [{ loc: ["body", "seconds"], msg: "seconds 必须是 5、10 或 15" }] }, 422)).toBe("seconds 必须是 5、10 或 15");
+    expect(upstreamMessage({}, 422)).toBe("中转站返回 422");
+  });
+
   it("unwraps nested error JSON", () => {
     expect(upstreamMessage({
       code: "fail_to_fetch_task",

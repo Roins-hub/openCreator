@@ -56,11 +56,17 @@ export function specResolutions(clauses: Clause[]) {
   return { allowed: [...allowed], excluded: [...excluded] };
 }
 
-const NOT_DURATION = /总计|总时长|参考视频.*秒|参考音频.*秒|字符/;
+// 这些小句里的秒数说的是参考素材、计费或保留时间,不是可选的生成时长
+const NOT_DURATION = /总计|总时长|合计|最短|最长|每段|每条参考|参考视频.*秒|参考音频.*秒|音频.*秒|预估|黑屏|保留|清理|超时|字符/;
 
-/** 可选的整数秒;没写时返回空数组 */
+/**
+ * 可选的整数秒;没写时返回空数组。
+ * 写了范围(4–30 秒)或列表(5/10/15 秒)时只认这些;小句里零散的单个秒数只在没有范围和列表时才用,
+ * 免得说明文字里的「每段 2 秒」「合计 1 秒」混进可选时长。
+ */
 export function specDurations(clauses: Clause[]) {
   const seconds = new Set<number>();
+  const singles = new Set<number>();
   for (const clause of clauses) {
     if (clause.negative || clause.defaultsOnly || NOT_DURATION.test(clause.text)) continue;
     if (!/秒|\d\s*s(?![a-z])/i.test(clause.text)) continue;
@@ -81,12 +87,11 @@ export function specDurations(clauses: Clause[]) {
       if (min >= 1 && max >= min && max <= 120) for (let value = min; value <= max; value++) seconds.add(value);
       continue;
     }
-    for (const match of text.matchAll(/\d{1,3}/g)) {
-      const value = Number(match[0]);
-      if (value >= 1 && value <= 120) seconds.add(value);
-    }
+    const values = [...text.matchAll(/\d{1,3}/g)].map((match) => Number(match[0])).filter((value) => value >= 1 && value <= 120);
+    const target = values.length > 1 ? seconds : singles;
+    values.forEach((value) => target.add(value));
   }
-  return [...seconds].sort((a, b) => a - b);
+  return [...(seconds.size ? seconds : singles)].sort((a, b) => a - b);
 }
 
 /** 写到的比例(「比例 / 画幅 / size」那几句里的 宽:高),以及明确不支持的比例 */
@@ -125,9 +130,13 @@ export function specMedia(clauses: Clause[]) {
     }
     return undefined;
   };
-  let images = number([/参考图(?:片)?\s*最多\s*(\d+)/, /(\d+)\s*张?\s*(?:公网)?\s*(?:参考)?\s*图(?:片)?(?!生)/]);
-  let videos = number([/(\d+)\s*(?:段|个)?\s*(?:参考)?\s*视频(?!转)/]);
-  let audios = number([/(\d+)\s*(?:段|个)?\s*(?:参考)?\s*音频/]);
+  // 数字在前(「9 图片」「10 段参考音频」)优先;也认数字在后的写法(「参考图 3、音频 1」)
+  let images = number([/参考图(?:片)?\s*最多\s*(\d+)/, /(\d+)\s*张?\s*(?:公网)?\s*(?:参考)?\s*图(?:片)?(?!生)/,
+    /参考图(?:片)?\s*[:：]?\s*(\d+)\s*(?:张|个)?(?![\d.]|\s*(?:秒|s|MiB|MB))/]);
+  let videos = number([/(\d+)\s*(?:段|个)?\s*(?:参考)?\s*视频(?!转)/,
+    /参考视频\s*[:：]?\s*(\d+)\s*(?:段|个)?(?![\d.]|\s*(?:秒|s|分钟|MiB|MB))/]);
+  let audios = number([/(\d+)\s*(?:段|个)?\s*(?:参考)?\s*音频/,
+    /(?:参考)?音频\s*[:：]?\s*(\d+)\s*(?:段|个)?(?![\d.]|\s*(?:秒|s|MiB|MB))/]);
   const total = number([/合计\s*[≤<=]*\s*(\d+)/, /合计最多\s*(\d+)/]);
   let frames = true;
   for (const clause of clauses) {
@@ -138,6 +147,8 @@ export function specMedia(clauses: Clause[]) {
       if (/首尾帧/.test(clause.text)) frames = false;
     }
     if (/仅参考素材|只支持参考素材/.test(clause.text)) frames = false;
+    // 「不要传…首尾帧」「禁止首尾帧」:不在 NEGATIVE 里(「不要」太常见),只对首尾帧生效
+    if (/(?:不要|禁止|勿)[^。]*首尾帧/.test(clause.text)) frames = false;
     if (/仅文生|只支持文生|纯文生/.test(clause.text)) images = 0;
   }
   const mentioned = images !== undefined || videos !== undefined || audios !== undefined;
