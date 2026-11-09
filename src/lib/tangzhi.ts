@@ -199,8 +199,11 @@ const GENERIC_TAGS = /^(?:视频|视频生成|图片|图片生成|图像|生图|
  * 说明性的长标签都当没有(后面的标签多是系列名或卖点,不是渠道号)。
  * 新加的模型标签写法不一样时在这里补规则,并在 model-spec.live.test.ts 的样本里加一条。
  */
-export function channelTag(tags: unknown) {
+export function channelTag(tags: unknown, id = "") {
   const tag = (String(tags || "").split(/[,，]/)[0] || "").trim();
+  // 有的上游按系列打标签(seedance-2-0),渠道号写在名字里:「1402-…」「ch1306-…」→ CH14 / CH13
+  const named = id.match(/^(?:ch)?(\d{2})\d{2}-/i)?.[1];
+  if (named && !/^CH\d+$/i.test(tag)) return `CH${named}`;
   if (!tag || GENERIC_TAGS.test(tag)) return "";
   return /^[a-z][a-z0-9_-]{0,11}$/i.test(tag) ? tag.toUpperCase() : "";
 }
@@ -288,7 +291,7 @@ export function toVideoModels(payload: unknown, group: string | null = "default"
   for (const entry of data.data || []) {
     if (!entry.model_name || !entry.supported_endpoint_types?.includes("openai-video")) continue;
     if (group && entry.enable_groups && !entry.enable_groups.includes(group)) continue;
-    const tag = channelTag(entry.tags);
+    const tag = channelTag(entry.tags, entry.model_name);
     const defaults = TAG_DEFAULTS[tag] || FALLBACK_DEFAULTS;
     const spec = videoSpec(entry.model_name, entry.description || "", tag);
     const pricing = videoPricing(effectivePricing(entry), spec.resolutions);

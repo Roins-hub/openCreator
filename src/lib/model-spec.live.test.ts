@@ -48,6 +48,10 @@ describe("live model descriptions", () => {
     expect(byId("seedance-2.0-fast").tag).toBe("DOLA");
     // 第一个是分类标签时不往后找,后面的「MiniMax」「Seedance」是系列名
     expect(channelTag("视频,MiniMax")).toBe("");
+    // 按系列打的标签:渠道号从名字前缀读
+    expect(channelTag("seedance-2-0", "1402-seedance-2-0-480p")).toBe("CH14");
+    expect(channelTag("seedance-2-0", "ch1306-sd-2.0-480p")).toBe("CH13");
+    expect(channelTag("CH01", "ch0101-sd-2.0-480p")).toBe("CH01");
     expect(models.filter((model) => model.tag).map((model) => model.tag).sort().filter((tag, i, all) => all.indexOf(tag) === i))
       .toEqual(["CH01", "CH13", "DOLA"]);
   });
