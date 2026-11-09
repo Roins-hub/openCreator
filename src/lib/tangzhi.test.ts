@@ -302,6 +302,7 @@ describe("video prices from the relay's billing expressions", () => {
   const entry = (billing_expr: string) => ({ billing_mode: "tiered_expr", billing_expr });
   it("reads per-video, per-second and per-resolution prices", () => {
     expect(videoPricing(entry('tier("base", u("videos") * 5.52)'), ["720p"])).toEqual({ billing: "per_request", prices: { "720p": 5.52 } });
+    expect(videoPricing(entry('tier("base", u("requests") * 2.875)'), ["480p"])).toEqual({ billing: "per_request", prices: { "480p": 2.875 } });
     expect(videoPricing(entry('tier("base", u("seconds") * 0.53)'), ["480p"])).toEqual({ billing: "per_second", prices: { "480p": 0.53 } });
     expect(videoPricing(entry('u("resolution") == "720p" ? tier("720p", u("seconds") * 0.1455) : tier("480p", u("seconds") * 0.1058)'),
       ["480p", "720p"])).toEqual({ billing: "per_second", prices: { "480p": 0.1058, "720p": 0.1455 } });

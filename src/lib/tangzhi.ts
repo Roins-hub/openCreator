@@ -149,6 +149,7 @@ export function effectivePricing(entry: PricingEntry): PricingEntry {
  * 视频价格。中转站有三种写法:
  * - 计费表达式按秒:tier("base", u("seconds") * 0.53)
  * - 计费表达式按条:tier("base", u("videos") * 5.52)
+ * - 按次(StarFrame 按次模型):tier("base", u("requests") * 2.875)
  * - 按分辨率分档:u("resolution") == "720p" ? tier("720p", u("seconds") * 0.1455) : …
  * - 按次固定价:quota_type 1 + model_price
  * 表达式直接代入计算(每个分辨率、1 秒和 2 秒各算一次),不靠猜写法;结果是美元。
@@ -160,7 +161,7 @@ export function videoPricing(entry: PricingEntry, resolutions: readonly VideoRes
       // fixed() 给的是微美元,u() 乘出来的是美元
       const usd = (value: number) => (value > 1000 ? value / 1e6 : value);
       const at = (resolution: string, seconds: number) => usd(evaluateExpr(root, {
-        vars: { "u:seconds": seconds, "u:duration": seconds, "u:videos": 1, "u:count": 1, n: 1 },
+        vars: { "u:seconds": seconds, "u:duration": seconds, "u:videos": 1, "u:count": 1, "u:requests": 1, n: 1 },
         // 有的表达式还按「有没有参考视频」分档(video_input),列表价按没有参考视频算
         params: { "u:resolution": resolution, resolution, "u:video_input": "none", video_input: "none" },
       }).micros);
