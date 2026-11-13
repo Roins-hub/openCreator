@@ -1,5 +1,5 @@
 import type { MediaRef, VideoOptions } from "./types";
-import { classifyModel, vendorNames } from "./model-catalog";
+import { classifyModel, modelRouteLabel, vendorNames } from "./model-catalog";
 import { specClauses, specDurations, specFace, specMedia, specRatios, specResolutions } from "./model-spec";
 import { evaluateExpr, parseExpr } from "./billing-expr";
 
@@ -26,6 +26,7 @@ export interface VideoModel {
   /** 中转站模型名,同时作为提交时的 model 参数 */
   id: string;
   tag: string;
+  routeLabel?: string;
   description: string;
   /** 默认分辨率(描述里写了「默认」的那个,否则是可选的第一个) */
   resolution: VideoResolution;
@@ -161,7 +162,7 @@ export function videoPricing(entry: PricingEntry, resolutions: readonly VideoRes
       // fixed() 给的是微美元,u() 乘出来的是美元
       const usd = (value: number) => (value > 1000 ? value / 1e6 : value);
       const at = (resolution: string, seconds: number) => usd(evaluateExpr(root, {
-        vars: { "u:seconds": seconds, "u:duration": seconds, "u:videos": 1, "u:count": 1, "u:requests": 1, n: 1 },
+        vars: { "u:seconds": seconds, "u:duration": seconds, "u:videos": 1, "u:count": 1, "u:requests": 1, "u:request_count": 1, n: 1 },
         // 有的表达式还按「有没有参考视频」分档(video_input),列表价按没有参考视频算
         params: { "u:resolution": resolution, resolution, "u:video_input": "none", video_input: "none" },
       }).micros);
@@ -235,7 +236,7 @@ export function specWarnings(model: Pick<VideoModel, "id" | "description" | "dur
 
 /** 豆包/Dola 这一路走 new-api 的方舟插件,请求格式和统一 /v1/videos 不同。 */
 export function arkProtocol(tag: string, modelId: string) {
-  return tag === "DOLA" || /^doubao-seedance/i.test(modelId);
+  return tag === "DOLA" || /^seedance-2\.0-fast(?:-x)?$/i.test(modelId) || /^doubao-seedance/i.test(modelId);
 }
 
 /** 视频模型走哪种请求格式:方舟插件、Muse 插件,其余是统一 /v1/videos */
@@ -293,6 +294,7 @@ export function toVideoModels(payload: unknown, group: string | null = "default"
     if (!entry.model_name || !entry.supported_endpoint_types?.includes("openai-video")) continue;
     if (group && entry.enable_groups && !entry.enable_groups.includes(group)) continue;
     const tag = channelTag(entry.tags, entry.model_name);
+    const routeLabel = modelRouteLabel(entry.tags);
     const defaults = TAG_DEFAULTS[tag] || FALLBACK_DEFAULTS;
     const spec = videoSpec(entry.model_name, entry.description || "", tag);
     const pricing = videoPricing(effectivePricing(entry), spec.resolutions);
@@ -303,6 +305,7 @@ export function toVideoModels(payload: unknown, group: string | null = "default"
       type: "video",
       id: entry.model_name,
       tag,
+      ...(routeLabel ? { routeLabel } : {}),
       protocol: videoProtocol(tag, entry.model_name),
       description: entry.description || "",
       ...spec,
@@ -319,12 +322,16 @@ export function toVideoModels(payload: unknown, group: string | null = "default"
   return models.sort((a, b) => order(a.id).localeCompare(order(b.id), "en", { numeric: true }));
 }
 
+const priceAmount = (value: number) => value.toLocaleString("en-US", {
+  minimumFractionDigits: 2, maximumFractionDigits: 6, useGrouping: false,
+});
+
 /** 价格文字;传了分辨率且这档单独定价时按这档显示 */
 export function formatPrice(model: Pick<VideoModel, "billing" | "price" | "generic" | "prices" | "billings">, resolution?: VideoResolution) {
   const price = (resolution && model.prices?.[resolution]) || model.price;
   if (model.generic || !(price > 0)) return "价格未知";
   const billing = (resolution && model.billings?.[resolution]) || model.billing;
-  return `¥${price.toFixed(2)}/${billing === "per_second" ? "秒" : "条"}`;
+  return `¥${priceAmount(price)}/${billing === "per_second" ? "秒" : "条"}`;
 }
 
 type PricedModel = Pick<VideoModel, "billing" | "price" | "generic" | "prices" | "billings" | "resolutions">;
@@ -345,9 +352,9 @@ export function formatPriceRange(model: PricedModel) {
   const unit = (billing: VideoModel["billing"]) => (billing === "per_second" ? "秒" : "条");
   if (units.size > 1) {
     const cheapest = tiers.find((tier) => tier.price === low)!;
-    return `¥${low.toFixed(2)}/${unit(cheapest.billing)}起`;
+    return `¥${priceAmount(low)}/${unit(cheapest.billing)}起`;
   }
-  return `¥${low.toFixed(2)}–¥${high.toFixed(2)}/${unit(tiers[0].billing)}`;
+  return `¥${priceAmount(low)}–¥${priceAmount(high)}/${unit(tiers[0].billing)}`;
 }
 
 /** 各分辨率的价格明细,做悬停提示用:「720P ¥1.20/条 · 4K ¥5.15/条」 */

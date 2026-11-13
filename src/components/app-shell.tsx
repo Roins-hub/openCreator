@@ -405,7 +405,34 @@ export function AppShell() {
 
   // 模型列表与个人数据分开加载:模型列表慢或失败不影响查看历史对话
   useEffect(() => {
-    request<CatalogModel[]>("/api/models").then(setModels).catch((cause) => setError(cause.message));
+    let disposed = false, pending = false, loaded = false;
+    const controller = new AbortController();
+    const refresh = () => {
+      if (pending) return;
+      pending = true;
+      request<CatalogModel[]>("/api/models", { cache: "no-store", signal: controller.signal })
+        .then((next) => {
+          if (disposed) return;
+          setModels(next);
+          loaded = true;
+        })
+        .catch((cause) => { if (!disposed && !loaded) setError(cause.message); })
+        .finally(() => { pending = false; });
+    };
+    const refreshVisible = () => { if (!document.hidden) refresh(); };
+    refresh();
+    const timer = window.setInterval(refreshVisible, 60_000);
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    const unsubscribe = onApiKeyChange(refresh);
+    return () => {
+      disposed = true;
+      controller.abort();
+      clearInterval(timer);
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+      unsubscribe();
+    };
   }, []);
 
   // 这台设备见过的分组 ID:保存时告诉服务端只改这些,别的设备新建的分组不会被覆盖掉

@@ -98,6 +98,31 @@ describe("toVideoModels", () => {
   it("limits CH08 models to portrait video", () => {
     expect(ch08.ratios).toEqual(["9:16"]);
   });
+
+  it.each([
+    ["doubao-seedance-2.0-fast", "Seedance 2.0 Fast"],
+    ["doubao-seedance-2.0-mini", "Seedance 2.0 Mini"],
+  ])("classifies %s with its published route and per-second prices", (id, series) => {
+    const [model] = toVideoModels({ data: [{
+      model_name: id, tags: "视频生成,线路:号池1（最长15秒）", supported_endpoint_types: ["openai-video"],
+      description: "10图片，0音频，0视频，过人脸，720p/1080p/2k/4k，4s-15s",
+      billing_mode: "tiered_expr",
+      billing_expr: 'u("resolution") == "1080p" ? tier("1080p", u("seconds") * 0.33) : u("resolution") == "2k" ? tier("2k", u("seconds") * 0.4755) : u("resolution") == "4k" ? tier("4k", u("seconds") * 0.7725) : tier("720p", u("seconds") * 0.18)',
+    }] });
+    expect(model).toMatchObject({ id, series, routeLabel: "号池1（最长15秒）", billing: "per_second", protocol: "ark",
+      prices: { "720p": 0.18, "1080p": 0.33, "2k": 0.4755, "4k": 0.7725 } });
+    expect(model.durations).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(formatPriceRange(model)).toBe("¥0.18–¥0.7725/秒");
+  });
+
+  it("preserves the distinct request protocols of both Fast pools", () => {
+    const models = toVideoModels({ data: [
+      { model_name: "seedance-2.0-fast", supported_endpoint_types: ["openai-video"], description: "720p；5s/10s/15s/30s" },
+      { model_name: "seedance-2.0fast", supported_endpoint_types: ["openai-video"], description: "720p；5s/10s/15s" },
+    ] });
+    expect(models.find((model) => model.id === "seedance-2.0-fast")).toMatchObject({ protocol: "ark", durations: [5, 10, 15, 30] });
+    expect(models.find((model) => model.id === "seedance-2.0fast")).toMatchObject({ protocol: "videos", durations: [5, 10, 15] });
+  });
 });
 
 describe("model constraints", () => {
@@ -303,6 +328,7 @@ describe("video prices from the relay's billing expressions", () => {
   it("reads per-video, per-second and per-resolution prices", () => {
     expect(videoPricing(entry('tier("base", u("videos") * 5.52)'), ["720p"])).toEqual({ billing: "per_request", prices: { "720p": 5.52 } });
     expect(videoPricing(entry('tier("base", u("requests") * 2.875)'), ["480p"])).toEqual({ billing: "per_request", prices: { "480p": 2.875 } });
+    expect(videoPricing(entry('tier("base", u("request_count") * 1.2)'), ["720p"])).toEqual({ billing: "per_request", prices: { "720p": 1.2 } });
     expect(videoPricing(entry('tier("base", u("seconds") * 0.53)'), ["480p"])).toEqual({ billing: "per_second", prices: { "480p": 0.53 } });
     expect(videoPricing(entry('u("resolution") == "720p" ? tier("720p", u("seconds") * 0.1455) : tier("480p", u("seconds") * 0.1058)'),
       ["480p", "720p"])).toEqual({ billing: "per_second", prices: { "480p": 0.1058, "720p": 0.1455 } });
@@ -338,6 +364,8 @@ describe("video prices from the relay's billing expressions", () => {
     const dola = { billing: "per_request" as const, price: 1.2, resolutions: ["720p", "1080p", "2k", "4k"] as VideoResolution[],
       prices: { "720p": 1.2, "1080p": 2.2, "2k": 3.17, "4k": 5.15 } };
     expect(formatPriceRange(dola)).toBe("¥1.20–¥5.15/条");
+    expect(formatPriceRange({ ...dola, billing: "per_second", price: 0.18,
+      prices: { "720p": 0.18, "1080p": 0.33, "2k": 0.4755, "4k": 0.7725 } })).toBe("¥0.18–¥0.7725/秒");
     expect(priceBreakdown(dola)).toBe("720P ¥1.20/条 · 1080P ¥2.20/条 · 2K ¥3.17/条 · 4K ¥5.15/条");
     // 只有一档或都一样:和单价一样
     expect(formatPriceRange({ ...dola, resolutions: ["720p"] })).toBe("¥1.20/条");
@@ -350,7 +378,7 @@ describe("video prices from the relay's billing expressions", () => {
 
   it("shows the price for the chosen resolution, or 价格未知", () => {
     const model = { billing: "per_second" as const, price: 0.1058, prices: { "480p": 0.1058, "720p": 0.1455 } };
-    expect(formatPrice(model, "720p")).toBe("¥0.15/秒");
+    expect(formatPrice(model, "720p")).toBe("¥0.1455/秒");
     expect(formatPrice({ billing: "per_request", price: 0 })).toBe("价格未知");
   });
 });

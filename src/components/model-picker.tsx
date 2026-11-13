@@ -43,6 +43,7 @@ function rowChips(model: PickerModel) {
   if (channel) chips.push(channel);
   if (model.generic) return [...chips, "参数未知"];
   if (model.type === "video") {
+    if (model.routeLabel) chips.push(model.routeLabel);
     chips.push(model.resolutions.map((item) => item.toUpperCase()).join("/"));
     if (model.face) chips.push(model.face);
     const { images, audios, videos } = model.limits;

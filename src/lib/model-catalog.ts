@@ -120,6 +120,11 @@ export function channelOf(id: string, tag?: string) {
   return /^(ch\d+)[-_]/i.exec(id)?.[1]?.toUpperCase() || (tag && /^[A-Z][A-Z0-9_-]{1,11}$/.test(tag) ? tag : "");
 }
 
+/** 后台模型标签里的公开线路名称；提交请求仍使用原模型 ID。 */
+export function modelRouteLabel(tags?: string | null) {
+  return /(?:^|[,，])\s*(?:线路|route)\s*[:：]\s*([^,，]+)/i.exec(tags || "")?.[1]?.trim();
+}
+
 export interface CatalogGroup<T> { vendor: string; series: { name: string; models: T[] }[] }
 
 /** 按厂商 → 系列分组;厂商和系列按名称排序,「其他」放最后 */
@@ -144,12 +149,12 @@ export function groupModels<T extends { vendor: string; series: string }>(models
 
 /** 搜索:模型名、系列、厂商、渠道、描述里包含全部关键词(空格分隔,不分大小写) */
 export function matchesQuery(
-  model: { id: string; vendor: string; series: string; tag?: string; description?: string },
+  model: { id: string; vendor: string; series: string; tag?: string; routeLabel?: string; description?: string },
   query: string,
 ) {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const text = [model.id, model.vendor, model.series, model.tag, model.description, channelOf(model.id, model.tag)]
+  const text = [model.id, model.vendor, model.series, model.tag, model.routeLabel, model.description, channelOf(model.id, model.tag)]
     .join(" ").toLowerCase();
   return words.every((word) => text.includes(word));
 }

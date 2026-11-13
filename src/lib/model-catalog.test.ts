@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { channelOf, classifyModel, groupModels, matchesQuery, seriesFromName, vendorFromName } from "./model-catalog";
+import { channelOf, classifyModel, groupModels, matchesQuery, modelRouteLabel, seriesFromName, vendorFromName } from "./model-catalog";
 
 describe("model catalog grouping", () => {
   it("recognizes series from the relay's model names", () => {
@@ -8,6 +8,8 @@ describe("model catalog grouping", () => {
     expect(seriesFromName("ch0113-sd-2.0-720p-mini")).toBe("Seedance 2.0 Mini");
     expect(seriesFromName("ch1307-sd-2.5-720p")).toBe("Seedance 2.5");
     expect(seriesFromName("doubao-seedance-2-0-260128")).toBe("Seedance 2.0");
+    expect(seriesFromName("doubao-seedance-2.0-fast")).toBe("Seedance 2.0 Fast");
+    expect(seriesFromName("doubao-seedance-2.0-mini")).toBe("Seedance 2.0 Mini");
     expect(seriesFromName("gpt-image-2")).toBe("GPT Image 2");
     expect(seriesFromName("gpt-image-2-cf")).toBe("GPT Image 2");
     expect(seriesFromName("gpt-image-2.5-flare-no-2k-4k")).toBe("GPT Image 2.5 Flare");
@@ -52,6 +54,14 @@ describe("model catalog grouping", () => {
     expect(channelOf("doubao-seedance-2-0-260128", "DOLA")).toBe("DOLA");
     expect(channelOf("gpt-image-2", "")).toBe("");
     expect(channelOf("gpt-image-2", "图片")).toBe("");
+  });
+
+  it("reads public route labels without changing the model identity", () => {
+    expect(modelRouteLabel("视频生成,线路:号池1（最长30秒）")).toBe("号池1（最长30秒）");
+    expect(modelRouteLabel("视频，route：号池2（最长15秒）")).toBe("号池2（最长15秒）");
+    expect(modelRouteLabel("视频生成")).toBeUndefined();
+    expect(modelRouteLabel(null)).toBeUndefined();
+    expect(matchesQuery({ id: "seedance-2.0fast", vendor: "豆包", series: "Seedance 2.0 Fast", routeLabel: "号池2（最长15秒）" }, "号池2")).toBe(true);
   });
 
   it("groups by vendor then series, with 其他 last", () => {
